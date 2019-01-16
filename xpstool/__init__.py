@@ -1,5 +1,8 @@
-from .xpstool import *
 __appname__ = "XPS tool"
-__version__ = "0.0.0.0"
+__version__ = "1.0.1"
 __authors__ = ["Mikhail Shipilin <mikhail.shipilin@gmail.com>"]
 __website__ = "https://github.com/Shipilin/xps-tool"
+
+__all__ = [
+        'helpers'
+        ]
