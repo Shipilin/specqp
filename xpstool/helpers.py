@@ -1,21 +1,5 @@
-import datetime
-import matplotlib
-
 import numpy as np
 import pandas as pd
-
-# Default minimal info for every region 
-info_fields = (
-    "File Name", # Original data file name as was recorded in the experiment
-    "Spectrum Name", # Spectrum name as written in Sciemta software
-    "Region Name", # Single region name (different from previous if spectrum is multi regional)
-    "Pass Energy", # Value of pass energy of the analyser
-    "Number of Sweeps",
-    "Energy Scale", # Kinetic or Binding
-    "Step Time", # Dwell time of the measurement
-    "Date", 
-    "Time"         
-) 
 
 class Scan:
     """Contains and handles a single recorded region together with all information
@@ -43,6 +27,15 @@ class Scan:
         self.Info = info
         self.BindingEnergyFlag = binding_energy_flag
         
+    def __str__(self):
+        output = ""
+        if not self.Info:
+            output = "No info available"
+        else:
+            for key, val in self.Info.items():
+                output = "\n".join((output, f"{key}: {val}"))
+        return output 
+        
     def addColumn(self, column_label, array):
         """Adds one column to the data object assigning it the name 'column_label'
         """
@@ -56,10 +49,23 @@ class Scan:
 def parseScientaFileInfo(lines):
     """Parses the Scienta file and returnes 'info' dictionary
     """
-    pass
+    info = {} 
+    for line in lines:
+        line = line.strip()
+        if '=' in line:
+            line_content = line.split('=', 1)
+            info[line_content[0].strip()] = line_content[1].strip()   
+                                 
+    return info
 
 def parseSpecFileInfo(lines):
     """Parses the SPEC.xy file and returns 'info' dictionary
     """
-    info = {}    
+    info = {} 
+    for line in lines:
+        line = line.strip().lstrip('#').strip()
+        if ':' in line:
+            line_content = line.split(':', 1)
+            info[line_content[0].strip()] = line_content[1].strip()   
+                                 
     return info
