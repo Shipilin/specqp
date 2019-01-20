@@ -4,5 +4,8 @@ __authors__ = ["Mikhail Shipilin <mikhail.shipilin@gmail.com>"]
 __website__ = "https://github.com/Shipilin/xps-tool"
 
 __all__ = [
-        'helpers'
+        'region',
+        'scientahandler',
+        'specshandler',
+        'xpstool'
         ]
