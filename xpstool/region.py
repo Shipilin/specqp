@@ -10,19 +10,19 @@ class Region:
             "binding_energy_flag",
             "fermi_level_flag"
             )
-    
-    def __init__(self, energy, counts, energy_shift_corrected=False, binding_energy_flag=False, 
-                 fermi_level_flag=False, info=None):   
+
+    def __init__(self, energy, counts, energy_shift_corrected=False, binding_energy_flag=False,
+                 fermi_level_flag=False, info=None):
         """Creates the class using two variables (of type list or similar).
-        The first goes for energy (X) axis, the second - for counts (Y) axis. 
+        The first goes for energy (X) axis, the second - for counts (Y) axis.
         The 'energy_shift_corrected' flag shows whether the energy values were
         corrected (using Fermi level, gas peak, etc.)
         The 'binding_energy_flag' defines which energy representation is used
         (binding (True) or kinetic (False)). Fermi_flag should be True if the spectrum
         represents the Fermi level measurement. Experimental conditions can be passed
-        as 'info' dictionary {"name": value} and stored in the instance. 
+        as 'info' dictionary {"name": value} and stored in the instance.
         """
-        
+
         # The main attribute of the class is pandas dataframe
         self._Data = pd.DataFrame(data={'energy': energy, 'counts': counts}, dtype=float)
         self._Flags = {
@@ -31,7 +31,7 @@ class Region:
                 Region._region_flags[2]: fermi_level_flag
                 }
         self._Info = info
-                    
+
     def __str__(self):
         """Prints the info read from the Scienta file
         """
@@ -41,23 +41,23 @@ class Region:
         else:
             for key, val in self._Info.items():
                 output = "\n".join((output, f"{key}: {val}"))
-        return output 
-    
+        return output
+
     def invertEnergyScale(self, excitation_energy):
-        """Changes the energy scale of the region from the currently defined to 
-        the alternative one. From kinetic to binding energy 
-        or from binding to kinetic energy. The photon energy used for excitation 
+        """Changes the energy scale of the region from the currently defined to
+        the alternative one. From kinetic to binding energy
+        or from binding to kinetic energy. The photon energy used for excitation
         is required.
         """
         self._Data['energy'] = [(excitation_energy - value) for value in self._Data['energy']]
         self._Flags[Region._region_flags[1]] = not self._Flags[Region._region_flags[1]]
-        
+
         # We need to change some info entries also
         self._Info["Excitation Energy"] = str(excitation_energy)
         for key in ["Energy Scale", "Energy Unit", "Energy Axis"]:
-            # Depending on whether it was SPECS or Scienta file loaded, the info 
+            # Depending on whether it was SPECS or Scienta file loaded, the info
             # dictionaries may have different keys. So, we scroll through all
-            # possible values and change the existing ones 
+            # possible values and change the existing ones
             if key in self._Info.keys():
                 if self._Flags[Region._region_flags[1]]:
                     self._Info[key] = "Binding"
@@ -66,11 +66,11 @@ class Region:
         for key in ["Center Energy", "Low Energy", "High Energy"]:
             if key in self._Info.keys():
                 self._Info[key] = str(excitation_energy - float(self._Info[key]))
-    
+
     def getData(self):
         """Returns pandas DataFrame with two or more columns (first two columns
         were originally retrieved from the data file, other columns could be added
-        after some processing of the original data) 
+        after some processing of the original data)
         """
         return self._Data
 
@@ -78,18 +78,23 @@ class Region:
         """Returns 'info' dictionary {"name": value}
         """
         return self._Info
-    
+
     def getFlags(self):
-        """Returns the dictionary of flags in the following order 
+        """Returns the dictionary of flags in the following order
         """
         return self._Flags
-        
+
+    def setFermiFlag(self):
+        """Sets the Fermi flag of the region to be True
+        """
+        self._Flags[Region._region_flags[2]] = True
+
     def addColumn(self, column_label, array):
         """Adds one column to the data object assigning it the name 'column_label'.
         Choose descriptive labels.
         """
         self._Data[column_label] = array
-        
+
     def removeColumn(self, column_label):
         """Removes one of the columns of the data object
         """
@@ -97,9 +102,9 @@ class Region:
             print("Original data columns can't be removed!")
             return
         self._Data = self._Data.drop(column_label, 1)
-        
+
     def saveCSV(self, filename):
-        """Saves Region object in the csv file with given name. Flags and info are 
+        """Saves Region object in the csv file with given name. Flags and info are
         stored in the comment lines marked with '#' simbol at the beginning of
         the file.
         """
@@ -110,48 +115,47 @@ class Region:
                 filename = ".".join(["".join([name_and_extension[0], f"_{i}"]), name_and_extension[1]])
                 if not os.path.isfile(filename):
                     break
-        
+
         with open(filename, mode='a+') as file:
             for key, value in self._Flags.items():
                 file.write(f"#F {key}={value}\n")
             for key, value in self._Info.items():
-                file.write(f"# {key}: {value}\n")                
+                file.write(f"# {key}: {value}\n")
             self._Data.to_csv(file, index=False)
-                       
+
     def readCSV(filename):
         """Reads csv file and returns Region object. Values of flags and info
-        is retrieved from the comment lines marked with '#' simbol at the beginning 
+        is retrieved from the comment lines marked with '#' simbol at the beginning
         of the file.
         """
         # Reading the data part of the file
         df = pd.read_csv(filename, comment='#')
-                         
-        info = {} 
+
+        info = {}
         with open(filename, mode='r') as file:
-            lines = file.readlines() 
+            lines = file.readlines()
 
         # Reading info part of the file (lines starting with '#')
         info_lines = []
         flags = {}
         for line in lines:
             # Reading the flags
-            if line.strip().startswith('#F'):         
+            if line.strip().startswith('#F'):
                 for flag in Region._region_flags:
                     if flag in line:
                         flags[flag] = line.lstrip('#F').strip().split("=")[1]
                 continue
-            
-            if line.strip().startswith('#'):
-                info_lines.append(line.strip('\n')) # Save info lines   
 
-        info = {} 
+            if line.strip().startswith('#'):
+                info_lines.append(line.strip('\n')) # Save info lines
+
+        info = {}
         for line in info_lines:
             line = line.strip().lstrip('#').strip()
             line_content = line.split(':', 1)
-            info[line_content[0].strip()] = line_content[1].strip()   
-    
-        return Region(df['energy'].tolist(), df['counts'].tolist(), 
-                        energy_shift_corrected=flags[Region._region_flags[0]], 
+            info[line_content[0].strip()] = line_content[1].strip()
+
+        return Region(df['energy'].tolist(), df['counts'].tolist(),
+                        energy_shift_corrected=flags[Region._region_flags[0]],
                         binding_energy_flag=flags[Region._region_flags[1]],
                         fermi_level_flag=flags[Region._region_flags[2]], info=info)
-                                                        

@@ -1,8 +1,7 @@
-import scan 
 
 def run():
     """Defines the behavior of the app if run as a script
-    """    
+    """
     print("Running as a script")
     oxygen = Scan()
 
