@@ -86,6 +86,10 @@ def importScientaFile(filename, energy_correction=0, fermi_level=False, regions_
         if energy_correction != 0:
             energy = [(value + energy_correction) for value in energy]
             energy_corrected_flag = True
+            # We also need to change some info due to change in energy values
+            for key in ["Center Energy", "Low Energy", "High Energy"]:
+                info_lines[key] = str(float(info_lines[key]) + energy_correction)
+            
         else:
             energy_corrected_flag = False
         
@@ -103,7 +107,8 @@ def importScientaFile(filename, energy_correction=0, fermi_level=False, regions_
     return regions
 
 def parseScientaFileInfo(lines):
-    """Parses the Scienta file and returnes 'info' dictionary
+    """Parses the list of lines read from Scienta.txt file info block
+    and returns 'info' dictionary
     """
     info = {} 
     for line in lines:
