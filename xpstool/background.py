@@ -4,7 +4,8 @@ import numpy as np
 from .region import Region
 
 def calculateShirley(energy, counts, tolerance=1e-5, maxiter=50):
-    """Calculates shirley background.
+    """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
+    Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
     if energy[0] < energy[-1]:
         is_reversed = True
