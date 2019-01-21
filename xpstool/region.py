@@ -67,6 +67,13 @@ class Region:
             if key in self._Info.keys():
                 self._Info[key] = str(excitation_energy - float(self._Info[key]))
 
+    def correctEnergyShift(self, shift):
+        if self._Flags[Region._region_flags[0]]:
+            print("The region has already been corrected")
+        else:
+            self._Data["energy"] += shift
+            self._Flags[Region._region_flags[0]] = True
+
     def getData(self):
         """Returns pandas DataFrame with two or more columns (first two columns
         were originally retrieved from the data file, other columns could be added
