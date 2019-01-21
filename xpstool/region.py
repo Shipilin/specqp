@@ -5,6 +5,11 @@ class Region:
     """Contains and handles a single recorded region together with all information
     about the scan and experimental conditions provided in data file
     """
+    _region_flags = (
+            "energy_shift_corrected",
+            "binding_energy_flag",
+            "fermi_level_flag"
+            )
     
     def __init__(self, energy, counts, energy_shift_corrected=False, binding_energy_flag=False, 
                  fermi_level_flag=False, info=None):   
@@ -20,9 +25,11 @@ class Region:
         
         # The main attribute of the class is pandas dataframe
         self._Data = pd.DataFrame(data={'energy': energy, 'counts': counts}, dtype=float)
-        self._EnergyShiftCorrectedFlag = energy_shift_corrected
-        self._BindingEnergyFlag = binding_energy_flag
-        self._FermiLevelFlag = fermi_level_flag
+        self._Flags = {
+                Region._region_flags[0]: energy_shift_corrected,
+                Region._region_flags[1]: binding_energy_flag,
+                Region._region_flags[2]: fermi_level_flag
+                }
         self._Info = info
                     
     def __str__(self):
@@ -43,7 +50,7 @@ class Region:
         is required.
         """
         self._Data['energy'] = [(excitation_energy - value) for value in self._Data['energy']]
-        self._BindingEnergyFlag = not self._BindingEnergyFlag
+        self._Flags[Region._region_flags[1]] = not self._Flags[Region._region_flags[1]]
         
         # We need to change some info entries also
         self._Info["Excitation Energy"] = str(excitation_energy)
@@ -52,7 +59,7 @@ class Region:
             # dictionaries may have different keys. So, we scroll through all
             # possible values and change the existing ones 
             if key in self._Info.keys():
-                if self._BindingEnergyFlag:
+                if self._Flags[Region._region_flags[1]]:
                     self._Info[key] = "Binding"
                 else:
                     self._Info[key] = "Kinetic"
@@ -73,10 +80,9 @@ class Region:
         return self._Info
     
     def getFlags(self):
-        """Returns the list of flags in the following order 
-        [energy_shift_corrected_flag, binding_energy_flag, fermi_level_flag]
+        """Returns the dictionary of flags in the following order 
         """
-        return [self._EnergyShiftCorrectedFlag, self._BindingEnergyFlag, self._FermiLevelFlag]
+        return self._Flags
         
     def addColumn(self, column_label, array):
         """Adds one column to the data object assigning it the name 'column_label'.
@@ -106,8 +112,8 @@ class Region:
                     break
         
         with open(filename, mode='a+') as file:
-            for flag in [self._EnergyShiftCorrectedFlag, self._BindingEnergyFlag, self._FermiLevelFlag]:
-                file.write(f"# {flag}\n")
+            for key, value in self._Flags.items():
+                file.write(f"#F {key}={value}\n")
             for key, value in self._Info.items():
                 file.write(f"# {key}: {value}\n")                
             self._Data.to_csv(file, index=False)
@@ -123,18 +129,21 @@ class Region:
         info = {} 
         with open(filename, mode='r') as file:
             lines = file.readlines() 
-        # Reading the flags from the first three lines
-        energy_shift_corrected=lines[0].strip('#').strip() 
-        binding_energy_flag=lines[1].strip('#').strip()
-        fermi_level_flag=lines[2].strip('#').strip()
-                           
+
         # Reading info part of the file (lines starting with '#')
         info_lines = []
-        # Start reading after the flags lines
-        for i in range(3, len(lines)):
-            if lines[i].strip().startswith('#'):
-                info_lines.append(lines[i].strip('\n')) # Save info lines   
-              
+        flags = {}
+        for line in lines:
+            # Reading the flags
+            if line.strip().startswith('#F'):         
+                for flag in Region._region_flags:
+                    if flag in line:
+                        flags[flag] = line.lstrip('#F').strip().split("=")[1]
+                continue
+            
+            if line.strip().startswith('#'):
+                info_lines.append(line.strip('\n')) # Save info lines   
+
         info = {} 
         for line in info_lines:
             line = line.strip().lstrip('#').strip()
@@ -142,7 +151,7 @@ class Region:
             info[line_content[0].strip()] = line_content[1].strip()   
     
         return Region(df['energy'].tolist(), df['counts'].tolist(), 
-                        energy_shift_corrected=energy_shift_corrected, 
-                        binding_energy_flag=binding_energy_flag,
-                        fermi_level_flag=fermi_level_flag, info=info)
+                        energy_shift_corrected=flags[Region._region_flags[0]], 
+                        binding_energy_flag=flags[Region._region_flags[1]],
+                        fermi_level_flag=flags[Region._region_flags[2]], info=info)
                                                         
