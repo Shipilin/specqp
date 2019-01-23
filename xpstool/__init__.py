@@ -9,6 +9,5 @@ __all__ = [
         'region',
         'scientahandler',
         'specshandler',
-        'fitter'
-        'background'
+        'helpers'
         ]

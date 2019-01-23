@@ -67,8 +67,12 @@ class Region:
         ax.set_title(f"Pass: {self._Info['Pass Energy']}   |   Sweeps: {self._Info['Number of Sweeps']}   |   File: {self._Info['File']}")
 
         #   Stiling axes
-        ax.set_xlabel(x_data)
-        ax.set_ylabel(y_data)
+        x_label_prefix = "Binding"
+        if self._Info["Energy Scale"] == "Kinetic":
+            x_label_prefix = "Kinetic"
+
+        ax.set_xlabel(f"{x_label_prefix} energy (eV)")
+        ax.set_ylabel("Counts (a.u.)")
 
         # Inverting x-axis if desired and not yet inverted
         if invert_x and not ax.xaxis_inverted():
