@@ -2,11 +2,13 @@
 """
 
 import scipy as sp
+import numpy as np
 from scipy.optimize import curve_fit
 from .region import Region
 
-def fitFermiEdge(region, initial_params):
-    """Fits error function to fermi level scan
+def fitFermiEdge(region, initial_params, add_column=False):
+    """Fits error function to fermi level scan. If add_column flag
+    is True, adds the fitting results as a column to the region object
     """
     # Check if the region is actually Fermi level
     if not region.getFlags()[Region._region_flags[2]]:
@@ -18,6 +20,13 @@ def fitFermiEdge(region, initial_params):
                     region.getData()['energy'].values.tolist(),
                     region.getData()['counts'].values.tolist(),
                     p0=initial_params)
+
+    if add_column:
+        region.addColumn("fit", errorFunc(region.getData()["energy"],
+                             popt[0],
+                             popt[1],
+                             popt[2],
+                             popt[3]))
 
     return [popt, pcov]
 

@@ -3,10 +3,12 @@
 import numpy as np
 from .region import Region
 
-def calculateShirley(energy, counts, tolerance=1e-5, maxiter=50):
+def calculateShirley(region, tolerance=1e-5, maxiter=50, add_column=False):
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
+    energy = region.getData(column="energy")
+    counts = region.getData(column="counts")
     if energy[0] < energy[-1]:
         is_reversed = True
         energy = energy[::-1]
@@ -39,6 +41,11 @@ def calculateShirley(energy, counts, tolerance=1e-5, maxiter=50):
     if iteration >= maxiter:
         print("Background calculation failed due to excessive iterations")
 
+    output = background
     if is_reversed:
-        return background[::-1]
-    return background
+        output = background[::-1]
+
+    if add_column:
+        region.addColumn("no background", counts - output)
+
+    return output

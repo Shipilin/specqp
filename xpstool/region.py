@@ -1,4 +1,5 @@
 import os
+from matplotlib import pyplot as plt
 import pandas as pd
 
 class Region:
@@ -34,6 +35,7 @@ class Region:
 
     def __str__(self):
         """Prints the info read from the Scienta file
+        Possible to add keys of the Info dictionary to be printed
         """
         output = ""
         if not self._Info:
@@ -42,6 +44,47 @@ class Region:
             for key, val in self._Info.items():
                 output = "\n".join((output, f"{key}: {val}"))
         return output
+
+    def plotRegion(self, figure=1, ax=None, invert_x=True, x_data="energy", y_data="counts", scatter=False, label=None, color=None):
+        """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
+        """
+        x = self._Data[x_data].values
+        y = self._Data[y_data].values
+
+        plt.figure(figure)
+        if not ax:
+            ax = plt.gca()
+
+        if not label:
+            label=f"{self._Info['Region Name']}: {self._Info['File']}"
+        # If we want scatter plot
+        if scatter:
+            ax.scatter(x, y, s=7, c=color, label=label)
+        else:
+            ax.plot(x, y, color=color, label=label)
+
+        ax.legend(loc='best')
+        ax.set_title(f"Pass: {self._Info['Pass Energy']}   |   Sweeps: {self._Info['Number of Sweeps']}   |   File: {self._Info['File']}")
+
+        #   Stiling axes
+        ax.set_xlabel(x_data)
+        ax.set_ylabel(y_data)
+
+        # Inverting x-axis if desired and not yet inverted
+        if invert_x and not ax.xaxis_inverted():
+            ax.invert_xaxis()
+
+    def invertToBinding(self, excitation_energy):
+        """Changes the energy scale of the region from kinetic to binding energy
+        """
+        if not self._Flags[Region._region_flags[1]]:
+            self.invertEnergyScale(excitation_energy)
+
+    def invertToKinetic(self, excitation_energy):
+        """Changes the energy scale of the region from binding to kinetic energy
+        """
+        if self._Flags[Region._region_flags[1]]:
+            self.invertEnergyScale(excitation_energy)
 
     def invertEnergyScale(self, excitation_energy):
         """Changes the energy scale of the region from the currently defined to
@@ -68,23 +111,39 @@ class Region:
                 self._Info[key] = str(excitation_energy - float(self._Info[key]))
 
     def correctEnergyShift(self, shift):
-        if self._Flags[Region._region_flags[0]]:
-            print("The region has already been corrected")
-        else:
+        if not self._Flags[Region._region_flags[0]]:
             self._Data["energy"] += shift
             self._Flags[Region._region_flags[0]] = True
 
-    def getData(self):
+    def getData(self, column=None):
         """Returns pandas DataFrame with two or more columns (first two columns
         were originally retrieved from the data file, other columns could be added
         after some processing of the original data)
         """
+        if column:
+            return self._Data[column].values
         return self._Data
 
     def getInfo(self):
         """Returns 'info' dictionary {"name": value}
         """
         return self._Info
+
+    def getInfoString(self, *args):
+        """Returns info string with the information about the region
+        Possible to add keys of the Info dictionary to be printed
+        """
+        output = ""
+        if not self._Info:
+            output = "No info available"
+        else:
+            if len(args) == 0:
+                for key, val in self._Info.items():
+                    output = "\n".join((output, f"{key}: {val}"))
+            else:
+                for arg in args:
+                    output = "\n".join((output, f"{arg}: {self._Info[arg]}"))
+        return output
 
     def getFlags(self):
         """Returns the dictionary of flags in the following order

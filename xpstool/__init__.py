@@ -1,3 +1,5 @@
+from .region import Region
+
 __appname__ = "XPS tool"
 __version__ = "1.0.1"
 __authors__ = ["Mikhail Shipilin <mikhail.shipilin@gmail.com>"]
@@ -7,5 +9,6 @@ __all__ = [
         'region',
         'scientahandler',
         'specshandler',
-        'xpstool'
+        'fitter'
+        'background'
         ]
