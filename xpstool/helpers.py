@@ -72,7 +72,7 @@ def calculateShirley(region, tolerance=1e-5, maxiter=50, add_column=False):
             background = bnew.copy()
         iteration += 1
     if iteration >= maxiter:
-        print("Background calculation failed due to excessive iterations")
+        print(f"{region.getInfo()['File']}: {region.getInfo()['Region Name']} - Background calculation failed due to excessive iterations")
 
     output = background
     if is_reversed:
