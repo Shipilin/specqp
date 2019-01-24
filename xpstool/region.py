@@ -32,6 +32,10 @@ class Region:
                 Region._region_flags[2]: fermi_level_flag
                 }
         self._Info = info
+        # This is a dataframe identical to _Data at the beginning. It works as as
+        # a storage of Raw data, which can be used to restore the initial state of
+        # the region data in case of cropping or similar
+        self._Raw = pd.DataFrame(data={'energy': energy, 'counts': counts}, dtype=float)
 
     def __str__(self):
         """Prints the info read from the Scienta file
@@ -44,6 +48,17 @@ class Region:
             for key, val in self._Info.items():
                 output = "\n".join((output, f"{key}: {val}"))
         return output
+
+    def addInfoEntry(self, entry_name, entry_value):
+        """Adding a dictionary entry to the region. For example "Temperature", "250 C"
+        """
+        self._Info[entry_name] = entry_value
+
+    def resetRegion(self):
+        """Removes all the changes made to the Region and restores the initial
+        "counts" and "energy" columns
+        """
+        self._Data = self._Raw
 
     def plotRegion(self, figure=1, ax=None, invert_x=True, x_data="energy", y_data="counts", scatter=False, label=None, color=None):
         """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
@@ -77,6 +92,22 @@ class Region:
         # Inverting x-axis if desired and not yet inverted
         if invert_x and not ax.xaxis_inverted():
             ax.invert_xaxis()
+
+    def cropRegion(self, start=None, stop=None):
+        """Delete the data outside of the [start, stop] interval
+        on "energy" axis
+        """
+        # Since the values of start and stop are given "by eye", we have to
+        # loop through the "energy" serie to find the closest value
+        if start:
+            first_index = start
+        else:
+            first_index = 0
+        if stop:
+            last_index = stop
+        else:
+            last_index = self._Data.index.values[-1]
+        self._Data = self._Data.truncate(before=first_index, after=last_index)
 
     def invertToBinding(self, excitation_energy):
         """Changes the energy scale of the region from kinetic to binding energy
@@ -193,6 +224,7 @@ class Region:
                 file.write(f"# {key}: {value}\n")
             self._Data.to_csv(file, index=False)
 
+    @staticmethod
     def readCSV(filename):
         """Reads csv file and returns Region object. Values of flags and info
         is retrieved from the comment lines marked with '#' simbol at the beginning

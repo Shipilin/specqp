@@ -36,12 +36,69 @@ def errorFunc(x, a0, a1, a2, a3):
     """
     return (a0/2)*sp.special.erfc((a1-x)/a2) + a3
 
-def calculateShirley(region, tolerance=1e-5, maxiter=50, add_column=False):
+def calculateLinearBackground(region, y_data="counts", by_min=False, add_column=False):
+    """Calculates the linear background using left and right ends of the region
+    or using the minimum and the end that is furthest from the minimum
+    """
+    def calculateLine(min_position):
+        """Helper function to calculate the line cross the whole
+        spectrum given coordinates of two points and "left" or "right" value
+        of min_position to know in which direction the line must be extended
+        """
+        # School algebra to calculate the line coordinates given two points
+        if min_position == "right": # Line from left end to min
+            x1 = energy[0]
+            x2 = energy[counts_min_index]
+            y1 = counts[0]
+            y2 = counts_min
+            slope = (y1-y2)/(x1-x2)
+            b = (x1*y1 - x2*y1)/(x1-x2)
+            line_end = slope*energy[-1] + b
+            return np.linspace(counts[0], line_end, len(energy))
+        elif min_position == "left":
+            x1 = energy[counts_min_index]
+            x2 = energy[-1]
+            y1 = counts_min
+            y2 = counts[-1]
+            slope = (y1-y2)/(x1-x2)
+            b = (x1*y1 - x2*y1)/(x1-x2)
+            line_end = slope*energy[0] + b
+            return np.linspace(line_end, counts[-1], len(energy))
+
+    # If we want to use other column than "energy" for calculations
+    if y_data:
+        energy = region.getData(column="energy").tolist()
+    else:
+        energy = region.getData(column=y_data).tolist()
+    counts = region.getData(column="counts").tolist()
+
+    if by_min:
+        counts_min = min(counts)
+        counts_min_index = counts.index(counts_min)
+        print(counts_min, counts_min_index)
+        # If minimum lies closer to the right side of the region
+        if counts_min_index > len(energy)//2:
+            background = calculateLine("right")
+        else:
+            background = calculateLine("left")
+    else:
+        background = np.linspace(counts[0], counts[-1], len(energy))
+
+    if add_column:
+        region.addColumn("linear bg corrected", counts - background)
+    return background
+
+def calculateShirley(region, y_data="counts", tolerance=1e-5, maxiter=50, add_column=False):
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
-    energy = region.getData(column="energy")
+    # If we want to use other column than "energy" for calculations
+    if y_data:
+        energy = region.getData(column="energy")
+    else:
+        energy = region.getData(column=y_data)
     counts = region.getData(column="counts")
+
     if energy[0] < energy[-1]:
         is_reversed = True
         energy = energy[::-1]
@@ -79,6 +136,14 @@ def calculateShirley(region, tolerance=1e-5, maxiter=50, add_column=False):
         output = background[::-1]
 
     if add_column:
-        region.addColumn("no background", counts - output)
+        region.addColumn("shirley corrected", counts - output)
 
     return output
+
+def calculateLinearAndShirley(region, by_min=False, tolerance=1e-5, maxiter=50, add_column=False):
+    """Calculates the linear background using left and right ends of the region
+    or using the minimum and the end that is furthest from the minimum if by_min=True.
+    Then calculates shirley background.
+    """
+    linear_bg = calculateLinearBackground(region, by_min=by_min, add_column=True)
+    shirley_bg = calculateShirley(region, y_data="linear bg corrected", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
