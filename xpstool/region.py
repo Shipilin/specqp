@@ -32,6 +32,9 @@ class Region:
                 Region._region_flags[2]: fermi_level_flag
                 }
         self._Info = info
+        # Special info entry that allows for adding information about measurements
+        # conditions in the future. For example {"Temperature": "250 C"}
+        self._Info["Conditions"] = {}
         # This is a dataframe identical to _Data at the beginning. It works as as
         # a storage of Raw data, which can be used to restore the initial state of
         # the region data in case of cropping or similar
@@ -49,10 +52,10 @@ class Region:
                 output = "\n".join((output, f"{key}: {val}"))
         return output
 
-    def addInfoEntry(self, entry_name, entry_value):
+    def addConditionsEntry(self, entry_name, entry_value):
         """Adding a dictionary entry to the region. For example "Temperature", "250 C"
         """
-        self._Info[entry_name] = entry_value
+        self._Info["Conditions"]= {entry_name: entry_value}
 
     def resetRegion(self):
         """Removes all the changes made to the Region and restores the initial
@@ -71,7 +74,7 @@ class Region:
             ax = plt.gca()
 
         if not label:
-            label=f"{self._Info['Region Name']}: {self._Info['File']}"
+            label=f"{self._Info['Region Name']}: {self._Info['File']} | {self._Info['Conditions']['Temperature']}"
         # If we want scatter plot
         if scatter:
             ax.scatter(x, y, s=7, c=color, label=label)

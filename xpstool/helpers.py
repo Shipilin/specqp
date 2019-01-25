@@ -65,12 +65,12 @@ def calculateLinearBackground(region, y_data="counts", by_min=False, add_column=
             line_end = slope*energy[0] + b
             return np.linspace(line_end, counts[-1], len(energy))
 
-    # If we want to use other column than "energy" for calculations
-    if y_data:
-        energy = region.getData(column="energy").tolist()
+    # If we want to use other column than "counts" for calculations
+    if y_data == "counts":
+        counts = region.getData(column="counts").tolist()
     else:
-        energy = region.getData(column=y_data).tolist()
-    counts = region.getData(column="counts").tolist()
+        counts = region.getData(column=y_data).tolist()
+    energy = region.getData(column="energy").tolist()
 
     if by_min:
         counts_min = min(counts)
@@ -92,12 +92,12 @@ def calculateShirley(region, y_data="counts", tolerance=1e-5, maxiter=50, add_co
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
-    # If we want to use other column than "energy" for calculations
-    if y_data:
-        energy = region.getData(column="energy")
+    # If we want to use other column than "counts" for calculations
+    if y_data == "counts":
+        counts = region.getData(column="counts")
     else:
-        energy = region.getData(column=y_data)
-    counts = region.getData(column="counts")
+        counts = region.getData(column=y_data)
+    energy = region.getData(column="energy")
 
     if energy[0] < energy[-1]:
         is_reversed = True
@@ -147,3 +147,19 @@ def calculateLinearAndShirley(region, by_min=False, tolerance=1e-5, maxiter=50, 
     """
     linear_bg = calculateLinearBackground(region, by_min=by_min, add_column=True)
     shirley_bg = calculateShirley(region, y_data="linear bg corrected", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
+
+def normalize(region, y_data="counts", add_column=False):
+    """Normalize counts.
+    """
+    # If we want to use other column than "counts" for calculations
+    if y_data == "counts":
+        counts = region.getData(column="counts")
+    else:
+        counts = region.getData(column=y_data)
+    energy = region.getData(column="energy")
+
+    output = counts / max(counts)
+
+    if add_column:
+        region.addColumn("normalized", output)
+    return output
