@@ -63,7 +63,7 @@ class Region:
         """
         self._Data = self._Raw
 
-    def plotRegion(self, figure=1, ax=None, invert_x=True, x_data="energy", y_data="counts", scatter=False, label=None, color=None):
+    def plotRegion(self, figure=1, ax=None, invert_x=True, x_data="energy", y_data="counts", scatter=False, label=None, title=True, color=None):
         """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
         """
         x = self._Data[x_data].values
@@ -81,8 +81,9 @@ class Region:
         else:
             ax.plot(x, y, color=color, label=label)
 
-        ax.legend(loc='best')
-        ax.set_title(f"Pass: {self._Info['Pass Energy']}   |   Sweeps: {self._Info['Number of Sweeps']}   |   File: {self._Info['File']}")
+        ax.legend(fancybox=True, framealpha=0, loc='best')
+        if title:
+            ax.set_title(f"Pass: {self._Info['Pass Energy']}   |   Sweeps: {self._Info['Number of Sweeps']}   |   File: {self._Info['File']}")
 
         #   Stiling axes
         x_label_prefix = "Binding"
