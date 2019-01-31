@@ -6,40 +6,6 @@ import numpy as np
 from scipy.optimize import curve_fit
 import datahandler
 
-def fitFermiEdge(region, initial_params, add_column=False):
-    """Fits error function to fermi level scan. If add_column flag
-    is True, adds the fitting results as a column to the Region object.
-    NOTE: Overwrites the 'fit' column if already present in the instance.
-    """
-    # f(x) = s/(exp(-1*(x-m)/(8.617*(10^-5)*t)) + 1) + a*x + b
-    def errorFunc(x, a0, a1, a2, a3):
-        """Defines a complementary error function of the form
-        (a0/2)*sp.special.erfc((a1-x)/a2) + a3
-        """
-        return (a0/2)*sp.special.erfc((a1-x)/a2) + a3
-
-    # Check if the region is actually Fermi level
-    if isinstance(region, FermiRegion):
-        print("The provided region is not Fermi level. No fitting was done.")
-        return
-
-    # Parameters and parameters covariance of the fit
-    popt, pcov = curve_fit(errorFunc,
-                    region.getData(column='energy').tolist(),
-                    region.getData(column='counts').tolist(),
-                    p0=initial_params)
-
-    if add_column:
-        region.addColumn("fit", errorFunc(region.getData(column='energy'),
-                             popt[0],
-                             popt[1],
-                             popt[2],
-                             popt[3]),
-                             overwrite=True)
-
-    region.setShift(popt[1])
-    return popt[1]
-
 def calculateLinearBackground(region, y_data="counts", by_min=False, add_column=False):
     """Calculates the linear background using left and right ends of the region
     or using the minimum and the end that is furthest from the minimum.

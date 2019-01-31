@@ -5,5 +5,6 @@ __website__ = "https://github.com/Shipilin/xps-tool"
 
 __all__ = [
         'datahandler',
-        'helpers'
+        'helpers',
+        'fitter'
         ]
