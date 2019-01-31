@@ -14,8 +14,6 @@ the class Spectrum, but is dedicated to "add dimension" measurements
 where the same spectrum is taken a number of times in a row under
 changing conditions or such.
 5. Class Region contains the data for one region.
-6. Class FermiRegion inherits from Region and contains the data
-for one Fermi Region
 """
 import os
 import tkinter as tk
@@ -195,14 +193,16 @@ class Experiment: # TODO finish writing the class
     Usually it shoul contains one uninterrupted set of measurements
     for one sample.
     """
-    def __init__(self, path=None, scans=None, conditions=None):
-        if not path:
-            path = _askPath(folder_flag=True, multiple_files_flag=False)
-        self._Path = path
-        self._loadSpectra()
+    def __init__(self, setsOfSpectra):
+        self._SetsOfSpectra = setsOfSpectra
 
     def __str__(self):
-        pass
+        output = ""
+        for i, set in enumerate(self._SetsOfSpectra):
+            if i > 0:
+                output = "\n".join((output, ""))
+            output = "\n".join((output, set.__str__()))
+        return output
 
     def _loadSpectra():
         # Make the list of file names in self._Path folder
@@ -250,23 +250,30 @@ class SetOfSpectra:
     """Class SetOfSpectra contains a number of spectra measured under the same
     conditions. Usually a few spectra including Fermi edge measurement.
     """
-    def __init__(self, path=None, conditions=None, ID=None):
-        if not path:
-            path = _askPath(folder_flag=False, multiple_files_flag=True)
-        for single_file in path:
-            self._Spectra.append(_loadScientaTXT(single_file))
+    def __init__(self, spectra, conditions=None):
+        """Manages the set of spectra taken under the same conditions and with the
+        same energy shift (Fermi level etc.). If conditions are provided they are set
+        for all Spectra objects in the set.
+        """
+        self._Spectra = spectra
         self._Conditions = None
-        self._ID = None
+        self._Shift = 0
         if conditions:
             self._setConditions(conditions)
-        if ID:
-            self._setID(ID)
 
     def __str__(self):
-        pass
-
-    def _setID(self, setOfSpectraID):
-        self._ID = setOfSpectraID
+        output = ""
+        if not self._Spectra:
+            output = "No spectra were loaded"
+        else:
+            if self._Conditions:
+                for key, val in self._Conditions.items():
+                    output = "\n".join((output, f"{key}: {val}"))
+            for spectrum in self._Spectra:
+                output = "\n".join((output, f"Spectrum: {spectrum.getID()}"))
+                for region in spectrum.getRegions():
+                    output = "\n--->".join((output, region.getID()))
+        return output
 
     def _setConditions(self, conditions):
         """Set experimental conditions as a dictionary {"Property": Value}
@@ -276,9 +283,6 @@ class SetOfSpectra:
         self._Conditions = conditions
         for spectrum in self._Spectra:
             spectrum._setConditions(conditions)
-
-    def _getID(self):
-        return self._ID
 
     def getConditions(self, property=None):
         """Returns experimental conditions as a dictionary {"Property": Value} or
@@ -296,16 +300,31 @@ class Spectrum:
     def __init__(self, path=None, conditions=None, ID=None):
         if not path:
             path = _askPath(folder_flag=False, multiple_files_flag=False)
-        self._Regions = _loadScientaTXT(path)
-        self._Conditions = None
+
+        self._Path = path
+        self._Regions = _loadScientaTXT(self._Path)
         self._ID = None
+        self._Conditions = None
+
         if conditions:
             self._setConditions(conditions)
         if ID:
             self._setID(ID)
+        else:
+            # Set name of the file as ID
+            self._setID(path.rpartition("\\")[2].split(".", 1)[0])
 
     def __str__(self):
-        pass
+        output = ""
+        if not self._Regions:
+            output = "No regions were loaded"
+        else:
+            if self._Conditions:
+                for key, val in self._Conditions.items():
+                    output = "\n".join((output, f"{key}: {val}"))
+            for region in self._Regions:
+                output = "\n".join((output, region.getID()))
+        return output
 
     def _setID(self, spectrumID):
         self._ID = spectrumID
@@ -330,6 +349,25 @@ class Spectrum:
             return self._Conditions[property]
         return self._Conditions
 
+    def getRegions(self):
+        """Returns a list of regions
+        """
+        return self._Regions
+
+    def getRegion(self):
+        """If there is only one region in the spectrum, which is often the case,
+        returns this region as a single object.
+        """
+        if len(self._Regions) == 1
+            return self._Regions[0]
+        else:
+            print(f"The spetrum {self._ID} contains more than one region")
+
+    def getFilePath(self):
+        """Returns the path to the original file with the data
+        """
+        return self._Path
+
 class AddDimensionSpectrum(Spectrum): # TODO finish writing the class
     """Class AddDimensionSpectrum is on the same hierarchical level with
     the class Spectrum, but is dedicated to "add dimension" measurements
@@ -343,10 +381,11 @@ class Region:
     """
     _region_flags = (
         "energy_shift_corrected",
-        "binding_energy_flag"
+        "binding_energy_flag",
+        "fermi_flag"
     )
 
-    def __init__(self, energy, counts, info=None, conditions=None, ID=None):
+    def __init__(self, energy, counts, info=None, conditions=None, ID=None, fermiFlag=False):
         """Creates an object using two variables (of type list or similar).
         The first goes for energy (X) axis, the second - for counts (Y) axis.
         Info about the region is stored as a dictionary {property: value}.
@@ -367,7 +406,8 @@ class Region:
         # Default values for flags
         self._Flags = {
                 Region._region_flags[0]: False,
-                Region._region_flags[1]: None
+                Region._region_flags[1]: None,
+                Region._region_flags[2]: fermiFlag
                 }
         self._Info = info
         self._RawInfo = info
@@ -395,6 +435,9 @@ class Region:
         """Set experimental conditions as a dictionary {"Property": Value}
         """
         self._Conditions = conditions
+
+    def setFermiFlag(self):
+        Region._region_flags[2] = True
 
     def getConditions(self, property=None):
         """Returns experimental conditions as a dictionary {"Property": Value} or
@@ -560,44 +603,3 @@ class Region:
             for key, value in self._Info.items():
                 file.write(f"# {key}: {value}\n")
             self._Data.to_csv(file, index=False)
-
-class FermiRegion(Region):
-    """Class FermiRegion contains the data for one Fermi region.
-    """
-    def getShift(self):
-        """Returns a list [shift, fittingError]
-        """
-        if self._Shift:
-            return self._Shift
-        else:
-            print(f"The region {self._Info['File']}: {self._Info['Region Name']} has not been fitted yet.")
-
-    def fitFermiEdge(self, initial_params, add_column=True):
-        """Fits error function to fermi level scan. If add_column flag
-        is True, adds the fitting results as a column to the Region object.
-        NOTE: Overwrites the 'fitFermi' column if already present in the instance.
-        Returns a list [shift, fittingError]
-        """
-        # f(x) = s/(exp(-1*(x-m)/(8.617*(10^-5)*t)) + 1) + a*x + b
-        def errorFunc(x, a0, a1, a2, a3):
-            """Defines a complementary error function of the form
-            (a0/2)*sp.special.erfc((a1-x)/a2) + a3
-            """
-            return (a0/2)*sp.special.erfc((a1-x)/a2) + a3
-
-        # Parameters and parameters covariance of the fit
-        popt, pcov = curve_fit(errorFunc,
-                        self.getData(column='energy').tolist(),
-                        self.getData(column='counts').tolist(),
-                        p0=initial_params)
-
-        if add_column:
-            self.addColumn("fitFermi", errorFunc(self.getData(column='energy'),
-                                 popt[0],
-                                 popt[1],
-                                 popt[2],
-                                 popt[3]),
-                                 overwrite=True)
-
-        self._Shift = [popt[1], np.sqrt(np.diag(pcov_gauss))[1]]
-        return self._Shift
