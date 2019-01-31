@@ -22,6 +22,8 @@ import tkinter as tk
 from tkinter import filedialog
 import numpy as np
 import pandas as pd
+import scipy as sp
+from scipy.optimize import curve_fit
 
 def _loadScientaTXT(filename, regions_number_line=1):
     """Opens and parses provided scienta file returning the data and info for all regions
@@ -193,13 +195,56 @@ class Experiment: # TODO finish writing the class
     Usually it shoul contains one uninterrupted set of measurements
     for one sample.
     """
-    def __init__(self, path=None):
+    def __init__(self, path=None, scans=None, conditions=None):
         if not path:
             path = _askPath(folder_flag=True, multiple_files_flag=False)
-        self.Path = path
+        self._Path = path
+        self._loadSpectra()
 
     def __str__(self):
         pass
+
+    def _loadSpectra():
+        # Make the list of file names in self._Path folder
+        file_names = []
+        for file in sorted(os.listdir(self._Path)):
+            if file.endswith(".txt"):
+                file_names.append(file)
+                #print(f"---> {file} loaded")
+
+        # Loading all regions to a dictionary
+        # together with the file names without extensions
+        # {"filename": region}
+        regions = {}
+        regions_total_number = 0
+        # Storing the names of files with the number of regions
+        # different from usual 1 in a list [[name, regions_num],..]
+        dif_files = []
+
+        for name in file_names:
+            # Adding regions to dictionary with file name without extension as the a key
+            regions_in_name = scih.importScientaFile("/".join([data_folder, name]))
+            regions[name.rpartition('.')[0]] = regions_in_name
+            # ImportScientaFile returns list with one or more regions
+            # we need to loop through it in any case
+            if len(regions_in_name) != 1:
+                dif_files.append([name, len(regions_in_name)])
+            for region in regions_in_name:
+                # Adding regions to dictionary with file name without extension
+                # as a key
+                regions_total_number += 1
+
+        print(f"{regions_total_number} regions were loaded successfuly.")
+        print(f"{len(file_names)} files were processed.")
+
+        if regions_total_number != len(file_names):
+            if regions_total_number > len(file_names):
+                print("NOTE! More regions than files.")
+            elif regions_total_number < len(file_names):
+                print("NOTE! More files than regions.")
+            for entry in dif_files:
+                print(f"{entry[0]}  :  {entry[1]} regions")
+
 
 class SetOfSpectra:
     """Class SetOfSpectra contains a number of spectra measured under the same

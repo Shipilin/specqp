@@ -4,7 +4,6 @@ from matplotlib import pyplot as plt
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
-import datahandler
 
 def calculateLinearBackground(region, y_data="counts", by_min=False, add_column=False):
     """Calculates the linear background using left and right ends of the region

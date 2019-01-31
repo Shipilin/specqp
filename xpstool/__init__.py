@@ -1,3 +1,5 @@
+from .datahandler import Experiment, SetOfSpectra, Spectrum, AddDimensionSpectrum, Region, FermiRegion
+
 __appname__ = "XPS tool"
 __version__ = "1.0.2"
 __authors__ = ["Mikhail Shipilin <mikhail.shipilin@gmail.com>"]
