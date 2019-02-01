@@ -188,109 +188,19 @@ def readCSV(filename): # TODO rewrite for new classes
 
     return region
 
-class Experiment: # TODO finish writing the class
-    """Class Experiment contains all data for an executed experiment.
-    Usually it shoul contains one uninterrupted set of measurements
-    for one sample.
+class Experiment:
+    """Class contains a number of spectra that were taken as one set of measurements.
+    Usually for one sample and one reaction with changing conditions.
+    The main attribute is Spectra dictionary {"spectrumID": spectrum}
     """
-    def __init__(self, setsOfSpectra):
-        self._SetsOfSpectra = setsOfSpectra
+    def __init__(self):
+        self._Spectra = {}
 
-    def __str__(self):
-        output = ""
-        for i, set in enumerate(self._SetsOfSpectra):
-            if i > 0:
-                output = "\n".join((output, ""))
-            output = "\n".join((output, set.__str__()))
-        return output
+    def addSpectrum(spectrumID, spectrum,):
+        self._Spectra[spectrumID] = spectrum
 
-    def _loadSpectra():
-        # Make the list of file names in self._Path folder
-        file_names = []
-        for file in sorted(os.listdir(self._Path)):
-            if file.endswith(".txt"):
-                file_names.append(file)
-                #print(f"---> {file} loaded")
-
-        # Loading all regions to a dictionary
-        # together with the file names without extensions
-        # {"filename": region}
-        regions = {}
-        regions_total_number = 0
-        # Storing the names of files with the number of regions
-        # different from usual 1 in a list [[name, regions_num],..]
-        dif_files = []
-
-        for name in file_names:
-            # Adding regions to dictionary with file name without extension as the a key
-            regions_in_name = scih.importScientaFile("/".join([data_folder, name]))
-            regions[name.rpartition('.')[0]] = regions_in_name
-            # ImportScientaFile returns list with one or more regions
-            # we need to loop through it in any case
-            if len(regions_in_name) != 1:
-                dif_files.append([name, len(regions_in_name)])
-            for region in regions_in_name:
-                # Adding regions to dictionary with file name without extension
-                # as a key
-                regions_total_number += 1
-
-        print(f"{regions_total_number} regions were loaded successfuly.")
-        print(f"{len(file_names)} files were processed.")
-
-        if regions_total_number != len(file_names):
-            if regions_total_number > len(file_names):
-                print("NOTE! More regions than files.")
-            elif regions_total_number < len(file_names):
-                print("NOTE! More files than regions.")
-            for entry in dif_files:
-                print(f"{entry[0]}  :  {entry[1]} regions")
-
-
-class SetOfSpectra:
-    """Class SetOfSpectra contains a number of spectra measured under the same
-    conditions. Usually a few spectra including Fermi edge measurement.
-    """
-    def __init__(self, spectra, conditions=None):
-        """Manages the set of spectra taken under the same conditions and with the
-        same energy shift (Fermi level etc.). If conditions are provided they are set
-        for all Spectra objects in the set.
-        """
-        self._Spectra = spectra
-        self._Conditions = None
-        self._Shift = 0
-        if conditions:
-            self._setConditions(conditions)
-
-    def __str__(self):
-        output = ""
-        if not self._Spectra:
-            output = "No spectra were loaded"
-        else:
-            if self._Conditions:
-                for key, val in self._Conditions.items():
-                    output = "\n".join((output, f"{key}: {val}"))
-            for spectrum in self._Spectra:
-                output = "\n".join((output, f"Spectrum: {spectrum.getID()}"))
-                for region in spectrum.getRegions():
-                    output = "\n--->".join((output, region.getID()))
-        return output
-
-    def _setConditions(self, conditions):
-        """Set experimental conditions as a dictionary {"Property": Value}
-        """
-        # The whole set of spectra knows about experimental conditions
-        # and every spectrum knows about conditions
-        self._Conditions = conditions
-        for spectrum in self._Spectra:
-            spectrum._setConditions(conditions)
-
-    def getConditions(self, property=None):
-        """Returns experimental conditions as a dictionary {"Property": Value} or
-        th evalue of the specified property.
-        """
-        if property:
-            return self._Conditions[property]
-        return self._Conditions
+    def getSpectrum(self, spectrumID):
+        return self._Spectra[spectrumID]
 
 class Spectrum:
     """Class Spectrum contains a single spectrum with possibly several
@@ -312,7 +222,7 @@ class Spectrum:
             self._setID(ID)
         else:
             # Set name of the file as ID
-            self._setID(path.rpartition("\\")[2].split(".", 1)[0])
+            self._setID(path.rpartition("/")[2].split(".", 1)[0])
 
     def __str__(self):
         output = ""
@@ -337,6 +247,14 @@ class Spectrum:
         self._Conditions = conditions
         for region in self._Regions:
             region._setConditions(conditions)
+
+    def isEmpty(self):
+        """Returns True if there are no regions in spectrum objects.
+        False otherwise.
+        """
+        if self._Regions:
+            return False
+        return True
 
     def setFermiFlag(self, regionID):
         for region in self._Regions:
@@ -425,7 +343,7 @@ class Region:
         self._RawInfo = info
         # Check which energy scale is used:
         if self._Info: # Info can be None
-            if self._info["Energy Scale"] == "Binding":
+            if self._Info["Energy Scale"] == "Binding":
                 self._Flags[Region._region_flags[1]] = True
             else:
                 self._Flags[Region._region_flags[1]] = False

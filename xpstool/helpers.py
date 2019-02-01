@@ -5,9 +5,44 @@ import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
 
-def calculateLinearBackground(region, y_data="counts", by_min=False, add_column=False):
+def fitFermiEdge(region, initial_params, add_column=True):
+    """Fits error function to fermi level scan. If add_column flag
+    is True, adds the fitting results as a column to the Region object.
+    NOTE: Overwrites the 'fitFermi' column if already present in the instance
+    unless add_column is set to False explicitly.
+    Returns a list [shift, fittingError]
+    """
+    # f(x) = s/(exp(-1*(x-m)/(8.617*(10^-5)*t)) + 1) + a*x + b
+    def errorFunc(x, a0, a1, a2, a3):
+        """Defines a complementary error function of the form
+        (a0/2)*sp.special.erfc((a1-x)/a2) + a3
+        """
+        return (a0/2)*sp.special.erfc((a1-x)/a2) + a3
+
+    if not region.getFlags()[2]:
+        print(f"Can't fit the error func to non-Fermi region {region.getID()}")
+        return
+
+    # Parameters and parameters covariance of the fit
+    popt, pcov = curve_fit(errorFunc,
+                    region.getData(column='energy').tolist(),
+                    region.getData(column='counts').tolist(),
+                    p0=initial_params)
+
+    if add_column:
+        region.addColumn("fitFermi", errorFunc(region.getData(column='energy'),
+                             popt[0],
+                             popt[1],
+                             popt[2],
+                             popt[3]),
+                             overwrite=True)
+
+    return [popt[1], np.sqrt(np.diag(pcov_gauss))[1]]
+
+def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=True):
     """Calculates the linear background using left and right ends of the region
-    or using the minimum and the end that is furthest from the minimum.
+    or using the minimum on Y-axis and the end that is furthest from the minimum
+    on the X-axis.
     """
     def calculateLine(min_position):
         """Helper function to calculate the line cross the whole
@@ -34,12 +69,8 @@ def calculateLinearBackground(region, y_data="counts", by_min=False, add_column=
             line_end = slope*energy[0] + b
             return np.linspace(line_end, counts[-1], len(energy))
 
-    # If we want to use other column than "counts" for calculations
-    if y_data == "counts":
-        counts = region.getData(column="counts").tolist()
-    else:
-        counts = region.getData(column=y_data).tolist()
-    energy = region.getData(column="energy").tolist()
+    counts = region.getData(column=y_data).tolist()
+    energy = region.getData(column='energy').tolist()
 
     if by_min:
         counts_min = min(counts)
@@ -54,19 +85,16 @@ def calculateLinearBackground(region, y_data="counts", by_min=False, add_column=
         background = np.linspace(counts[0], counts[-1], len(energy))
 
     if add_column:
-        region.addColumn("linear corrected", counts - background, overwrite=True)
+        region.addColumn("linearBG", output, overwrite=True)
+
     return background
 
-def calculateShirley(region, y_data="counts", tolerance=1e-5, maxiter=50, add_column=False):
+def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_column=True):
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
-    # If we want to use other column than "counts" for calculations
-    if y_data == "counts":
-        counts = region.getData(column="counts")
-    else:
-        counts = region.getData(column=y_data)
-    energy = region.getData(column="energy")
+    counts = region.getData(column=y_data)
+    energy = region.getData(column='energy')
 
     if energy[0] < energy[-1]:
         is_reversed = True
@@ -98,34 +126,36 @@ def calculateShirley(region, y_data="counts", tolerance=1e-5, maxiter=50, add_co
             background = bnew.copy()
         iteration += 1
     if iteration >= maxiter:
-        print(f"{region.getInfo()['File']}: {region.getInfo()['Region Name']} - Background calculation failed due to excessive iterations")
+        print(f"{region.getID()} - Background calculation failed due to excessive iterations")
 
     output = background
     if is_reversed:
         output = background[::-1]
 
     if add_column:
-        region.addColumn("shirley corrected", counts - output, overwrite=True)
+        region.addColumn("shirleyBG", output, overwrite=True)
 
     return output
 
-def calculateLinearAndShirley(region, by_min=False, tolerance=1e-5, maxiter=50, add_column=False):
+def calculateLinearAndShirley(region, by_min=False, tolerance=1e-5, maxiter=50, add_column=True):
     """Calculates the linear background using left and right ends of the region
     or using the minimum and the end that is furthest from the minimum if by_min=True.
     Then calculates shirley background.
     """
-    linear_bg = calculateLinearBackground(region, by_min=by_min, add_column=True)
-    shirley_bg = calculateShirley(region, y_data="linear corrected", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
+    linear_bg = calculateLinearBackground(region, by_min=by_min, add_column=add_column)
+    shirley_bg = calculateShirley(region, y_data="linearBG", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
+    background = linear_bg + shirley_bg
+    if add_column:
+        region.addColumn("linear+shirleyBG", background, overwrite=True)
 
-def normalize(region, y_data="counts", add_column=False):
+    return background
+
+def normalize(region, y_data='counts', add_column=True):
     """Normalize counts.
     """
     # If we want to use other column than "counts" for calculations
-    if y_data == "counts":
-        counts = region.getData(column="counts")
-    else:
-        counts = region.getData(column=y_data)
-    energy = region.getData(column="energy")
+    counts = region.getData(column=y_data)
+    energy = region.getData(column='energy')
 
     output = counts / max(counts)
 
@@ -137,11 +167,13 @@ def plotRegion(region,
             figure=1,
             ax=None,
             invert_x=True,
-            x_data="energy",
-            y_data="counts",
+            x_data='energy',
+            y_data='counts',
             scatter=False,
             label=None,
-            color=None):
+            color=None,
+            title=True,
+            legend=True):
     """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
     """
     x = region.getData(column=x_data)
@@ -152,15 +184,16 @@ def plotRegion(region,
         ax = plt.gca()
 
     if not label:
-        label=f"{region.getInfo('Region Name')}: {region.getInfo('File')}"
+        label=f"{region.getID()}"
     # If we want scatter plot
     if scatter:
         ax.scatter(x, y, s=7, c=color, label=label)
     else:
         ax.plot(x, y, color=color, label=label)
-
-    ax.legend(loc='best')
-    ax.set_title(f"Pass: {region.getInfo('Pass Energy')}   |   Sweeps: {region.getInfo('Number of Sweeps')}   |   File: {region.getInfo('File')}")
+    if legend:
+        ax.legend(loc='best')
+    if title:
+        ax.set_title(f"Pass: {region.getInfo('Pass Energy')}   |   Sweeps: {region.getInfo('Number of Sweeps')}   |   File: {region.getInfo('File')}")
 
     #   Stiling axes
     x_label_prefix = "Binding"

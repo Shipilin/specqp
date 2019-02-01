@@ -1,4 +1,4 @@
-from .datahandler import Experiment, SetOfSpectra, Spectrum, AddDimensionSpectrum, Region, FermiRegion
+from .datahandler import Experiment, Spectrum, AddDimensionSpectrum, Region
 from .fitter import Fitter
 __appname__ = "XPS tool"
 __version__ = "1.0.2"

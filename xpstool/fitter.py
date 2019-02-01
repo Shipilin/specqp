@@ -3,47 +3,13 @@
 import numpy as np
 import scipy as sp
 from scipy.optimize import curve_fit
-from .region import Region
+from .datahandler import Region
 
 class Fitter:
     """Provides fitting possibilities for XPS spectra
     """
     def __init__(self, region):
         self._Region = region
-
-    @staticmethod
-    def fitFermiEdge(region, initial_params, add_column=True):
-        """Fits error function to fermi level scan. If add_column flag
-        is True, adds the fitting results as a column to the Region object.
-        NOTE: Overwrites the 'fitFermi' column if already present in the instance.
-        Returns a list [shift, fittingError]
-        """
-        # f(x) = s/(exp(-1*(x-m)/(8.617*(10^-5)*t)) + 1) + a*x + b
-        def errorFunc(x, a0, a1, a2, a3):
-            """Defines a complementary error function of the form
-            (a0/2)*sp.special.erfc((a1-x)/a2) + a3
-            """
-            return (a0/2)*sp.special.erfc((a1-x)/a2) + a3
-
-        if not region.getFlags()[2]:
-            print(f"Can't fit the error func to non-Fermi region {region.getID()}")
-            return
-
-        # Parameters and parameters covariance of the fit
-        popt, pcov = curve_fit(errorFunc,
-                        region.getData(column='energy').tolist(),
-                        region.getData(column='counts').tolist(),
-                        p0=initial_params)
-
-        if add_column:
-            region.addColumn("fitFermi", errorFunc(region.getData(column='energy'),
-                                 popt[0],
-                                 popt[1],
-                                 popt[2],
-                                 popt[3]),
-                                 overwrite=True)
-
-        return [popt[1], np.sqrt(np.diag(pcov_gauss))[1]]
 
     @staticmethod
     def fitSingleGaussian(region, initial_params, add_column=False):
