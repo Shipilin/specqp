@@ -323,7 +323,7 @@ class Spectrum:
                 for key, val in self._Conditions.items():
                     output = "\n".join((output, f"{key}: {val}"))
             for region in self._Regions:
-                output = "\n".join((output, region.getID()))
+                output = "\n--->".join((output, region.getID()))
         return output
 
     def _setID(self, spectrumID):
@@ -338,12 +338,17 @@ class Spectrum:
         for region in self._Regions:
             region._setConditions(conditions)
 
-    def _getID(self):
+    def setFermiFlag(self, regionID):
+        for region in self._Regions:
+            if region.getID() == regionID:
+                region.setFermiFlag()
+
+    def getID(self):
         return self._ID
 
     def getConditions(self, property=None):
         """Returns experimental conditions as a dictionary {"Property": Value} or
-        th evalue of the specified property.
+        the value of the specified property.
         """
         if property:
             return self._Conditions[property]
@@ -354,14 +359,21 @@ class Spectrum:
         """
         return self._Regions
 
-    def getRegion(self):
+    def getRegion(self, regionID=None):
         """If there is only one region in the spectrum, which is often the case,
         returns this region as a single object.
         """
-        if len(self._Regions) == 1
-            return self._Regions[0]
+        if regionID:
+            for region in self._Regions:
+                if region.getID() == regionID:
+                    return region
+                else:
+                    print(f"Spectrum {self.getID()} doesn't contain {regionID} region")
         else:
-            print(f"The spetrum {self._ID} contains more than one region")
+            if len(self._Regions) == 1:
+                return self._Regions[0]
+            else:
+                print(f"The spetrum {self._ID} contains more than one region")
 
     def getFilePath(self):
         """Returns the path to the original file with the data
