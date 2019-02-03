@@ -195,12 +195,34 @@ class Experiment:
     """
     def __init__(self):
         self._Spectra = {}
+        self._ExcitationEnergy = 0
 
-    def addSpectrum(spectrumID, spectrum,):
+    def __str__(self):
+        output = ""
+        if not self._Spectra:
+            output = "No spectra were loaded"
+        else:
+            for i, key in enumerate(self._Spectra.keys()):
+                if i == 0:
+                    output = "".join((output, self._Spectra[key].__str__()))
+                else:
+                    output = "\n".join((output, self._Spectra[key].__str__()))
+        return output
+
+    def addSpectrum(self, spectrumID, spectrum,):
         self._Spectra[spectrumID] = spectrum
+
+    def setExcitationEnergy(self, excit):
+        self._ExcitationEnergy = excit
+
+    def getExcitationEnergy(self):
+        return self._ExcitationEnergy
 
     def getSpectrum(self, spectrumID):
         return self._Spectra[spectrumID]
+
+    def getSpectraID(self):
+        return self._Spectra.keys()
 
 class Spectrum:
     """Class Spectrum contains a single spectrum with possibly several
@@ -231,7 +253,7 @@ class Spectrum:
         else:
             if self._Conditions:
                 for key, val in self._Conditions.items():
-                    output = "\n".join((output, f"{key}: {val}"))
+                    output = "".join((output, f"{key}: {val}"))
             for region in self._Regions:
                 output = "\n--->".join((output, region.getID()))
         return output
@@ -367,7 +389,7 @@ class Region:
         self._Conditions = conditions
 
     def setFermiFlag(self):
-        Region._region_flags[2] = True
+        self._Flags[Region._region_flags[2]] = True
 
     def getConditions(self, property=None):
         """Returns experimental conditions as a dictionary {"Property": Value} or
@@ -439,14 +461,21 @@ class Region:
         """Delete the data outside of the [start, stop] interval
         on 'energy' axis. Interval is given in real units of the data.
         """
+        s = self._Data['energy']
+        first_index = 0
+        last_index = self._Data.index.values[-1]
         if start:
-            first_index = self._Data['energy'].values.searchsorted(start)
-        else:
-            first_index = 0
+            for i in s.index:
+                if i > 0:
+                    if ((s[i - 1] <= start and s[i] >= start) or
+                        (s[i - 1] >= start and s[i] <= start)):
+                        first_index = i
         if stop:
-            last_index = self._Data['energy'].values.searchsorted(stop)
-        else:
-            last_index = self._Data.index.values[-1]
+            for i in s.index:
+                if i > 0:
+                    if ((s[i - 1] <= stop and s[i] >= stop) or
+                        (s[i - 1] >= stop and s[i] <= stop)):
+                        last_index = i
         self._Data = self._Data.truncate(before=first_index, after=last_index)
 
     def getData(self, column=None):
@@ -489,7 +518,7 @@ class Region:
         return self._Flags
 
     def isEnergyCorrected(self):
-        return self._Flags[0]
+        return self._Flags[self._region_flags[0]]
 
     def isBinding(self):
         return self._Flags[1]

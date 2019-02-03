@@ -19,7 +19,7 @@ def fitFermiEdge(region, initial_params, add_column=True):
         """
         return (a0/2)*sp.special.erfc((a1-x)/a2) + a3
 
-    if not region.getFlags()[2]:
+    if not region.getFlags()["fermi_flag"]:
         print(f"Can't fit the error func to non-Fermi region {region.getID()}")
         return
 
@@ -37,7 +37,7 @@ def fitFermiEdge(region, initial_params, add_column=True):
                              popt[3]),
                              overwrite=True)
 
-    return [popt[1], np.sqrt(np.diag(pcov_gauss))[1]]
+    return [popt[1], np.sqrt(np.diag(pcov))[1]]
 
 def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=True):
     """Calculates the linear background using left and right ends of the region
@@ -85,7 +85,7 @@ def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=
         background = np.linspace(counts[0], counts[-1], len(energy))
 
     if add_column:
-        region.addColumn("linearBG", output, overwrite=True)
+        region.addColumn("linearBG", counts - background, overwrite=True)
 
     return background
 
@@ -133,7 +133,7 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
         output = background[::-1]
 
     if add_column:
-        region.addColumn("shirleyBG", output, overwrite=True)
+        region.addColumn("shirleyBG", counts - output, overwrite=True)
 
     return output
 
@@ -146,7 +146,7 @@ def calculateLinearAndShirley(region, by_min=False, tolerance=1e-5, maxiter=50, 
     shirley_bg = calculateShirley(region, y_data="linearBG", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
     background = linear_bg + shirley_bg
     if add_column:
-        region.addColumn("linear+shirleyBG", background, overwrite=True)
+        region.addColumn("linear+shirleyBG", counts - background, overwrite=True)
 
     return background
 
@@ -191,7 +191,7 @@ def plotRegion(region,
     else:
         ax.plot(x, y, color=color, label=label)
     if legend:
-        ax.legend(loc='best')
+        ax.legend(fancybox=True, framealpha=0, loc='best')
     if title:
         ax.set_title(f"Pass: {region.getInfo('Pass Energy')}   |   Sweeps: {region.getInfo('Number of Sweeps')}   |   File: {region.getInfo('File')}")
 
