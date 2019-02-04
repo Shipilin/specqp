@@ -206,3 +206,23 @@ def plotRegion(region,
     # Inverting x-axis if desired and not yet inverted
     if invert_x and not ax.xaxis_inverted():
         ax.invert_xaxis()
+
+def plotPeak(peak,
+            figure=1,
+            ax=None,
+            label=None,
+            color=None,
+            legend=True):
+    """Plotting fit peak with pyplot using given plt.figure and a number of optional arguments
+    """
+    plt.figure(figure)
+    if not ax:
+        ax = plt.gca()
+
+    if not label:
+        if peak.getPeakType() == "gaussian":
+            label=f"{peak.getParameters('center'):.4f} +/- {peak.getFittingErrors('center'):.4f}"
+
+    ax.plot(peak.getData()[0], peak.getData()[1], color=color, label=label)
+    if legend:
+        ax.legend()
