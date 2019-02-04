@@ -81,6 +81,7 @@ class Fitter:
         """
         self._X_data = region.getData(column='energy').tolist()
         self._Y_data = region.getData(column=y_data).tolist()
+        self._FitLine = (region.getData(column=y_data)*0).tolist()
         self._Peaks = []
 
     def __str__(self):
@@ -89,42 +90,53 @@ class Fitter:
             new_line = "\n"
             if i == 0:
                 new_line = ""
-            output = new_line.join((output, f"Peak #{i}"))
+            output = new_line.join((output, f"Peak #{i+1}"))
             output = "\n".join((output, peak.__str__()))
         return output
+
+    @staticmethod
+    def _multiGaussian(x, *args):
+        cnt = 0
+        func = 0
+        while cnt < len(args):
+            func += args[cnt]*(1/(args[cnt+2]*(np.sqrt(2*np.pi))))*(np.exp(-((x-args[cnt+1])**2)/((2*args[cnt+2])**2)))
+            cnt += 3
+        return func
 
     def fitGaussian(self, initial_params):
         """Fits one Gaussian function to Region object based on initial values
         of three parameters (amplitude, center, and sigma). If list with more than
         one set of three parameters is given, the function fits more than one peak.
         """
-        def _multiGaussian(x, *args):
-            cnt = 0
-            func = 0
-            while cnt < len(args):
-                func += args[cnt]*(1/(args[cnt+2]*(np.sqrt(2*np.pi))))*(np.exp(-((x-args[cnt+1])**2)/((2*args[cnt+2])**2)))
-                cnt += 3
-            return func
 
         if len(initial_params) % 3 != 0:
             print("Check the number of initial parameters.")
             return
 
         # Parameters and parameters covariance of the fit
-        popt, pcov = curve_fit(_multiGaussian,
+        popt, pcov = curve_fit(Fitter._multiGaussian,
                         self._X_data,
                         self._Y_data,
                         p0=initial_params)
 
         cnt = 0
         while cnt < len(initial_params):
-            peak_y = _multiGaussian(self._X_data, popt[cnt], popt[cnt+1], popt[cnt+2])
+            peak_y = Fitter._multiGaussian(self._X_data, popt[cnt], popt[cnt+1], popt[cnt+2])
             self._Peaks.append(Peak(self._X_data,
                                     peak_y,
                                     [popt[cnt], popt[cnt+1], popt[cnt+2]],
                                     [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
                                     "gaussian"))
             cnt += 3
+
+    def getFitLine(self):
+        """Returns x and y coordinates for the fit line based on all fitted peaks
+        """
+        for peak in self._Peaks:
+            for i, val in enumerate(peak.getData()[1]):
+                self._FitLine[i] += val
+
+        return [self._X_data, self._FitLine]
 
     def getPeaks(self, peak_num=None): # TODO add peak ID
         if not peak_num:

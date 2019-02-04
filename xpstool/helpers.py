@@ -171,7 +171,7 @@ def plotRegion(region,
             y_data='counts',
             scatter=False,
             label=None,
-            color=None,
+            color='red',
             title=True,
             legend=True):
     """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
@@ -212,9 +212,11 @@ def plotPeak(peak,
             ax=None,
             label=None,
             color=None,
+            fill=True,
             legend=True):
     """Plotting fit peak with pyplot using given plt.figure and a number of optional arguments
     """
+    peakLine = peak.getData()
     plt.figure(figure)
     if not ax:
         ax = plt.gca()
@@ -224,5 +226,26 @@ def plotPeak(peak,
             label=f"{peak.getParameters('center'):.4f} +/- {peak.getFittingErrors('center'):.4f}"
 
     ax.plot(peak.getData()[0], peak.getData()[1], color=color, label=label)
+    if fill:
+        # Fill the peak shape with color that is retrieved from the last plotted line
+        ax.fill_between(peakLine[0], peakLine[1].min(), peakLine[1], facecolor=ax.get_lines()[-1].get_color(), alpha=0.3)
+    if legend:
+        ax.legend()
+
+def plotFit(fitter,
+            figure=1,
+            ax=None,
+            label=None,
+            color='black',
+            legend=True):
+    """Plotting fit line with pyplot using given plt.figure and a number of optional arguments
+    """
+    fitLine = fitter.getFitLine()
+    plt.figure(figure)
+    if not ax:
+        ax = plt.gca()
+    if not label:
+        label="fit"
+    ax.plot(fitLine[0], fitLine[1], '--', color=color, label=label)
     if legend:
         ax.legend()
