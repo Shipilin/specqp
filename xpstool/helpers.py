@@ -230,22 +230,40 @@ def plotPeak(peak,
         # Fill the peak shape with color that is retrieved from the last plotted line
         ax.fill_between(peakLine[0], peakLine[1].min(), peakLine[1], facecolor=ax.get_lines()[-1].get_color(), alpha=0.3)
     if legend:
-        ax.legend()
+        ax.legend(fancybox=True, framealpha=0, loc='best')
 
 def plotFit(fitter,
             figure=1,
             ax=None,
             label=None,
             color='black',
-            legend=True):
+            legend=True,
+            addresiduals=True):
     """Plotting fit line with pyplot using given plt.figure and a number of optional arguments
     """
-    fitLine = fitter.getFitLine()
     plt.figure(figure)
     if not ax:
         ax = plt.gca()
     if not label:
         label="fit"
-    ax.plot(fitLine[0], fitLine[1], '--', color=color, label=label)
+    ax.plot(fitter.getData()[0].tolist(),
+            fitter.getFitLine().tolist(),
+            linestyle='--',
+            color=color,
+            label=label)
+    # Add residuals if specified
+    if addresiduals:
+        ax.plot(fitter.getData()[0].tolist(),
+                fitter.getResiduals().tolist(),
+                linestyle=':',
+                alpha=1,
+                color='black',
+                label=f"R-sqr = {fitter.getRsquared():.4f}")
+        # Get the position of the original axis object
+        #pos = ax.get_position()
+        #ax.set_position([pos.x0, pos.y0 + 0.3, pos.width, 0.7])
+        #ax2 = plt.gcf().add_axes([pos.x0, pos.y0, pos.width, 0.1])
+        #ax2.plot(residuals[0], residuals[1], 'o', color='grey', label='residuals')
+
     if legend:
-        ax.legend()
+        ax.legend(fancybox=True, framealpha=0, loc='best')

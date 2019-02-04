@@ -22,13 +22,15 @@ class Peak:
         self._Y = y_data
         self._Popt = popt
         self._Pcov = pcov
+        self._Area = np.trapz(self._Y)
         self._FittingErrors = np.sqrt(np.diag(self._Pcov))
         self._PeakType = peak_type
 
     def __str__(self):
-        output = self._PeakType
+        output = f"Type: {self._PeakType}"
         for i, p in enumerate(self._Popt):
-            output = "\n".join((output, f"{self.peak_types[self._PeakType][i]}: {p:.4f} +/- {self._FittingErrors[i]:.4f}"))
+            output = "\n".join((output, f"{self.peak_types[self._PeakType][i]}: {p:.4f} (+/- {self._FittingErrors[i]:.4f})"))
+        output = "\n".join((output, f"Area: {self._Area:.4f}"))
         return output
 
     def getData(self):
@@ -79,9 +81,12 @@ class Fitter:
         """Creates an object that contains information about fitting of
         a particular XPS region.
         """
-        self._X_data = region.getData(column='energy').tolist()
-        self._Y_data = region.getData(column=y_data).tolist()
-        self._FitLine = (region.getData(column=y_data)*0).tolist()
+        self._X_data = region.getData(column='energy')
+        self._Y_data = region.getData(column=y_data)
+        # Following attributes are assigned during the fitting procedure
+        self._FitLine = region.getData(column=y_data)*0
+        self._Residuals = region.getData(column=y_data)*0
+        self._Rsquared = 0
         self._Peaks = []
 
     def __str__(self):
@@ -90,7 +95,7 @@ class Fitter:
             new_line = "\n"
             if i == 0:
                 new_line = ""
-            output = new_line.join((output, f"Peak #{i+1}"))
+            output = new_line.join((output, f"--- Peak #{i+1} ---"))
             output = "\n".join((output, peak.__str__()))
         return output
 
@@ -129,17 +134,49 @@ class Fitter:
                                     "gaussian"))
             cnt += 3
 
+        self._makeFit()
+
+    def _makeFit(self):
+        """Calculates the total fit line including all peaks and calculates the
+        residuals and r-squared.
+        """
+        # Calculate fit line
+        for peak in self._Peaks:
+            #for peak_y in peak.getData()[1]:
+            self._FitLine += peak.getData()[1]
+        # Calculate residuals
+        #for i, y in enumerate(self._Y_data):
+        self._Residuals = self._Y_data - self._FitLine
+        # Calculate R-squared
+        ss_res = np.sum(self._Residuals**2)
+        ss_tot = np.sum((self._Y_data - np.mean(self._Y_data))**2)
+        self._Rsquared = 1 - (ss_res / ss_tot)
+
     def getFitLine(self):
         """Returns x and y coordinates for the fit line based on all fitted peaks
         """
-        for peak in self._Peaks:
-            for i, val in enumerate(peak.getData()[1]):
-                self._FitLine[i] += val
+        if not self._FitLine.size == 0:
+            return self._FitLine
+        print("Do fit first")
 
-        return [self._X_data, self._FitLine]
+    def getResiduals(self):
+        if not self._Residuals.size == 0:
+            return self._Residuals
+        print("Do fit first")
+
+    def getRsquared(self):
+        if not self._Rsquared == 0:
+            return self._Rsquared
+        print("Do fit first")
 
     def getPeaks(self, peak_num=None): # TODO add peak ID
+        if not self._Peaks:
+            print("Do fit first")
+            return
         if not peak_num:
             return self._Peaks
         else:
             return self._Peaks[peak_num]
+
+    def getData(self):
+        return [self._X_data, self._Y_data]
