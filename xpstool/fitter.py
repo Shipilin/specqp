@@ -82,7 +82,7 @@ class Peak:
 class Fitter:
     """Provides fitting possibilities for XPS spectra
     """
-    def __init__(self, region, y_data='counts'):
+    def __init__(self, region, y_data='counts', gauss_widening=None):
         """Creates an object that contains information about fitting of
         a particular XPS region.
         """
@@ -93,6 +93,10 @@ class Fitter:
         self._Residuals = region.getData(column=y_data)*0
         self._Rsquared = 0
         self._Peaks = []
+        # The gauss widening is constant due to the equipment used in the
+        # experiment. So, if we know it, we should fix this parameter in
+        # fitting.
+        self._GaussWidening = gauss_widening
 
     def __str__(self):
         output = ""
@@ -194,7 +198,7 @@ class Fitter:
             cnt += 3
         self._makeFit()
 
-    def fitVoigt(self, initial_params, gauss_sigma=None, fix_ratio=False): # TODO
+    def fitVoigt(self, initial_params, fix_ratio=False, fix_centers=False, fix_width=False): # TODO
         """Fits one Voigt function to Region object based on initial values
         of three parameters (amplitude, center, and width). The weight of
         gaussian (wg) is also added to parameters to be able to vary
@@ -202,8 +206,7 @@ class Fitter:
         can be also passed if known from experiment. If list with more than
         one set of parameters is given, the function fits more than one peak.
         The weight of gaussian (wg) is also added to parameters to be able to vary
-        Gaussian and (1-wg) Lorentzian contributions. Fixed sigma for Gaussian
-        can be also passed if known from experiment.
+        Gaussian and (1-wg) Lorentzian contributions.
         """
 
         if len(initial_params) % 4 != 0:
@@ -213,7 +216,7 @@ class Fitter:
         bounds_low = []
         bounds_high = []
         for i in range(0, len(initial_params)):
-            if (i == 0) or (i % 4 == 0): # Fixing gaussian weight parameter
+            if i % 4 == 0: # Fixing gaussian weight parameter
                 # wg parameter has numbers 0,4,8,...
                 if fix_ratio:
                     # For curve_fit method the boundaries should be different
@@ -224,7 +227,8 @@ class Fitter:
                 else:
                     bounds_low.append(0)
                     bounds_high.append(1)
-            if (i == 1) or (i % 5 == 0):
+                    continue
+            if (i-1) % 4 == 0: # Adjusting amplitude parameter boundaries
                 # Fixing the lower limit for amplitude at 0 and the higher
                 # limit at data_y max
                 bounds_low.append(0)
@@ -235,6 +239,16 @@ class Fitter:
                 else:
                     bounds_high.append(initial_params[i])
                 continue
+            if (i-2) % 4 == 0: # Fixing center parameters if asked
+                if fix_centers:
+                    bounds_low.append(initial_params[i] - 0.0001)
+                    bounds_high.append(initial_params[i] + 0.0001)
+                    continue
+            if (i-3) % 4 == 0: # Fixing width parameters if asked
+                if fix_width:
+                    bounds_low.append(initial_params[i] - 0.0001)
+                    bounds_high.append(initial_params[i] + 0.0001)
+                    continue
             bounds_low.append(-np.inf)
             bounds_high.append(np.inf)
 

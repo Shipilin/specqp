@@ -458,10 +458,12 @@ class Region:
         else:
             print(f"The region {self._Info['File']}: {self._Info['Region Name']} has already been energy corrected.")
 
-    def cropRegion(self, start=None, stop=None):
+    def cropRegion(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
         on 'energy' axis. Interval is given in real units of the data. If start or
         stop or both are not specified tales first (or/and last) values.
+        If changesource flag is True, the original region is cropped, if False -
+        the copy of original region is cropped and returned.
         """
         s = self._Data['energy']
         first_index = 0
@@ -479,8 +481,15 @@ class Region:
                         (s[i - 1] >= stop and s[i] <= stop)):
                         last_index = i
 
+        if changesource:
+            self._Data = self._Data.truncate(before=first_index, after=last_index)
+            # Reset indexing after truncation so that it starts again with 0
+            self._Data.reset_index(drop=True, inplace=True)
+            return
+
         tmp_region = copy.deepcopy(self)
         tmp_region._Data = tmp_region._Data.truncate(before=first_index, after=last_index)
+        tmp_region._Data.reset_index(drop=True, inplace=True)
         return tmp_region
 
     def getData(self, column=None):
