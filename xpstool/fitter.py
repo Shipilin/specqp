@@ -10,8 +10,8 @@ class Peak:
     """
     peak_types = {
         "gaussian": ["amplitude", "center", "sigma"],
-        "lorenzian": ["a", "b", "c"], # TODO
-        "voigt": ["a", "b", "c"] # TODO
+        "lorentzian": ["amplitude", "center", "width"],
+        "voigt": ["wg", "amplitude", "center", "width"] # wg - weight of Gaussian
     }
 
     def __init__(self, x_data, y_data, popt, pcov, peak_type):
@@ -23,8 +23,13 @@ class Peak:
         self._Popt = popt
         self._Pcov = pcov
         self._Area = np.trapz(self._Y)
-        self._FittingErrors = np.sqrt(np.diag(self._Pcov))
         self._PeakType = peak_type
+        self._FittingErrors = []
+        for i in range(len(self._Popt)):
+            try:
+              self._FittingErrors.append(np.absolute(self._Pcov[i][i])**0.5)
+            except:
+              self._FittingErrors.append( 0.00 )
 
     def __str__(self):
         output = f"Type: {self._PeakType}"
@@ -108,6 +113,32 @@ class Fitter:
             cnt += 3
         return func
 
+    @staticmethod
+    def _multiLorentzian(x, *args):
+        """Creates a single or multiple Lorentzian shape using
+        func = amplitude*width**2/((x-center)**2+width**2)
+        """
+        cnt = 0
+        func = 0
+        while cnt < len(args):
+            func += args[cnt]*args[cnt+2]**2/((x-args[cnt+1])**2+args[cnt+2]**2)
+            cnt += 3
+        return func
+
+    @staticmethod
+    def _multiVoigt(x, *args): # TODO
+        """Creates a single or multiple Voigt shape using
+        f = g_weight*gaussian + l_weight*lorentzian
+        Takes argu
+        """
+        cnt = 0
+        func = 0
+        while cnt < len(args):
+            func += (args[cnt]*Fitter._multiGaussian(x, *args[cnt+1:cnt+4])
+                    + (1-args[cnt])*Fitter._multiLorentzian(x, *args[cnt+1:cnt+4]))
+            cnt += 4
+        return func
+
     def fitGaussian(self, initial_params):
         """Fits one Gaussian function to Region object based on initial values
         of three parameters (amplitude, center, and sigma). If list with more than
@@ -134,6 +165,95 @@ class Fitter:
                                     "gaussian"))
             cnt += 3
 
+        self._makeFit()
+
+    def fitLorentzian(self, initial_params):
+        """Fits one Lorentzian function to Region object based on initial values
+        of three parameters (amplitude, center, and width). If list with more than
+        one set of three parameters is given, the function fits more than one peak.
+        """
+
+        if len(initial_params) % 3 != 0:
+            print("Check the number of initial parameters.")
+            return
+
+        # Parameters and parameters covariance of the fit
+        popt, pcov = curve_fit(Fitter._multiLorentzian,
+                        self._X_data,
+                        self._Y_data,
+                        p0=initial_params)
+
+        cnt = 0
+        while cnt < len(initial_params):
+            peak_y = Fitter._multiLorentzian(self._X_data, popt[cnt], popt[cnt+1], popt[cnt+2])
+            self._Peaks.append(Peak(self._X_data,
+                                    peak_y,
+                                    [popt[cnt], popt[cnt+1], popt[cnt+2]],
+                                    [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
+                                    "lorentzian"))
+            cnt += 3
+        self._makeFit()
+
+    def fitVoigt(self, initial_params, gauss_sigma=None, fix_ratio=False): # TODO
+        """Fits one Voigt function to Region object based on initial values
+        of three parameters (amplitude, center, and width). The weight of
+        gaussian (wg) is also added to parameters to be able to vary
+        Gaussian and (1-wg) Lorentzian contributions. Fixed sigma for Gaussian
+        can be also passed if known from experiment. If list with more than
+        one set of parameters is given, the function fits more than one peak.
+        The weight of gaussian (wg) is also added to parameters to be able to vary
+        Gaussian and (1-wg) Lorentzian contributions. Fixed sigma for Gaussian
+        can be also passed if known from experiment.
+        """
+
+        if len(initial_params) % 4 != 0:
+            print("Check the number of initial parameters.")
+            return
+
+        bounds_low = []
+        bounds_high = []
+        for i in range(0, len(initial_params)):
+            if (i == 0) or (i % 4 == 0): # Fixing gaussian weight parameter
+                # wg parameter has numbers 0,4,8,...
+                if fix_ratio:
+                    # For curve_fit method the boundaries should be different
+                    # Add 0.0001 difference
+                    bounds_low.append(initial_params[i] - 0.0001)
+                    bounds_high.append(initial_params[i] + 0.0001)
+                    continue
+                else:
+                    bounds_low.append(0)
+                    bounds_high.append(1)
+            if (i == 1) or (i % 5 == 0):
+                # Fixing the lower limit for amplitude at 0 and the higher
+                # limit at data_y max
+                bounds_low.append(0)
+                # The upper boundary of amplitude should not be lower than the
+                # value of initial guess
+                if initial_params[i] < np.amax(self._Y_data):
+                    bounds_high.append(np.amax(self._Y_data))
+                else:
+                    bounds_high.append(initial_params[i])
+                continue
+            bounds_low.append(-np.inf)
+            bounds_high.append(np.inf)
+
+        # Parameters and parameters covariance of the fit
+        popt, pcov = curve_fit(Fitter._multiVoigt,
+                        self._X_data,
+                        self._Y_data,
+                        p0=initial_params,
+                        bounds=(bounds_low, bounds_high))
+
+        cnt = 0
+        while cnt < len(initial_params):
+            peak_y = Fitter._multiVoigt(self._X_data, popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3])
+            self._Peaks.append(Peak(self._X_data,
+                                    peak_y,
+                                    [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
+                                    [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
+                                    "voigt"))
+            cnt += 4
         self._makeFit()
 
     def _makeFit(self):

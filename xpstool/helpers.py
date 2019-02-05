@@ -133,17 +133,26 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
         output = background[::-1]
 
     if add_column:
-        region.addColumn("shirleyBG", counts - output, overwrite=True)
+        corrected = counts - output
+        if np.amin(corrected) < 0:
+            corrected += np.absolute(np.amin(corrected))
+        region.addColumn("shirleyBG", corrected, overwrite=True)
 
     return output
 
-def calculateLinearAndShirley(region, by_min=False, tolerance=1e-5, maxiter=50, add_column=True):
+def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min=False, tolerance=1e-5, maxiter=50, add_column=True):
     """Calculates the linear background using left and right ends of the region
     or using the minimum and the end that is furthest from the minimum if by_min=True.
     Then calculates shirley background.
     """
-    linear_bg = calculateLinearBackground(region, by_min=by_min, add_column=add_column)
-    shirley_bg = calculateShirley(region, y_data="linearBG", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
+    counts = region.getData(column=y_data)
+
+    if shirleyfirst:
+        shirley_bg = calculateShirley(region, tolerance=tolerance, maxiter=maxiter, add_column=add_column)
+        linear_bg = calculateLinearBackground(region, y_data='shirleyBG', by_min=by_min, add_column=add_column)
+    else:
+        linear_bg = calculateLinearBackground(region, by_min=by_min, add_column=add_column)
+        shirley_bg = calculateShirley(region, y_data="linearBG", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
     background = linear_bg + shirley_bg
     if add_column:
         region.addColumn("linear+shirleyBG", counts - background, overwrite=True)
@@ -171,7 +180,7 @@ def plotRegion(region,
             y_data='counts',
             scatter=False,
             label=None,
-            color='red',
+            color=None,
             title=True,
             legend=True):
     """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
@@ -222,8 +231,7 @@ def plotPeak(peak,
         ax = plt.gca()
 
     if not label:
-        if peak.getPeakType() == "gaussian":
-            label=f"{peak.getParameters('center'):.4f} +/- {peak.getFittingErrors('center'):.4f}"
+        label=f"{peak.getParameters('center'):.4f} +/- {peak.getFittingErrors('center'):.4f}"
 
     ax.plot(peak.getData()[0], peak.getData()[1], color=color, label=label)
     if fill:
