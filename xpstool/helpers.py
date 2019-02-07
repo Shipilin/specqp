@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
+from .fitter import Peak
 
 def fitFermiEdge(region, initial_params, add_column=True):
     """Fits error function to fermi level scan. If add_column flag
@@ -25,8 +26,8 @@ def fitFermiEdge(region, initial_params, add_column=True):
 
     # Parameters and parameters covariance of the fit
     popt, pcov = curve_fit(errorFunc,
-                    region.getData(column='energy').tolist(),
-                    region.getData(column='counts').tolist(),
+                    region.getData(column='energy'),
+                    region.getData(column='counts'),
                     p0=initial_params)
 
     if add_column:
@@ -37,7 +38,7 @@ def fitFermiEdge(region, initial_params, add_column=True):
                              popt[3]),
                              overwrite=True)
 
-    return [popt[1], np.sqrt(np.diag(pcov))[1]]
+    return [popt, np.sqrt(np.diag(pcov))]
 
 def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=True):
     """Calculates the linear background using left and right ends of the region
@@ -69,13 +70,16 @@ def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=
             line_end = slope*energy[0] + b
             return np.linspace(line_end, counts[-1], len(energy))
 
-    counts = region.getData(column=y_data).tolist()
+    if y_data in list(region.getData()):
+        counts = region.getData(column=y_data).tolist()
+    else:
+        counts = region.getData(column='counts').tolist()
+    energy = region.getData(column='energy')
     energy = region.getData(column='energy').tolist()
 
     if by_min:
         counts_min = min(counts)
         counts_min_index = counts.index(counts_min)
-        print(counts_min, counts_min_index)
         # If minimum lies closer to the right side of the region
         if counts_min_index > len(energy)//2:
             background = calculateLine("right")
@@ -93,7 +97,10 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
-    counts = region.getData(column=y_data)
+    if y_data in list(region.getData()):
+        counts = region.getData(column=y_data)
+    else:
+        counts = region.getData(column='counts')
     energy = region.getData(column='energy')
 
     if energy[0] < energy[-1]:
@@ -134,8 +141,8 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
 
     if add_column:
         corrected = counts - output
-        if np.amin(corrected) < 0:
-            corrected += np.absolute(np.amin(corrected))
+        # if np.amin(corrected) < 0:
+        #     corrected += np.absolute(np.amin(corrected))
         region.addColumn("shirleyBG", corrected, overwrite=True)
 
     return output
@@ -145,7 +152,10 @@ def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min
     or using the minimum and the end that is furthest from the minimum if by_min=True.
     Then calculates shirley background.
     """
-    counts = region.getData(column=y_data)
+    if y_data in list(region.getData()):
+        counts = region.getData(column=y_data)
+    else:
+        counts = region.getData(column='counts')
 
     if shirleyfirst:
         shirley_bg = calculateShirley(region, tolerance=tolerance, maxiter=maxiter, add_column=add_column)
@@ -177,7 +187,7 @@ def plotRegion(region,
             ax=None,
             invert_x=True,
             x_data='energy',
-            y_data='counts',
+            y_data='final',
             scatter=False,
             label=None,
             color=None,
@@ -185,15 +195,21 @@ def plotRegion(region,
             legend=True):
     """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
     """
-    x = region.getData(column=x_data)
-    y = region.getData(column=y_data)
+    if x_data in list(region.getData()):
+        x = region.getData(column=x_data)
+    else:
+        x = region.getData(column='energy')
+    if y_data in list(region.getData()):
+        y = region.getData(column=y_data)
+    else:
+        y = region.getData(column='counts')
 
     plt.figure(figure)
     if not ax:
         ax = plt.gca()
 
     if not label:
-        label=f"{region.getID()}"
+        label=f"{region.getID()} ({region.getConditions()['Temperature']})"
     # If we want scatter plot
     if scatter:
         ax.scatter(x, y, s=7, c=color, label=label)
@@ -202,7 +218,12 @@ def plotRegion(region,
     if legend:
         ax.legend(fancybox=True, framealpha=0, loc='best')
     if title:
-        ax.set_title(f"Pass: {region.getInfo('Pass Energy')}   |   Sweeps: {region.getInfo('Number of Sweeps')}   |   File: {region.getInfo('File')}")
+        title_str=""
+        if region.isSweepsNormalized():
+            title_str = f"Pass: {region.getInfo('Pass Energy')}   |   File: {region.getInfo('File')}"
+        else:
+            title_str = f"Pass: {region.getInfo('Pass Energy')}   |   Sweeps: {region.getInfo('Number of Sweeps')}   |   File: {region.getInfo('File')}"
+        ax.set_title(title_str)
 
     #   Stiling axes
     x_label_prefix = "Binding"

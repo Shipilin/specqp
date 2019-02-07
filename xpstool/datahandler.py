@@ -335,7 +335,8 @@ class Region:
     _region_flags = (
         "energy_shift_corrected",
         "binding_energy_flag",
-        "fermi_flag"
+        "fermi_flag",
+        "sweeps_normalized"
     )
 
     def __init__(self, energy, counts, info=None, conditions=None, ID=None, fermiFlag=False):
@@ -360,7 +361,8 @@ class Region:
         self._Flags = {
                 Region._region_flags[0]: False,
                 Region._region_flags[1]: None,
-                Region._region_flags[2]: fermiFlag
+                Region._region_flags[2]: fermiFlag,
+                Region._region_flags[3]: False
                 }
         self._Info = info
         self._RawInfo = info
@@ -458,6 +460,11 @@ class Region:
         else:
             print(f"The region {self._Info['File']}: {self._Info['Region Name']} has already been energy corrected.")
 
+    def normalizeBySweeps(self):
+        if self._Info and ("Number of Sweeps" in self._Info):
+            self._Data['counts'] = np.round(self._Data['counts'] / int(self._Info["Number of Sweeps"]))
+            self._Flags[self._region_flags[3]] = True
+
     def cropRegion(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
         on 'energy' axis. Interval is given in real units of the data. If start or
@@ -534,6 +541,9 @@ class Region:
     def isEnergyCorrected(self):
         return self._Flags[self._region_flags[0]]
 
+    def isSweepsNormalized(self):
+        return self._Flags[self._region_flags[3]]
+
     def isBinding(self):
         return self._Flags[1]
 
@@ -547,6 +557,14 @@ class Region:
                 print(f"Column '{column_label}' already exists in {self._Info['File']}: {self._Info['Region Name']}")
                 print("Pass overwrite=True to overwrite the existing values.")
         self._Data[column_label] = array
+
+    def makeFinalColumn(self, parent_column, overwrite=False):
+        """Adds a column with name "final" and populates it with the values
+        from the column "parent_column", which is supposed to contain original
+        data values corrected by background, normalized etc. It is used then for
+        data analysis later on.
+        """
+        self.addColumn('final', self._Data[parent_column], overwrite)
 
     def removeColumn(self, column_label):
         """Removes one of the columns of the data object except two main ones:
