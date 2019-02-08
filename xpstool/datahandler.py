@@ -377,6 +377,9 @@ class Region:
             if not self._ID:
                 self._ID = f"{self._Info['File']}:{self._Info['Region Name']}"
 
+        self._Fitter = None # After fitting of the region we want to save the
+                            # results and the Region object should know about it
+
     def __str__(self):
         """Prints the info read from the Scienta file
         Possible to add keys of the Info dictionary to be printed
@@ -557,6 +560,18 @@ class Region:
                 print(f"Column '{column_label}' already exists in {self._Info['File']}: {self._Info['Region Name']}")
                 print("Pass overwrite=True to overwrite the existing values.")
         self._Data[column_label] = array
+
+    def addFitter(self, fitter, overwrite=False):
+        if self._Fitter and (not overwrite):
+            print(f"Region {self._ID} already has a fitter. Add overwrite=True parameter to overwrite.")
+            return
+        self._Fitter = fitter
+
+    def getFitter(self):
+        if not self._Fitter:
+            print(f"Region {self._ID} doesn't have a fitter.")
+            return
+        return self._Fitter
 
     def makeFinalColumn(self, parent_column, overwrite=False):
         """Adds a column with name "final" and populates it with the values

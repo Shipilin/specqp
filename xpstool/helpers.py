@@ -252,7 +252,7 @@ def plotPeak(peak,
         ax = plt.gca()
 
     if not label:
-        label=f"{peak.getParameters('center'):.4f} +/- {peak.getFittingErrors('center'):.4f}"
+        label=f"Cen: {peak.getParameters('center'):.2f}; FWHM: {peak.getParameters('fwhm'):.2f}"
 
     ax.plot(peak.getData()[0], peak.getData()[1], color=color, label=label)
     if fill:
@@ -287,7 +287,7 @@ def plotFit(fitter,
                 linestyle=':',
                 alpha=1,
                 color='black',
-                label=f"R-sqr = {fitter.getRsquared():.4f}")
+                label=f"Chi^2 = {fitter.getChiSquared():.2f}\nRMS = {fitter.getRMS():.2f}")
         # Get the position of the original axis object
         #pos = ax.get_position()
         #ax.set_position([pos.x0, pos.y0 + 0.3, pos.width, 0.7])

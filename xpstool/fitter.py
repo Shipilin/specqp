@@ -3,15 +3,16 @@
 import numpy as np
 import scipy as sp
 from scipy.optimize import curve_fit
+from scipy.stats import chisquare
 from .datahandler import Region
 
 class Peak:
     """Contains information about one peak fitted to a region.
     """
     peak_types = {
-        "gaussian": ["amplitude", "center", "sigma"],
-        "lorentzian": ["amplitude", "center", "width"],
-        "voigt": ["wg", "amplitude", "center", "width"] # wg - weight of Gaussian
+        "gaussian": ["amplitude", "center", "fwhm"],
+        "lorentzian": ["amplitude", "center", "fwhm"],
+        "voigt": ["amplitude", "center", "fwhm"]
     }
 
     def __init__(self, x_data, y_data, popt, pcov, peak_type):
@@ -92,11 +93,14 @@ class Fitter:
         self._FitLine = region.getData(column=y_data)*0
         self._Residuals = region.getData(column=y_data)*0
         self._Rsquared = 0
+        self._Chisquared = 0
+        self._RMS = 0
         self._Peaks = []
         # The gauss widening is constant due to the equipment used in the
         # experiment. So, if we know it, we should fix this parameter in
         # fitting.
-        self._GaussFWHM = gauss_fwhm
+        self._GaussFWHM = gauss_fwhm*1.0
+        self._ID = region.getID()
 
     def __str__(self):
         output = ""
@@ -131,28 +135,46 @@ class Fitter:
         return func
 
     def _multiVoigt(self, x, *args):
-        """Creates a single or multiple Voigt shape using
-        f = weight*gaussian + (1-weight)*lorentzian
-        Takes constant sigma for gaussian contribution.
+        """Creates a single or multiple pseudo Voigt shape.
+        Takes constant sigma for gaussian contribution if known.
         """
-        def lorentz(x, x0, g):
-            return 1. / ( np.pi * g * ( 1 + ( ( x - x0 )/ g )**2 ) )
+        def lorentz(x, x0, FWHM):
+            gamma = FWHM/2
+            l_func = 1. / ( np.pi * gamma * ( 1 + ( ( x - x0 )/ gamma )**2 ) )
+            return l_func #/ np.amax(l_func) # Normalizing to 1
 
-        def gauss( x, x0, s):
-            return 1./ np.sqrt(2 * np.pi * s**2 ) * np.exp( - (x-x0)**2 / ( 2 * s**2 ) )
+        def gauss( x, x0, FWHM):
+            sigma = FWHM / ( 2 * np.sqrt( 2 * np.log(2) ) )
+            g_func = 1./ np.sqrt(2 * np.pi * sigma**2 ) * np.exp( - (x-x0)**2 / ( 2 * sigma**2 ) )
+            return g_func #/ np.amax(g_func) # Normalizing to 1
+
+        def pseudo_voigt( x, cen, gFWHM, lFWHM, amp ):
+            f = ( gFWHM**5 +  2.69269 * gFWHM**4 * lFWHM + 2.42843 * gFWHM**3 * lFWHM**2 + 4.47163 * gFWHM**2 * lFWHM**3 + 0.07842 * gFWHM * lFWHM**4 + lFWHM**5)**(1./5.)
+            eta = 1.36603 * ( lFWHM / f ) - 0.47719 * ( lFWHM / f )**2 + 0.11116 * ( lFWHM / f )**3
+            #print(f"Gauss {gFWHM:.2f}, Lorentz {lFWHM:.2f}, eta {eta:.2f}")
+            pv_func = ( eta * lorentz( x, cen, f) + ( 1 - eta ) * gauss( x, cen, f ) )
+            return amp * pv_func / np.amax(pv_func) # Normalizing to 1
+
+        # To avoid faulty mathematical operations in pseudo_voigt calculation
+        for arg in args:
+            if arg < 0:
+                return 0
 
         cnt = 0
         func = 0
         while cnt < len(args):
+            amp = args[cnt]
+            cen = args[cnt+1]
+            lFWHM = args[cnt+2]
+            # if cnt >= 3 and cnt < 6:
+            #     print(f"Second peak: {amp}")
             if not self._GaussFWHM:
-                sigma = args[cnt+3]/(2*np.sqrt(2*np.log(2)))
+                gFWHM = lFWHM
             else:
-                sigma = self._GaussFWHM/(2*np.sqrt(2*np.log(2)))
-            func += args[cnt + 1] * (args[cnt] * gauss(x, args[cnt + 2], sigma)
-                                        + (1 - args[cnt]) * lorentz(x, args[cnt + 2], args[cnt + 3] / 2))
+                gFWHM = self._GaussFWHM
+            func += pseudo_voigt(x, cen, gFWHM, lFWHM, amp)
 
-            cnt += 4
-
+            cnt += 3
         return func
 
     def fitGaussian(self, initial_params):# TODO change gamma and fwhm
@@ -212,37 +234,23 @@ class Fitter:
 
     def fitVoigt(self, initial_params, fix_pars=None):
         """Fits one or more Voigt function(s) to Region object based on initial values
-        of three parameters (amplitude, center, and fwhm). The weight of
-        gaussian (wg) is also added to parameters to be able to vary
-        Gaussian and (1-wg) Lorentzian contributions. If sigma for Gaussian
-        is known from experiment, the width parameter changes on;y for Lorentzian.
+        of three parameters (amplitude, center, and fwhm). If sigma for Gaussian
+        is known from experiment, the fwhm parameter changes only for Lorentzian.
         If list with more than one set of parameters is given, the function fits
         more than one peak. fix_parameter is a dictionary with names of parameters
         to fix as keys and numbers of peaks for which the parameters should be fixed
-        as lists. Ex: {"wg": [0,1,2], "cen": [1,2]}
+        as lists. Ex: {"cen": [1,2], "amp": [0,1,2]}
         """
-        if len(initial_params) % 4 != 0:
-            print(f"Check the number of initial parameters for peak #{i+1}.")
+        if len(initial_params) % 3 != 0:
+            print(f"Check the number of initial parameters.")
             return
 
         bounds_low = []
         bounds_high = []
         for i in range(0, len(initial_params)):
-            if i % 4 == 0: # Fixing gaussian weight parameter
-                # wg parameter has numbers 0,4,8,...
-                if fix_pars and ("wg" in fix_pars):
-                    if (i // 4) in fix_pars["wg"]:
-                        # For curve_fit method the boundaries should be different
-                        # Add 0.0001 difference
-                        bounds_low.append(initial_params[i] - 0.0001)
-                        bounds_high.append(initial_params[i] + 0.0001)
-                        continue
-                bounds_low.append(0)
-                bounds_high.append(1)
-                continue
-            if (i-1) % 4 == 0: # Adjusting amplitude parameter boundaries
+            if (i) % 3 == 0: # Adjusting amplitude parameter boundaries
                 if fix_pars and ("amp" in fix_pars):
-                    if ((i-1) // 4) in fix_pars["amp"]:
+                    if ((i) // 3) in fix_pars["amp"]:
                         bounds_low.append(initial_params[i] - 0.0001)
                         bounds_high.append(initial_params[i] + 0.0001)
                         continue
@@ -256,13 +264,13 @@ class Fitter:
                 else:
                     bounds_high.append(initial_params[i])
                 continue
-            if (i-2) % 4 == 0: # Fixing center parameters if asked
+            if (i-1) % 3 == 0: # Fixing center parameters if asked
                 if fix_pars and ("cen" in fix_pars):
-                    if ((i-2) // 4) in fix_pars["cen"]:
+                    if ((i-1) // 3) in fix_pars["cen"]:
                         bounds_low.append(initial_params[i] - 0.0001)
                         bounds_high.append(initial_params[i] + 0.0001)
                         continue
-            if (i-3) % 4 == 0: # Fixing fwhm parameters if asked
+            if (i-2) % 3 == 0: # Fixing fwhm parameters if asked
                 if fix_pars and ("fwhm" in fix_pars):
                     if ((i-3) // 4) in fix_pars["fwhm"]:
                         bounds_low.append(initial_params[i] - 0.0001)
@@ -279,13 +287,13 @@ class Fitter:
 
         cnt = 0
         while cnt < len(initial_params):
-            peak_y = self._multiVoigt(self._X_data, popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3])
+            peak_y = self._multiVoigt(self._X_data, popt[cnt], popt[cnt+1], popt[cnt+2])
             self._Peaks.append(Peak(self._X_data,
                                     peak_y,
-                                    [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
-                                    [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
+                                    [popt[cnt], popt[cnt+1], popt[cnt+2]],
+                                    [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
                                     "voigt"))
-            cnt += 4
+            cnt += 3
         self._makeFit()
 
     def _makeFit(self):
@@ -303,6 +311,10 @@ class Fitter:
         ss_res = np.sum(self._Residuals**2)
         ss_tot = np.sum((self._Y_data - np.mean(self._Y_data))**2)
         self._Rsquared = 1 - (ss_res / ss_tot)
+        # Individual standard deviation of original data
+        std_d = np.sqrt((self._Y_data - np.mean(self._Y_data))**2)
+        self._Chisquared = np.sum(((self._Y_data - self._FitLine)/std_d)**2)
+        self._RMS = np.sum((self._Y_data - self._FitLine)**2)
 
     def getFitLine(self):
         """Returns x and y coordinates for the fit line based on all fitted peaks
@@ -321,6 +333,16 @@ class Fitter:
             return self._Rsquared
         print("Do fit first")
 
+    def getChiSquared(self):
+        if not self._Chisquared == 0:
+            return self._Chisquared
+        print("Do fit first")
+
+    def getRMS(self):
+        if not self._RMS == 0:
+            return self._RMS
+        print("Do fit first")
+
     def getPeaks(self, peak_num=None): # TODO add peak ID
         if not self._Peaks:
             print("Do fit first")
@@ -332,3 +354,6 @@ class Fitter:
 
     def getData(self):
         return [self._X_data, self._Y_data]
+
+    def getID(self):
+        return self._ID
