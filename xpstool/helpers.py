@@ -141,8 +141,8 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
 
     if add_column:
         corrected = counts - output
-        # if np.amin(corrected) < 0:
-        #     corrected += np.absolute(np.amin(corrected))
+        if np.amin(corrected) < 0:
+            corrected += np.absolute(np.amin(corrected))
         region.addColumn("shirleyBG", corrected, overwrite=True)
 
     return output
@@ -168,6 +168,22 @@ def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min
         region.addColumn("linear+shirleyBG", counts - background, overwrite=True)
 
     return background
+
+def smoothen(region, y_data='counts', interval=3, add_column=True):
+    """Smoothed intensity."""
+    intensity = region.getData(column=y_data)
+    odd = int(interval / 2) * 2 + 1
+    even = int(interval / 2) * 2
+    cumsum = np.cumsum(np.insert(intensity, 0, 0))
+    avged = (cumsum[odd:] - cumsum[:-odd]) / odd
+    for _ in range(int(even / 2)):
+        avged = np.insert(avged, 0, avged[0])
+        avged = np.insert(avged, -1, avged[-1])
+
+    if add_column:
+        region.addColumn("averaged", avged, overwrite=True)
+
+    return avged
 
 def normalize(region, y_data='counts', add_column=True):
     """Normalize counts.

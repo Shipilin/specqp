@@ -332,6 +332,19 @@ class AddDimensionSpectrum(Spectrum): # TODO finish writing the class
 class Region:
     """Class Region contains the data for one region.
     """
+    -info_entries = (
+        "Region Name",
+        "Pass Energy",
+        "Sweeps Number",
+        "Excitation Energy",
+        "Energy Scale",
+        "Energy Step",
+        "Dwell Time",
+        "File Name",
+        "Date",
+        "Time"
+    )
+
     _region_flags = (
         "energy_shift_corrected",
         "binding_energy_flag",
