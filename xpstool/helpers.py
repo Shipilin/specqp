@@ -6,11 +6,10 @@ import numpy as np
 from scipy.optimize import curve_fit
 from .fitter import Peak
 
-def fitFermiEdge(region, initial_params, add_column=True):
+def fitFermiEdge(region, initial_params, add_column=True, overwrite=True):
     """Fits error function to fermi level scan. If add_column flag
     is True, adds the fitting results as a column to the Region object.
-    NOTE: Overwrites the 'fitFermi' column if already present in the instance
-    unless add_column is set to False explicitly.
+    NOTE: Overwrites the 'fitFermi' column if already present.
     Returns a list [shift, fittingError]
     """
     # f(x) = s/(exp(-1*(x-m)/(8.617*(10^-5)*t)) + 1) + a*x + b
@@ -36,11 +35,11 @@ def fitFermiEdge(region, initial_params, add_column=True):
                              popt[1],
                              popt[2],
                              popt[3]),
-                             overwrite=True)
+                             overwrite=overwrite)
 
     return [popt, np.sqrt(np.diag(pcov))]
 
-def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=True):
+def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=True, overwrite=True):
     """Calculates the linear background using left and right ends of the region
     or using the minimum on Y-axis and the end that is furthest from the minimum
     on the X-axis.
@@ -89,11 +88,11 @@ def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=
         background = np.linspace(counts[0], counts[-1], len(energy))
 
     if add_column:
-        region.addColumn("linearBG", counts - background, overwrite=True)
+        region.addColumn("linearBG", counts - background, overwrite=overwrite)
 
     return background
 
-def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_column=True):
+def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
@@ -143,14 +142,15 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
         corrected = counts - output
         if np.amin(corrected) < 0:
             corrected += np.absolute(np.amin(corrected))
-        region.addColumn("shirleyBG", corrected, overwrite=True)
+        region.addColumn("shirleyBG", corrected, overwrite=overwrite)
 
     return output
 
-def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min=False, tolerance=1e-5, maxiter=50, add_column=True):
-    """Calculates the linear background using left and right ends of the region
-    or using the minimum and the end that is furthest from the minimum if by_min=True.
-    Then calculates shirley background.
+def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min=False, tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
+    """If shirleyfirst=False, calculates the linear background using left and
+    right ends of the region or using the minimum and the end that is furthest
+    from the minimum if by_min=True. Then calculates shirley background.
+    If shirleyfirst=True, does shirley first and linear second.
     """
     if y_data in list(region.getData()):
         counts = region.getData(column=y_data)
@@ -165,7 +165,7 @@ def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min
         shirley_bg = calculateShirley(region, y_data="linearBG", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
     background = linear_bg + shirley_bg
     if add_column:
-        region.addColumn("linear+shirleyBG", counts - background, overwrite=True)
+        region.addColumn("linear+shirleyBG", counts - background, overwrite=overwrite)
 
     return background
 
@@ -236,9 +236,9 @@ def plotRegion(region,
     if title:
         title_str=""
         if region.isSweepsNormalized():
-            title_str = f"Pass: {region.getInfo('Pass Energy')}   |   File: {region.getInfo('File')}"
+            title_str = f"Pass: {region.getInfo('Pass Energy')}   |   File: {region.getInfo('File Name')}"
         else:
-            title_str = f"Pass: {region.getInfo('Pass Energy')}   |   Sweeps: {region.getInfo('Number of Sweeps')}   |   File: {region.getInfo('File')}"
+            title_str = f"Pass: {region.getInfo('Pass Energy')}   |   Sweeps: {region.getInfo('Sweeps Number')}   |   File: {region.getInfo('File Name')}"
         ax.set_title(title_str)
 
     #   Stiling axes

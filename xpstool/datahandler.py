@@ -119,10 +119,22 @@ def _loadScientaTXT(filename, regions_number_line=1):
 
         # Info block of the current region
         info_lines = parseScientaFileInfo(lines[val[0][0]:val[0][1]+1])
+        # Not all info entries are important for data analysis,
+        # Choose only important ones
+        info_lines_revised = {}
+        info_lines_revised[Region._info_entries[0]] = info_lines["Region Name"]
+        info_lines_revised[Region._info_entries[1]] = info_lines["Pass Energy"]
+        info_lines_revised[Region._info_entries[2]] = info_lines["Number of Sweeps"]
+        info_lines_revised[Region._info_entries[3]] = info_lines["Excitation Energy"]
+        info_lines_revised[Region._info_entries[4]] = info_lines["Energy Scale"]
+        info_lines_revised[Region._info_entries[5]] = info_lines["Energy Step"]
+        info_lines_revised[Region._info_entries[6]] = info_lines["Step Time"]
+        info_lines_revised[Region._info_entries[7]] = info_lines["File"]
+        info_lines_revised[Region._info_entries[8]] = f"{info_lines['Date']} {info_lines['Time']}"
 
         # Create a Region object for the current region with corresponding values
         # of flags
-        regions.append(Region(energy, counts, info=info_lines))
+        regions.append(Region(energy, counts, info=info_lines_revised))
 
     return regions
 
@@ -193,10 +205,11 @@ class Experiment:
     """Class contains a number of spectra that were taken as one set of measurements.
     Usually for one sample and one reaction with changing conditions.
     The main attribute is Spectra dictionary {"spectrumID": spectrum}
+    It is empty upon object instance initialization and has to be populated using
+    addSpectrum method.
     """
     def __init__(self):
         self._Spectra = {}
-        self._ExcitationEnergy = 0
 
     def __str__(self):
         output = ""
@@ -210,16 +223,15 @@ class Experiment:
                     output = "\n".join((output, self._Spectra[key].__str__()))
         return output
 
-    def addSpectrum(self, spectrumID, spectrum,):
-        self._Spectra[spectrumID] = spectrum
-
-    def setExcitationEnergy(self, excit):
-        self._ExcitationEnergy = excit
-
-    def getExcitationEnergy(self):
-        return self._ExcitationEnergy
+    def addSpectrum(self, spectrum):
+        """Adds spectrum to the Experiment object
+        """
+        self._Spectra[spectrum.getID()] = spectrum
 
     def getSpectrum(self, spectrumID):
+        if not spectrumID in self._Spectra:
+            print(f"Spectrum {spectrumID} is not loaded in the experiment.")
+            return
         return self._Spectra[spectrumID]
 
     def getSpectraID(self):
@@ -230,31 +242,29 @@ class Spectrum:
     regions. It knows also how to parse data files since each file normally
     contains one spectrum.
     """
-    def __init__(self, path=None, conditions=None, ID=None):
+    def __init__(self, path=None, conditions=None, ID=None, excitation_energy=None):
         if not path:
             path = _askPath(folder_flag=False, multiple_files_flag=False)
 
         self._Path = path
         self._Regions = _loadScientaTXT(self._Path)
-        self._ID = None
-        self._Conditions = None
+        self._setConditions(conditions)
+        self._setExcitationEnergy(excitation_energy)
 
-        if conditions:
-            self._setConditions(conditions)
-        if ID:
-            self._setID(ID)
-        else:
-            # Set name of the file as ID
-            self._setID(path.rpartition("/")[2].split(".", 1)[0])
+        if not ID:
+            # Set name of the file without extention as ID
+            ID = path.rpartition("/")[2].split(".", 1)[0]
+        self._setID(ID)
 
     def __str__(self):
         output = ""
         if not self._Regions:
-            output = "No regions were loaded"
+            output = f"No regions in {self._ID} spectrum"
         else:
+            output = "".join((output, f"Spectrum: #{self._ID}"))
             if self._Conditions:
                 for key, val in self._Conditions.items():
-                    output = "".join((output, f"{key}: {val}"))
+                    output = "\n".join((output, f"{key}: {val}"))
             for region in self._Regions:
                 output = "\n--->".join((output, region.getID()))
         return output
@@ -263,13 +273,21 @@ class Spectrum:
         self._ID = spectrumID
 
     def _setConditions(self, conditions):
-        """Set experimental conditions as a dictionary {"Property": Value}
+        """Set spectrum's experimental conditions to a dictionary
+        {"Property": Value}. Also transfers them to every Region object within
+        the Spectrum object
         """
-        # The whole spectrum knows about experimental conditions
-        # and every region knows about conditions
         self._Conditions = conditions
         for region in self._Regions:
             region._setConditions(conditions)
+
+    def _setExcitationEnergy(self, excitation_energy):
+        """Set spectrum's excitation energy. Also transfers the value to
+        every Region object within the Spectrum object
+        """
+        self._ExcitationEnergy = excitation_energy
+        for region in self._Regions:
+            region._setExcitationEnergy(excitation_energy, overwrite=True)
 
     def isEmpty(self):
         """Returns True if there are no regions in spectrum objects.
@@ -280,6 +298,8 @@ class Spectrum:
         return True
 
     def setFermiFlag(self, regionID):
+        """Sets True for Fermi flag of the region specified by regionID
+        """
         for region in self._Regions:
             if region.getID() == regionID:
                 region.setFermiFlag()
@@ -294,6 +314,9 @@ class Spectrum:
         if property:
             return self._Conditions[property]
         return self._Conditions
+
+    def getExcitationEnergy(self):
+        return self._ExcitationEnergy
 
     def getRegions(self):
         """Returns a list of regions
@@ -325,24 +348,24 @@ class AddDimensionSpectrum(Spectrum): # TODO finish writing the class
     """Class AddDimensionSpectrum is on the same hierarchical level with
     the class Spectrum, but is dedicated to "add dimension" measurements
     where the same spectrum is taken a number of times in a row under
-    changing conditions or such.
+    changing conditions.
     """
     pass
 
 class Region:
     """Class Region contains the data for one region.
     """
-    -info_entries = (
-        "Region Name",
-        "Pass Energy",
-        "Sweeps Number",
-        "Excitation Energy",
-        "Energy Scale",
-        "Energy Step",
-        "Dwell Time",
-        "File Name",
-        "Date",
-        "Time"
+    _info_entries = (
+        "Region Name",          # 0
+        "Pass Energy",          # 1
+        "Sweeps Number",        # 2
+        "Excitation Energy",    # 3
+        "Energy Scale",         # 4
+        "Energy Step",          # 5
+        "Dwell Time",           # 6
+        "File Name",            # 7
+        "Date",                 # 8
+        "Conditions"            # 9
     )
 
     _region_flags = (
@@ -352,7 +375,14 @@ class Region:
         "sweeps_normalized"
     )
 
-    def __init__(self, energy, counts, info=None, conditions=None, ID=None, fermiFlag=False):
+    def __init__(self,
+                 energy,
+                 counts,
+                 info=None,
+                 excitation_energy=None,
+                 conditions=None,
+                 ID=None,
+                 fermiFlag=False):
         """Creates an object using two variables (of type list or similar).
         The first goes for energy (X) axis, the second - for counts (Y) axis.
         Info about the region is stored as a dictionary {property: value}.
@@ -364,12 +394,14 @@ class Region:
         # a backup, which can be used to restore the initial state of
         # the region data in case of cropping or similar.
         self._Raw = pd.DataFrame(data={'energy': energy, 'counts': counts}, dtype=float)
-        # If the region is a part of a larger object like spectrum or experiment
-        # it needs to have an ID for easier access. Single region doesn't have any ID,
-        # but it can be added by using internal class method.
-        self._ID = ID
+        if not info:
+            info = {}
+        self._Info = info
+        self._RawInfo = info
         # Experimental conditions
-        self._Conditions = conditions
+        self._setConditions(conditions)
+        # Excitation energy
+        self._setExcitationEnergy(excitation_energy)
         # Default values for flags
         self._Flags = {
                 Region._region_flags[0]: False,
@@ -377,18 +409,17 @@ class Region:
                 Region._region_flags[2]: fermiFlag,
                 Region._region_flags[3]: False
                 }
-        self._Info = info
-        self._RawInfo = info
         # Check which energy scale is used:
         if self._Info: # Info can be None
-            if self._Info["Energy Scale"] == "Binding":
+            if self._Info[Region._info_entries[4]] == "Binding":
                 self._Flags[Region._region_flags[1]] = True
             else:
                 self._Flags[Region._region_flags[1]] = False
             # If info is available for the region and the ID is not assigned,
             # take string 'FileNumber:RegionName' as ID
-            if not self._ID:
-                self._ID = f"{self._Info['File']}:{self._Info['Region Name']}"
+            if not ID:
+                ID = f"{self._Info[Region._info_entries[7]]}:{self._Info[Region._info_entries[0]]}"
+        self._setID(ID)
 
         self._Fitter = None # After fitting of the region we want to save the
                             # results and the Region object should know about it
@@ -407,6 +438,13 @@ class Region:
         """
         self._Conditions = conditions
 
+    def _setExcitationEnergy(self, excitation_energy, overwrite=False):
+        """Set regions's excitation energy.
+        """
+        self._ExcitationEnergy = excitation_energy
+        if overwrite:
+            self._Info[Region._info_entries[3]] = str(excitation_energy)
+
     def setFermiFlag(self):
         self._Flags[Region._region_flags[2]] = True
 
@@ -418,73 +456,61 @@ class Region:
             return self._Conditions[property]
         return self._Conditions
 
+    def getExcitationEnergy(self):
+        return self._ExcitationEnergy
+
     def getID(self):
         return self._ID
 
     def resetRegion(self):
         """Removes all the changes made to the Region and restores the initial
-        "counts" and "energy" columns
+        "counts" and "energy" columns together with the _Info
         """
         self._Data = self._Raw
         self._Info = self._RawInfo
 
-    def invertToBinding(self, excitation_energy):
+    def invertToBinding(self):
         """Changes the energy scale of the region from kinetic to binding energy.
-        Requires the value of exitation energy to be provided.
         """
         if not self._Flags[Region._region_flags[1]]:
-            self.invertEnergyScale(excitation_energy)
+            self.invertEnergyScale()
 
-    def invertToKinetic(self, excitation_energy):
+    def invertToKinetic(self):
         """Changes the energy scale of the region from binding to kinetic energy.
-        Requires the value of exitation energy to be provided.
         """
         if self._Flags[Region._region_flags[1]]:
-            self.invertEnergyScale(excitation_energy)
+            self.invertEnergyScale()
 
-    def invertEnergyScale(self, excitation_energy):
+    def invertEnergyScale(self):
         """Changes the energy scale of the region from the currently defined to
         the alternative one. From kinetic to binding energy
-        or from binding to kinetic energy. The photon energy used for excitation
-        is required.
+        or from binding to kinetic energy.
         """
-        self._Data['energy'] = [(excitation_energy - value) for value in self._Data['energy']]
+        self._Data['energy'] = [(self._ExcitationEnergy - value) for value in self._Data['energy']]
         self._Flags[Region._region_flags[1]] = not self._Flags[Region._region_flags[1]]
 
-        # We need to change some info entries also
-        self._Info["Excitation Energy"] = str(excitation_energy)
-        for key in ["Energy Scale", "Energy Unit", "Energy Axis"]:
-            # Depending on whether it was SPECS or Scienta file loaded, the info
-            # dictionaries may have different keys. So, we scroll through all
-            # possible values and change the existing ones
-            if key in self._Info.keys():
-                if self._Flags[Region._region_flags[1]]:
-                    self._Info[key] = "Binding"
-                else:
-                    self._Info[key] = "Kinetic"
-        for key in ["Center Energy", "Low Energy", "High Energy"]:
-            if key in self._Info.keys():
-                self._Info[key] = str(excitation_energy - float(self._Info[key]))
+        # We need to change "Energy Scale" info entry also
+        if self._Flags[Region._region_flags[1]]:
+            self._Info[Region._info_entries[4]] = "Binding"
+        else:
+            self._Info[Region._info_entries[4]] = "Kinetic"
 
     def correctEnergyShift(self, shift):
         if not self._Flags[Region._region_flags[0]]:
             self._Data['energy'] += shift
-            # We also need to change some info due to change in energy values
-            for key in ["Center Energy", "Low Energy", "High Energy"]:
-                self._Info[key] = str(float(self._Info[key]) + shift)
             self._Flags[Region._region_flags[0]] = True
         else:
-            print(f"The region {self._Info['File']}: {self._Info['Region Name']} has already been energy corrected.")
+            print(f"The region {self.getID()} has already been energy corrected.")
 
     def normalizeBySweeps(self):
-        if self._Info and ("Number of Sweeps" in self._Info):
-            self._Data['counts'] = np.round(self._Data['counts'] / int(self._Info["Number of Sweeps"]))
+        if self._Info and (Region._info_entries[2] in self._Info):
+            self._Data['counts'] = np.round(self._Data['counts'] / int(self._Info[Region._info_entries[2]]))
             self._Flags[self._region_flags[3]] = True
 
     def cropRegion(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
         on 'energy' axis. Interval is given in real units of the data. If start or
-        stop or both are not specified tales first (or/and last) values.
+        stop or both are not specified the method takes first (or/and last) values.
         If changesource flag is True, the original region is cropped, if False -
         the copy of original region is cropped and returned.
         """
@@ -537,7 +563,7 @@ class Region:
         """
         output = ""
         if not self._Info:
-            output = "No info available"
+            output = f"No info available for region {self.getID()}"
         else:
             # If no specific arguments provided, add everything to the output
             if len(args) == 0:
@@ -570,19 +596,19 @@ class Region:
         """
         if column_label in self._Data.columns:
             if not overwrite:
-                print(f"Column '{column_label}' already exists in {self._Info['File']}: {self._Info['Region Name']}")
+                print(f"Column '{column_label}' already exists in {self.getID()}")
                 print("Pass overwrite=True to overwrite the existing values.")
         self._Data[column_label] = array
 
     def addFitter(self, fitter, overwrite=False):
         if self._Fitter and (not overwrite):
-            print(f"Region {self._ID} already has a fitter. Add overwrite=True parameter to overwrite.")
+            print(f"Region {self.getID()} already has a fitter. Add overwrite=True parameter to overwrite.")
             return
         self._Fitter = fitter
 
     def getFitter(self):
         if not self._Fitter:
-            print(f"Region {self._ID} doesn't have a fitter.")
+            print(f"Region {self.getID()} doesn't have a fitter.")
             return
         return self._Fitter
 
