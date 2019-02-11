@@ -132,14 +132,77 @@ def _loadScientaTXT(filename, regions_number_line=1):
         info_lines_revised[Region._info_entries[7]] = info_lines["File"]
         info_lines_revised[Region._info_entries[8]] = f"{info_lines['Date']} {info_lines['Time']}"
 
-        # Create a Region object for the current region with corresponding values
-        # of flags
+        # Create a Region object for the current region
         regions.append(Region(energy, counts, info=info_lines_revised))
 
     return regions
 
-def _loadSpecsXY(): # TODO finish writing the function
-    pass
+def _loadSpecsXY(filename):
+    """Opens and parses provided SPECS file returning the data and info for recorded
+    region as a list of Region objects in order to be consistent with the Scienta
+    loading routine.
+    """
+    def parseSpecFileInfo(lines):
+        """Parses the list of lines read from SPEC.xy file info block
+        and returns 'info' dictionary
+        """
+        info = {}
+        for line in lines:
+            line = line.strip().lstrip('#').strip()
+            if ':' in line:
+                line_content = line.split(':', 1)
+                info[line_content[0].strip()] = line_content[1].strip()
+
+        return info
+
+    with open(filename) as f:
+        lines = f.read().splitlines()
+
+    # Basic parsing based on the appearance of SPECS files
+    energy, counts = [], []
+    info_lines = []
+    for line in lines:
+        if not line.strip():
+            continue # Scip empty lines
+        elif line.strip().startswith('#'):
+            info_lines.append(line) # Save info lines
+        else:
+            xy = line.split()
+            x = float(xy[0].strip())
+            y = float(xy[1].strip())
+            if y > 0:
+                energy.append(x)
+                counts.append(y)
+
+    regions = []
+    # The file might be empty, then we ignore it
+    if energy:
+        # Switch from list to dictionary
+        info_lines = parseSpecFileInfo(info_lines)
+
+        # Check which energy scale is used:
+        if info_lines["Energy Axis"] == "Kinetic Energy":
+            info_lines["Energy Axis"] = "Kinetic" # To make it consistent with scienta
+        else:
+            info_lines["Energy Axis"] = "Binding"
+
+        # Not all info entries are important for data analysis,
+        # Choose only important ones
+        info_lines_revised = {}
+        info_lines_revised[Region._info_entries[0]] = info_lines["Region"]
+        info_lines_revised[Region._info_entries[1]] = info_lines["Pass Energy"]
+        info_lines_revised[Region._info_entries[2]] = info_lines["Number of Scans"]
+        info_lines_revised[Region._info_entries[3]] = info_lines["Excitation Energy"]
+        info_lines_revised[Region._info_entries[4]] = info_lines["Energy Axis"]
+        info_lines_revised[Region._info_entries[5]] = str(abs(energy[-1] - energy[0])//int(info_lines["Values/Curve"]))
+        info_lines_revised[Region._info_entries[6]] = info_lines["Dwell Time"]
+        info_lines_revised[Region._info_entries[7]] = filename.rpartition('.')[0].rpartition('/')[2]
+        info_lines_revised[Region._info_entries[8]] = info_lines["Acquisition Date"]
+
+        # Create a Region object for the current region
+        regions.append(Region(energy, counts, info=info_lines_revised))
+
+    return regions
 
 def _askPath(folder_flag=True, multiple_files_flag=False):
     """Makes a tkinter dialog for choosing the folder if folder_flag=True
@@ -242,12 +305,17 @@ class Spectrum:
     regions. It knows also how to parse data files since each file normally
     contains one spectrum.
     """
-    def __init__(self, path=None, conditions=None, ID=None, excitation_energy=None):
+    def __init__(self, path=None, conditions=None, ID=None, excitation_energy=None, file_type="scienta"):
         if not path:
             path = _askPath(folder_flag=False, multiple_files_flag=False)
 
         self._Path = path
-        self._Regions = _loadScientaTXT(self._Path)
+        if file_type == "scienta":
+            self._Regions = _loadScientaTXT(self._Path)
+        elif file_type == "specs":
+            self._Regions = _loadSpecsXY(self._Path)
+            if not excitation_energy and self._Regions:
+                excitation_energy = float(self.getRegion().getInfo("Excitation Energy"))
         self._setConditions(conditions)
         self._setExcitationEnergy(excitation_energy)
 
@@ -337,7 +405,7 @@ class Spectrum:
             if len(self._Regions) == 1:
                 return self._Regions[0]
             else:
-                print(f"The spetrum {self._ID} contains more than one region")
+                print(f"The spetrum {self.getID()} contains more than one region")
 
     def getFilePath(self):
         """Returns the path to the original file with the data
