@@ -405,7 +405,10 @@ class Spectrum:
             if len(self._Regions) == 1:
                 return self._Regions[0]
             else:
-                print(f"The spetrum {self.getID()} contains more than one region")
+                if self.isEmpty():
+                    print(f"The spetrum {self.getID()} is empty")
+                else:
+                    print(f"The spetrum {self.getID()} contains more than one region")
 
     def getFilePath(self):
         """Returns the path to the original file with the data
@@ -571,9 +574,11 @@ class Region:
             print(f"The region {self.getID()} has already been energy corrected.")
 
     def normalizeBySweeps(self):
-        if self._Info and (Region._info_entries[2] in self._Info):
-            self._Data['counts'] = np.round(self._Data['counts'] / int(self._Info[Region._info_entries[2]]))
-            self._Flags[self._region_flags[3]] = True
+        # If not yet normalized
+        if not self._Flags[self._region_flags[3]]:
+            if self._Info and (Region._info_entries[2] in self._Info):
+                self._Data['counts'] = np.round(self._Data['counts'] / int(self._Info[Region._info_entries[2]]))
+                self._Flags[self._region_flags[3]] = True
 
     def cropRegion(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
