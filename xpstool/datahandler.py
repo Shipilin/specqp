@@ -194,14 +194,13 @@ def _loadSpecsXY(filename):
         info_lines_revised[Region._info_entries[2]] = info_lines["Number of Scans"]
         info_lines_revised[Region._info_entries[3]] = info_lines["Excitation Energy"]
         info_lines_revised[Region._info_entries[4]] = info_lines["Energy Axis"]
-        info_lines_revised[Region._info_entries[5]] = str(abs(energy[-1] - energy[0])//int(info_lines["Values/Curve"]))
+        info_lines_revised[Region._info_entries[5]] = str(abs(energy[-1] - energy[0])/int(info_lines["Values/Curve"]))
         info_lines_revised[Region._info_entries[6]] = info_lines["Dwell Time"]
         info_lines_revised[Region._info_entries[7]] = filename.rpartition('.')[0].rpartition('/')[2]
         info_lines_revised[Region._info_entries[8]] = info_lines["Acquisition Date"]
 
         # Create a Region object for the current region
         regions.append(Region(energy, counts, info=info_lines_revised))
-
     return regions
 
 def _askPath(folder_flag=True, multiple_files_flag=False):
