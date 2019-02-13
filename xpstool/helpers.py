@@ -245,6 +245,8 @@ def plotRegion(region,
             figure=1,
             ax=None,
             invert_x=True,
+            log_scale=False,
+            y_offset=0,
             x_data='energy',
             y_data='final',
             scatter=False,
@@ -262,6 +264,8 @@ def plotRegion(region,
         y = region.getData(column=y_data)
     else:
         y = region.getData(column='counts')
+
+    y += y_offset # If one wants to plot data with vertical offset
 
     plt.figure(figure)
     if not ax:
@@ -295,6 +299,9 @@ def plotRegion(region,
     # Inverting x-axis if desired and not yet inverted
     if invert_x and not ax.xaxis_inverted():
         ax.invert_xaxis()
+
+    if log_scale:
+        ax.set_yscale('log')
 
 def plotPeak(peak,
             figure=1,
