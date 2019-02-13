@@ -39,10 +39,13 @@ def fitFermiEdge(region, initial_params, add_column=True, overwrite=True):
 
     return [popt, np.sqrt(np.diag(pcov))]
 
-def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=True, overwrite=True):
+def calculateLinearBackground(region, y_data='counts', manual_bg=None, by_min=False, add_column=True, overwrite=True):
     """Calculates the linear background using left and right ends of the region
     or using the minimum on Y-axis and the end that is furthest from the minimum
-    on the X-axis.
+    on the X-axis. Manual background can be provided by passing approximate intervals
+    like [[730, 740], [760,770]]; In that case the average values within these
+    intervals will be calculated and assigned to the end points of the line
+    describing the background.
     """
     def calculateLine(min_position):
         """Helper function to calculate the line cross the whole
@@ -69,11 +72,47 @@ def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=
             line_end = slope*energy[0] + b
             return np.linspace(line_end, counts[-1], len(energy))
 
+    def calculateManualBG(x, y, x_intervals):
+        left_interval = x_intervals[0]
+        right_interval = x_intervals[1]
+        # Checking that left is left and right is right. Swop otherwise.
+        if x[0] > x[-1]:
+            if left_interval[0] < right_interval[0]:
+                left_interval = x_intervals[1]
+                right_interval = x_intervals[0]
+
+        left_bg_values = []
+        right_bg_values = []
+
+        first_left_index = 0
+        last_left_index = len(x)-1
+        first_right_index = 0
+        last_right_index = len(x)-1
+        for i in range(1, len(x)):
+            if ((x[i-1] >= left_interval[0] and x[i] <= left_interval[0]) or
+                (x[i-1] <= left_interval[0] and x[i] >= left_interval[0])):
+                first_left_index = i
+            if ((x[i-1] >= left_interval[1] and x[i] <= left_interval[1]) or
+                (x[i-1] <= left_interval[1] and x[i] >= left_interval[1])):
+                last_left_index = i
+            if ((x[i-1] >= right_interval[0] and x[i] <= right_interval[0]) or
+                (x[i-1] <= right_interval[0] and x[i] >= right_interval[0])):
+                first_right_index = i
+            if ((x[i-1] >= right_interval[1] and x[i] <= right_interval[1]) or
+                (x[i-1] <= right_interval[1] and x[i] >= right_interval[1])):
+                last_right_index = i
+
+        left_background = y[first_left_index:last_left_index+1]
+        left_average = sum(left_background)//len(left_background)
+        right_background = y[first_right_index:last_right_index+1]
+        right_average = sum(right_background)//len(right_background)
+
+        return [left_average, right_average]
+
     if y_data in list(region.getData()):
         counts = region.getData(column=y_data).tolist()
     else:
         counts = region.getData(column='counts').tolist()
-    energy = region.getData(column='energy')
     energy = region.getData(column='energy').tolist()
 
     if by_min:
@@ -85,7 +124,11 @@ def calculateLinearBackground(region, y_data='counts', by_min=False, add_column=
         else:
             background = calculateLine("left")
     else:
-        background = np.linspace(counts[0], counts[-1], len(energy))
+        if manual_bg:
+            line_end_values = calculateManualBG(energy, counts, manual_bg)
+            background = np.linspace(line_end_values[0], line_end_values[1], len(energy))
+        else:
+            background = np.linspace(counts[0], counts[-1], len(energy))
 
     if add_column:
         region.addColumn("linearBG", counts - background, overwrite=overwrite)
