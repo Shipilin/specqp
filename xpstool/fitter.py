@@ -248,7 +248,7 @@ class Fitter:
         bounds_low = []
         bounds_high = []
         for i in range(0, len(initial_params)):
-            if (i) % 3 == 0: # Adjusting amplitude parameter boundaries
+            if i % 3 == 0: # Adjusting amplitude parameter boundaries
                 if fix_pars and ("amp" in fix_pars):
                     if ((i) // 3) in fix_pars["amp"]:
                         bounds_low.append(initial_params[i] - 0.0001)
@@ -272,7 +272,7 @@ class Fitter:
                         continue
             if (i-2) % 3 == 0: # Fixing fwhm parameters if asked
                 if fix_pars and ("fwhm" in fix_pars):
-                    if ((i-3) // 4) in fix_pars["fwhm"]:
+                    if ((i-2) // 3) in fix_pars["fwhm"]:
                         bounds_low.append(initial_params[i] - 0.0001)
                         bounds_high.append(initial_params[i] + 0.0001)
                         continue

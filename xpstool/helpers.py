@@ -265,8 +265,6 @@ def plotRegion(region,
     else:
         y = region.getData(column='counts')
 
-    y += y_offset # If one wants to plot data with vertical offset
-
     plt.figure(figure)
     if not ax:
         ax = plt.gca()
@@ -275,9 +273,9 @@ def plotRegion(region,
         label=f"{region.getID()} ({region.getConditions()['Temperature']})"
     # If we want scatter plot
     if scatter:
-        ax.scatter(x, y, s=7, c=color, label=label)
+        ax.scatter(x, y+y_offset, s=7, c=color, label=label)
     else:
-        ax.plot(x, y, color=color, label=label)
+        ax.plot(x, y+y_offset, color=color, label=label)
     if legend:
         ax.legend(fancybox=True, framealpha=0, loc='best')
     if title:
@@ -304,6 +302,7 @@ def plotRegion(region,
         ax.set_yscale('log')
 
 def plotPeak(peak,
+            y_offset=0,
             figure=1,
             ax=None,
             label=None,
@@ -320,14 +319,15 @@ def plotPeak(peak,
     if not label:
         label=f"Cen: {peak.getParameters('center'):.2f}; FWHM: {peak.getParameters('fwhm'):.2f}"
 
-    ax.plot(peak.getData()[0], peak.getData()[1], color=color, label=label)
+    ax.plot(peak.getData()[0], peak.getData()[1]+y_offset, color=color, label=label)
     if fill:
         # Fill the peak shape with color that is retrieved from the last plotted line
-        ax.fill_between(peakLine[0], peakLine[1].min(), peakLine[1], facecolor=ax.get_lines()[-1].get_color(), alpha=0.3)
+        ax.fill_between(peakLine[0], peakLine[1].min()+y_offset, peakLine[1]+y_offset, facecolor=ax.get_lines()[-1].get_color(), alpha=0.3)
     if legend:
         ax.legend(fancybox=True, framealpha=0, loc='best')
 
 def plotFit(fitter,
+            y_offset=0,
             figure=1,
             ax=None,
             label=None,
@@ -342,14 +342,14 @@ def plotFit(fitter,
     if not label:
         label="fit"
     ax.plot(fitter.getData()[0].tolist(),
-            fitter.getFitLine().tolist(),
+            (fitter.getFitLine()+y_offset).tolist(),
             linestyle='--',
             color=color,
             label=label)
     # Add residuals if specified
     if addresiduals:
         ax.plot(fitter.getData()[0].tolist(),
-                fitter.getResiduals().tolist(),
+                (fitter.getResiduals()+y_offset).tolist(),
                 linestyle=':',
                 alpha=1,
                 color='black',
