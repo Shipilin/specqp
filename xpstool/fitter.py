@@ -357,3 +357,6 @@ class Fitter:
 
     def getID(self):
         return self._ID
+
+    def getGaussFWHM(self):
+        return self._GaussFWHM

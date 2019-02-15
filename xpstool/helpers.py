@@ -253,7 +253,8 @@ def plotRegion(region,
             label=None,
             color=None,
             title=True,
-            legend=True):
+            legend=True,
+            legend_pos='best'):
     """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
     """
     if x_data in list(region.getData()):
@@ -277,7 +278,14 @@ def plotRegion(region,
     else:
         ax.plot(x, y+y_offset, color=color, label=label)
     if legend:
-        ax.legend(fancybox=True, framealpha=0, loc='best')
+        if legend_pos == 'lower center':
+            ax.set_ylim(ymin=-1*np.amax(y))
+            plt.tick_params(
+                axis='y',          # changes apply to the y-axis
+                which='both',      # both major and minor ticks are affected
+                left=False,      # ticks along the left edge are off
+                right=False)         # ticks along the right edge are off
+        ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})
     if title:
         title_str=""
         if region.isSweepsNormalized():
@@ -308,7 +316,8 @@ def plotPeak(peak,
             label=None,
             color=None,
             fill=True,
-            legend=True):
+            legend=True,
+            legend_pos='best'):
     """Plotting fit peak with pyplot using given plt.figure and a number of optional arguments
     """
     peakLine = peak.getData()
@@ -317,14 +326,14 @@ def plotPeak(peak,
         ax = plt.gca()
 
     if not label:
-        label=f"Cen: {peak.getParameters('center'):.2f}; FWHM: {peak.getParameters('fwhm'):.2f}"
+        label=f"Cen: {peak.getParameters('center'):.2f}; LorentzFWHM: {peak.getParameters('fwhm'):.2f}"
 
     ax.plot(peak.getData()[0], peak.getData()[1]+y_offset, color=color, label=label)
     if fill:
         # Fill the peak shape with color that is retrieved from the last plotted line
         ax.fill_between(peakLine[0], peakLine[1].min()+y_offset, peakLine[1]+y_offset, facecolor=ax.get_lines()[-1].get_color(), alpha=0.3)
     if legend:
-        ax.legend(fancybox=True, framealpha=0, loc='best')
+        ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})
 
 def plotFit(fitter,
             y_offset=0,
@@ -333,6 +342,7 @@ def plotFit(fitter,
             label=None,
             color='black',
             legend=True,
+            legend_pos='best',
             addresiduals=True):
     """Plotting fit line with pyplot using given plt.figure and a number of optional arguments
     """
@@ -361,4 +371,4 @@ def plotFit(fitter,
         #ax2.plot(residuals[0], residuals[1], 'o', color='grey', label='residuals')
 
     if legend:
-        ax.legend(fancybox=True, framealpha=0, loc='best')
+        ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})
