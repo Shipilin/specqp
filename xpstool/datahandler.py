@@ -494,11 +494,18 @@ class Region:
         self._Fitter = None # After fitting of the region we want to save the
                             # results and the Region object should know about it
 
+        self.addColumn('final', self._Data["counts"])
+
     def __str__(self):
         """Prints the info read from the Scienta file
         Possible to add keys of the Info dictionary to be printed
         """
         return self.getInfoString()
+
+    def __sub__(self, other_region): # TODO
+        """Returns the difference of the "final" column of two instances
+        """
+        return self._Data["final"] - other_region.getData("final")
 
     def _setID(self, regionID):
         self._ID = regionID
