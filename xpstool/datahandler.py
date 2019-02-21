@@ -583,7 +583,7 @@ class Region:
         # If not yet normalized
         if not self._Flags[self._region_flags[3]]:
             if self._Info and (Region._info_entries[2] in self._Info):
-                self._Data['counts'] = np.round(self._Data['counts'] / int(self._Info[Region._info_entries[2]]))
+                self._Data['counts'] = np.round(self._Data['counts'] / float(self._Info[Region._info_entries[2]]))
                 self._Flags[self._region_flags[3]] = True
 
     def cropRegion(self, start=None, stop=None, changesource=False):
