@@ -103,9 +103,9 @@ def calculateLinearBackground(region, y_data='counts', manual_bg=None, by_min=Fa
                 last_right_index = i
 
         left_background = y[first_left_index:last_left_index+1]
-        left_average = sum(left_background)//len(left_background)
+        left_average = sum(left_background)/float(len(left_background))
         right_background = y[first_right_index:last_right_index+1]
-        right_average = sum(right_background)//len(right_background)
+        right_average = sum(right_background)/float(len(right_background))
 
         return [left_average, right_average]
 
@@ -235,7 +235,7 @@ def normalize(region, y_data='counts', add_column=True):
     counts = region.getData(column=y_data)
     energy = region.getData(column='energy')
 
-    output = counts / max(counts)
+    output = counts / float(max(counts))
 
     if add_column:
         region.addColumn("normalized", output, overwrite=True)

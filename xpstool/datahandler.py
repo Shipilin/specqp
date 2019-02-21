@@ -272,6 +272,8 @@ class Experiment:
     """
     def __init__(self):
         self._Spectra = {}
+        self._EnergyShifts = {}
+        self._GaussFWHMs = {}
 
     def __str__(self):
         output = ""
@@ -290,11 +292,35 @@ class Experiment:
         """
         self._Spectra[spectrum.getID()] = spectrum
 
+    def addEnergyShift(self, energy_shift, spectrumID):
+        """Adds energy shift to the spectrum with specified ID within
+        Experiment object
+        """
+        self._EnergyShifts[spectrumID] = energy_shift
+
+    def addEnergyShift(self, gauss_fwhm, spectrumID):
+        """Adds gaussian widening to the spectrum with specified ID within
+        Experiment object
+        """
+        self._GaussFWHMs[spectrumID] = gauss_fwhm
+
     def getSpectrum(self, spectrumID):
         if not spectrumID in self._Spectra:
             print(f"Spectrum {spectrumID} is not loaded in the experiment.")
             return
         return self._Spectra[spectrumID]
+
+    def getEnergyShift(self, spectrumID):
+        if not spectrumID in self._Spectra:
+            print(f"Spectrum {spectrumID} is not loaded in the experiment.")
+            return
+        return self._EnergyShifts[spectrumID]
+
+    def getGaussFWHM(self, spectrumID):
+        if not spectrumID in self._Spectra:
+            print(f"Spectrum {spectrumID} is not loaded in the experiment.")
+            return
+        return self._GaussFWHMs[spectrumID]
 
     def getSpectraID(self):
         return self._Spectra.keys()
@@ -583,7 +609,7 @@ class Region:
         # If not yet normalized
         if not self._Flags[self._region_flags[3]]:
             if self._Info and (Region._info_entries[2] in self._Info):
-                self._Data['counts'] = np.round(self._Data['counts'] / float(self._Info[Region._info_entries[2]]))
+                self._Data['counts'] = self._Data['counts'] / float(self._Info[Region._info_entries[2]])
                 self._Flags[self._region_flags[3]] = True
 
     def cropRegion(self, start=None, stop=None, changesource=False):
