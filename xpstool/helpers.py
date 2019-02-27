@@ -103,9 +103,11 @@ def calculateLinearBackground(region, y_data='counts', manual_bg=None, by_min=Fa
                 last_right_index = i
 
         left_background = y[first_left_index:last_left_index+1]
-        left_average = sum(left_background)/float(len(left_background))
+        left_average = np.mean(left_background)
+        #sum(left_background)/float(len(left_background))
         right_background = y[first_right_index:last_right_index+1]
-        right_average = sum(right_background)/float(len(right_background))
+        right_average = np.mean(right_background)
+        #sum(right_background)/float(len(right_background))
 
         return [left_average, right_average]
 
@@ -228,17 +230,70 @@ def smoothen(region, y_data='counts', interval=3, add_column=True):
 
     return avged
 
-def normalize(region, y_data='counts', add_column=True):
-    """Normalize counts.
+def normalize(region, y_data='counts', const=None, add_column=True):
+    """Normalize counts by maximum. If const is given, normalizes by this number
     """
     # If we want to use other column than "counts" for calculations
     counts = region.getData(column=y_data)
-    energy = region.getData(column='energy')
-
-    output = counts / float(max(counts))
+    if const:
+        output = counts / float(const)
+    else:
+        output = counts / float(max(counts))
 
     if add_column:
         region.addColumn("normalized", output, overwrite=True)
+    return output
+
+def normalizeByBackground(region, start, stop, y_data='counts', add_column=True):
+    """Correct counts by the average background level given by the interval
+    [start, stop]
+    """
+    # If we want to use other column than "counts" for calculations
+    counts = region.getData(column=y_data)
+    energy = region.getData(column="energy")
+
+    first_index = 0
+    last_index = len(counts) - 1
+
+    for i in range(0, len(energy)):
+        if i > 0:
+            if ((energy[i - 1] <= start and energy[i] >= start) or
+                (energy[i - 1] >= start and energy[i] <= start)):
+                first_index = i
+            if ((energy[i - 1] <= stop and energy[i] >= stop) or
+                (energy[i - 1] >= stop and energy[i] <= stop)):
+                last_index = i
+
+    output = counts / float(np.mean(counts[first_index:last_index]))
+
+    if add_column:
+        region.addColumn("bgnormalized", output, overwrite=True)
+    return output
+
+def shiftByBackground(region, interval, y_data='counts', add_column=True):
+    """Correct counts by the average background level given by the interval
+    [start, stop]
+    """
+    # If we want to use other column than "counts" for calculations
+    counts = region.getData(column=y_data)
+    energy = region.getData(column="energy")
+
+    first_index = 0
+    last_index = len(counts) - 1
+
+    for i in range(0, len(energy)):
+        if i > 0:
+            if ((energy[i - 1] <= interval[0] and energy[i] >= interval[0]) or
+                (energy[i - 1] >= interval[0] and energy[i] <= interval[0])):
+                first_index = i
+            if ((energy[i - 1] <= interval[1] and energy[i] >= interval[1]) or
+                (energy[i - 1] >= interval[1] and energy[i] <= interval[1])):
+                last_index = i
+
+    output = counts - float(np.mean(counts[first_index:last_index]))
+
+    if add_column:
+        region.addColumn("bgshifted", output, overwrite=True)
     return output
 
 def plotRegion(region,

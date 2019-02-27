@@ -232,14 +232,18 @@ class Fitter:
             cnt += 3
         self._makeFit()
 
-    def fitVoigt(self, initial_params, fix_pars=None):
+    def fitVoigt(self, initial_params, fix_pars=None, boundaries=None):
         """Fits one or more Voigt function(s) to Region object based on initial values
         of three parameters (amplitude, center, and fwhm). If sigma for Gaussian
         is known from experiment, the fwhm parameter changes only for Lorentzian.
         If list with more than one set of parameters is given, the function fits
-        more than one peak. fix_parameter is a dictionary with names of parameters
-        to fix as keys and numbers of peaks for which the parameters should be fixed
+        more than one peak.
+        fix_parameter is a dictionary with names of parameters to fix as keys
+        and numbers of peaks for which the parameters should be fixed
         as lists. Ex: {"cen": [1,2], "amp": [0,1,2]}
+        boundaries is a dictionary with names of parameters as keys and a
+        dictionary containing lower and upper boundaries for the corresponding
+        peak. Ex: {"cen": {1: [34,35], 2: [35,36]}}
         """
         if len(initial_params) % 3 != 0:
             print(f"Check the number of initial parameters.")
@@ -249,11 +253,18 @@ class Fitter:
         bounds_high = []
         for i in range(0, len(initial_params)):
             if i % 3 == 0: # Adjusting amplitude parameter boundaries
+                peak_number = (i) // 3
                 if fix_pars and ("amp" in fix_pars):
-                    if ((i) // 3) in fix_pars["amp"]:
+                    if peak_number in fix_pars["amp"]:
                         bounds_low.append(initial_params[i] - 0.0001)
                         bounds_high.append(initial_params[i] + 0.0001)
                         continue
+                if boundaries and ("amp" in boundaries):
+                    if peak_number in boundaries["amp"]:
+                        if len(boundaries["amp"][peak_number]) == 2:
+                            bounds_low.append(min(boundaries["amp"][peak_number]))
+                            bounds_high.append(max(boundaries["amp"][peak_number]))
+                            continue
                 # Fixing the lower limit for amplitude at 0 and the higher
                 # limit at data_y max
                 bounds_low.append(0)
@@ -264,18 +275,32 @@ class Fitter:
                 else:
                     bounds_high.append(initial_params[i])
                 continue
-            if (i-1) % 3 == 0: # Fixing center parameters if asked
+            if (i-1) % 3 == 0: # Adjusting center parameters boundaries
+                peak_number = (i - 1) // 3
                 if fix_pars and ("cen" in fix_pars):
-                    if ((i-1) // 3) in fix_pars["cen"]:
+                    if peak_number in fix_pars["cen"]:
                         bounds_low.append(initial_params[i] - 0.0001)
                         bounds_high.append(initial_params[i] + 0.0001)
                         continue
-            if (i-2) % 3 == 0: # Fixing fwhm parameters if asked
+                if boundaries and ("cen" in boundaries):
+                    if peak_number in boundaries["cen"]:
+                        if len(boundaries["cen"][peak_number]) == 2:
+                            bounds_low.append(min(boundaries["cen"][peak_number]))
+                            bounds_high.append(max(boundaries["cen"][peak_number]))
+                            continue
+            if (i-2) % 3 == 0: # Adjusting fwhm parameters boundaries
+                peak_number = (i - 2) // 3
                 if fix_pars and ("fwhm" in fix_pars):
-                    if ((i-2) // 3) in fix_pars["fwhm"]:
+                    if peak_number in fix_pars["fwhm"]:
                         bounds_low.append(initial_params[i] - 0.0001)
                         bounds_high.append(initial_params[i] + 0.0001)
                         continue
+                if boundaries and ("fwhm" in boundaries):
+                    if peak_number in boundaries["fwhm"]:
+                        if len(boundaries["fwhm"][peak_number]) == 2:
+                            bounds_low.append(min(boundaries["fwhm"][peak_number]))
+                            bounds_high.append(max(boundaries["fwhm"][peak_number]))
+                            continue
             bounds_low.append(-np.inf)
             bounds_high.append(np.inf)
         # Parameters and parameters covariance of the fit
