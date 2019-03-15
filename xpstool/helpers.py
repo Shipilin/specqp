@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
-from .fitter import Peak
+from fitter import Peak
 
 def fitFermiEdge(region, initial_params, add_column=True, overwrite=True):
     """Fits error function to fermi level scan. If add_column flag

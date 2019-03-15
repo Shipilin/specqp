@@ -4,7 +4,7 @@ import numpy as np
 import scipy as sp
 from scipy.optimize import curve_fit
 from scipy.stats import chisquare
-from .datahandler import Region
+from datahandler import Region
 
 class Peak:
     """Contains information about one peak fitted to a region.
