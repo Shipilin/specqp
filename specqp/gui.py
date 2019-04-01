@@ -214,7 +214,7 @@ class Root(tk.Tk):
 
         #grid = {"nrows": 1, "ncolumns": 1, "rweights": (1,), "cweights": (1,)}
         #_configure_frame_grid(self, grid)
-        tk.Tk.wm_title(self, "XPS tool")
+        tk.Tk.wm_title(self, "SpecQP")
         main_container = MainWindow(self)
         main_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         #main_container.grid(column=0, row=0, sticky = "nsew")

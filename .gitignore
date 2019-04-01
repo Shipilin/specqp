@@ -1,8 +1,10 @@
 __pycache__
-xpstool/gui_test.py
-xpstool/tmp/
+specqp/gui_test.py
+specqp/tmp/
 jnotebook/
 scripts/
+scripts/E_logging.py
+scripts/Quick_plot.py
 jnotebook/.ipynb_checkpoints
 jnotebook/Working1_SCIENTA.ipynb
 jnotebook/Working2_SPECS.ipynb

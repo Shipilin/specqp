@@ -17,7 +17,5 @@ def run():
     """
     print("Running as a script")
 
-
-
 if __name__ == "__main__":
-    run()
+    gui.main()

@@ -1,2 +1,2 @@
-# xps-tool
-A tool to handle and fit XPS experimental data
+# SpecQP
+Stays for "Spectroscopy Quick Peek"
