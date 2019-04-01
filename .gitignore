@@ -2,10 +2,10 @@ __pycache__
 xpstool/gui_test.py
 xpstool/tmp/
 jnotebook/
+scripts/
 jnotebook/.ipynb_checkpoints
 jnotebook/Working1_SCIENTA.ipynb
 jnotebook/Working2_SPECS.ipynb
 jnotebook/xps-notebook.ipynb
 .DS_Store
-.ipynb
-ForPeter.ipynb
+.gitignore
