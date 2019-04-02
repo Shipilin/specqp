@@ -1,6 +1,6 @@
 """Provides functions for handling and fitting the data
 """
-from matplotlib import pyplot as plt
+#from matplotlib import pyplot as plt
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit

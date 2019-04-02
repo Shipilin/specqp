@@ -15,6 +15,8 @@ from matplotlib.backend_bases import key_press_handler
 from matplotlib.figure import Figure
 
 LARGE_FONT = ("Verdana", "12")
+# SCIENTA file path for testing
+test_file = os.path.abspath("/".join([os.path.dirname(__file__), "../", "tests/tmp/0091.txt"]))
 
 def _configure_frame_grid(frame, kwargs):
     """Service function to set the grid dimensions for frames in the app.
@@ -149,7 +151,7 @@ class FileViewPanel(ttk.Frame):
         self.text.bind("<<Change>>", self._on_change)
         self.text.bind("<Configure>", self._on_change)
 
-        file = open("/".join([os.curdir, "tmp/0091.txt"]), "r")
+        file = open(test_file, "r")
         self.text.insert(0.0, file.read())
         file.close()
         self.text.config(state=tk.DISABLED)

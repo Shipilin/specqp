@@ -1,2 +1,2 @@
 # SpecQP
-Stays for "Spectroscopy Quick Peek"
+Stands for "Spectroscopy Quick Peek"
