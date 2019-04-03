@@ -14,7 +14,7 @@ def main(*args, **kwargs):
             print(arg)
     if kwargs is not None:
         for key, value in kwargs.items():
-            print(f"{key}=={value}")
+            print(f"{key}={value}")
 
 if __name__ == "__main__":
 
