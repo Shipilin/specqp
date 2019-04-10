@@ -2,11 +2,6 @@ __pycache__
 specqp/gui_test.py
 jnotebook/
 scripts/
-scripts/E_logging.py
-scripts/Quick_plot.py
-jnotebook/.ipynb_checkpoints
-jnotebook/Working1_SCIENTA.ipynb
-jnotebook/Working2_SPECS.ipynb
-jnotebook/xps-notebook.ipynb
+.idea/
 .DS_Store
 .gitignore
