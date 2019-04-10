@@ -190,7 +190,7 @@ class WorkingPanel(ttk.Frame):
         super().__init__(parent, *args, **kwargs)
         applied_corrections_container = AppliedCorrectionPanel(self,
                                                                 borderwidth=1,
-                                                                relief="groove")
+                                                            relief="groove")
         applied_corrections_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         file_view_container = FileViewPanel(self, borderwidth=1, relief="groove")
         file_view_container.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
