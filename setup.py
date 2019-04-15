@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-setup(name='specqp',
+setup(name='SpecQP',
       version='0.1',
       description='Quick plotting and correcting spectroscopic data',
       url='https://github.com/Shipilin/specqp.git',

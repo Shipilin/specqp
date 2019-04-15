@@ -19,10 +19,8 @@ import os
 import copy
 import tkinter as tk
 from tkinter import filedialog
-import numpy as np
 import pandas as pd
-import scipy as sp
-from scipy.optimize import curve_fit
+
 
 def _loadScientaTXT(filename, regions_number_line=1):
     """Opens and parses provided scienta file returning the data and info for all regions
@@ -137,6 +135,7 @@ def _loadScientaTXT(filename, regions_number_line=1):
 
     return regions
 
+
 def _loadSpecsXY(filename):
     """Opens and parses provided SPECS file returning the data and info for recorded
     region as a list of Region objects in order to be consistent with the Scienta
@@ -203,6 +202,7 @@ def _loadSpecsXY(filename):
         regions.append(Region(energy, counts, info=info_lines_revised))
     return regions
 
+
 def _askPath(folder_flag=True, multiple_files_flag=False):
     """Makes a tkinter dialog for choosing the folder if folder_flag=True
     or file(s) otherwise. For multiple files the multiple_files_flag should
@@ -224,6 +224,7 @@ def _askPath(folder_flag=True, multiple_files_flag=False):
                                     title='Please select data file')
     root.destroy()
     return path
+
 
 def readCSV(filename): # TODO rewrite for new classes
     """Reads csv file and returns Region object. Values of flags and info
@@ -259,9 +260,11 @@ def readCSV(filename): # TODO rewrite for new classes
 
     region = Region(df['energy'].values, df['counts'].values,
                     energy_shift_corrected=flags[Region._region_flags[0]],
-                    binding_energy_flag=flags[Region._region_flags[1]], info=info)
+                    binding_energy_flag=flags[Region._region_flags[1]],
+                    info=info)
 
     return region
+
 
 class Experiment:
     """Class contains a number of spectra that were taken as one set of measurements.
@@ -324,6 +327,7 @@ class Experiment:
 
     def getSpectraID(self):
         return self._Spectra.keys()
+
 
 class Spectrum:
     """Class Spectrum contains a single spectrum with possibly several
@@ -440,6 +444,7 @@ class Spectrum:
         """
         return self._Path
 
+
 class AddDimensionSpectrum(Spectrum): # TODO finish writing the class
     """Class AddDimensionSpectrum is on the same hierarchical level with
     the class Spectrum, but is dedicated to "add dimension" measurements
@@ -447,6 +452,7 @@ class AddDimensionSpectrum(Spectrum): # TODO finish writing the class
     changing conditions.
     """
     pass
+
 
 class Region:
     """Class Region contains the data for one region.

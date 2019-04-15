@@ -6,17 +6,19 @@ import warnings
 
 import matplotlib
 matplotlib.use('TkAgg')
-import matplotlib.animation as animation
+# import matplotlib.animation as animation
 from matplotlib import style
 style.use('ggplot')
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+# from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 # implement the default mpl key bindings
-from matplotlib.backend_bases import key_press_handler
-from matplotlib.figure import Figure
+# from matplotlib.backend_bases import key_press_handler
+# from matplotlib.figure import Figure
+
 
 LARGE_FONT = ("Verdana", "12")
 # SCIENTA file path for testing
-test_file = os.path.abspath("/".join([os.path.dirname(__file__), "../", "tests/tmp/0091.txt"]))
+test_file = os.path.abspath("/".join([os.path.dirname(__file__), "../", "tests/tmp/scienta_single_region_1.txt"]))
+
 
 def _configure_frame_grid(frame, kwargs):
     """Service function to set the grid dimensions for frames in the app.
@@ -60,6 +62,7 @@ def _configure_frame_grid(frame, kwargs):
 #     a.clear()
 #     a.plot(xList, yList)
 
+
 class CustomText(tk.Text):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -81,6 +84,7 @@ class CustomText(tk.Text):
 
         # Return what the actual widget returned
         return result
+
 
 class TextLineNumbers(tk.Canvas):
     def __init__(self, parent, *args, **kwargs):
@@ -105,12 +109,14 @@ class TextLineNumbers(tk.Canvas):
                             fill="gray55")
             i = self.textwidget.index("%s+1line" % i)
 
+
 class FileHandlerPanel(ttk.Frame):
     """Frame containing open/save widgets and relative functionality to handle
     the files
     """
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
+
 
 class AppliedCorrectionPanel(ttk.Frame):
     """Frame containing functionality for data treatment by the user
@@ -119,6 +125,7 @@ class AppliedCorrectionPanel(ttk.Frame):
         super().__init__(parent, *args, **kwargs)
         plot_button = ttk.Button(self, text='Plot', command= lambda: print("Plot"))
         plot_button.pack(side=tk.TOP)
+
 
 class FileViewPanel(ttk.Frame):
     """Frame with a text widget for displaying the data files
@@ -159,6 +166,7 @@ class FileViewPanel(ttk.Frame):
     def _on_change(self, event):
         self.linenumbers.redraw()
 
+
 class ServicePanel(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -185,6 +193,7 @@ class ServicePanel(ttk.Frame):
         self.file_path = filedialog.askopenfilename(parent=self, initialdir=dir)
         self.update()
 
+
 class WorkingPanel(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -194,6 +203,7 @@ class WorkingPanel(ttk.Frame):
         applied_corrections_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         file_view_container = FileViewPanel(self, borderwidth=1, relief="groove")
         file_view_container.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
 
 class MainWindow(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
@@ -208,6 +218,7 @@ class MainWindow(ttk.Frame):
         self.master.destroy()  # this is necessary on Windows to prevent
                             # Fatal Python Error: PyEval_RestoreThread: NULL tstate
 
+
 class Root(tk.Tk):
     """Main application class
     """
@@ -221,6 +232,7 @@ class Root(tk.Tk):
         main_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         #main_container.grid(column=0, row=0, sticky = "nsew")
 
+
 def main():
     app = Root()
     app.update() #Update to be able to request main window parameters
@@ -228,6 +240,7 @@ def main():
     app.minsize(app.winfo_width(), app.winfo_height())
     app.resizable(1, 1)
     app.mainloop()
+
 
 if __name__ == '__main__':
     main()

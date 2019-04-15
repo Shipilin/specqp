@@ -1,9 +1,7 @@
 """ Provides class Fitter with helping functions
 """
 import numpy as np
-import scipy as sp
 from scipy.optimize import curve_fit
-from scipy.stats import chisquare
 from datahandler import Region
 
 class Peak:
@@ -80,6 +78,7 @@ class Peak:
     def getPeakType(self):
         return self._PeakType
 
+
 class Fitter:
     """Provides fitting possibilities for XPS spectra
     """
@@ -113,7 +112,7 @@ class Fitter:
         return output
 
     @staticmethod
-    def _multiGaussian(x, *args):# TODO change gamma and fwhm
+    def _multiGaussian(x, *args):  # TODO change gamma and fwhm
         cnt = 0
         func = 0
         while cnt < len(args):
@@ -122,7 +121,7 @@ class Fitter:
         return func
 
     @staticmethod
-    def _multiLorentzian(x, *args):# TODO change gamma and fwhm
+    def _multiLorentzian(x, *args):  # TODO change gamma and fwhm
         """Creates a single or multiple Lorentzian shape taking amplitude, Center
         and FWHM parameters
         """
@@ -151,7 +150,7 @@ class Fitter:
         def pseudo_voigt( x, cen, gFWHM, lFWHM, amp ):
             f = ( gFWHM**5 +  2.69269 * gFWHM**4 * lFWHM + 2.42843 * gFWHM**3 * lFWHM**2 + 4.47163 * gFWHM**2 * lFWHM**3 + 0.07842 * gFWHM * lFWHM**4 + lFWHM**5)**(1./5.)
             eta = 1.36603 * ( lFWHM / f ) - 0.47719 * ( lFWHM / f )**2 + 0.11116 * ( lFWHM / f )**3
-            #print(f"Gauss {gFWHM:.2f}, Lorentz {lFWHM:.2f}, eta {eta:.2f}")
+            # print(f"Gauss {gFWHM:.2f}, Lorentz {lFWHM:.2f}, eta {eta:.2f}")
             pv_func = ( eta * lorentz( x, cen, f) + ( 1 - eta ) * gauss( x, cen, f ) )
             return amp * pv_func / np.amax(pv_func) # Normalizing to 1
 
@@ -177,7 +176,7 @@ class Fitter:
             cnt += 3
         return func
 
-    def fitGaussian(self, initial_params):# TODO change gamma and fwhm
+    def fitGaussian(self, initial_params):  # TODO change gamma and fwhm
         """Fits Gaussian function(s) to Region object based on initial values
         of three parameters (amplitude, center, and sigma). If list with more than
         one set of three parameters is given, the function fits more than one peak.
@@ -205,7 +204,7 @@ class Fitter:
 
         self._makeFit()
 
-    def fitLorentzian(self, initial_params):# TODO change gamma and fwhm
+    def fitLorentzian(self, initial_params):  # TODO change gamma and fwhm
         """Fits one Lorentzian function to Region object based on initial values
         of three parameters (amplitude, center, and width). If list with more than
         one set of three parameters is given, the function fits more than one peak.
@@ -368,7 +367,7 @@ class Fitter:
             return self._RMS
         print("Do fit first")
 
-    def getPeaks(self, peak_num=None): # TODO add peak ID
+    def getPeaks(self, peak_num=None):  # TODO add peak ID
         if not self._Peaks:
             print("Do fit first")
             return

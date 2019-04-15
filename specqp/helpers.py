@@ -1,10 +1,10 @@
 """Provides functions for handling and fitting the data
 """
-#from matplotlib import pyplot as plt
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
 from fitter import Peak
+
 
 def fitFermiEdge(region, initial_params, add_column=True, overwrite=True):
     """Fits error function to fermi level scan. If add_column flag
@@ -38,6 +38,7 @@ def fitFermiEdge(region, initial_params, add_column=True, overwrite=True):
                              overwrite=overwrite)
 
     return [popt, np.sqrt(np.diag(pcov))]
+
 
 def calculateLinearBackground(region, y_data='counts', manual_bg=None, by_min=False, add_column=True, overwrite=True):
     """Calculates the linear background using left and right ends of the region
@@ -137,6 +138,7 @@ def calculateLinearBackground(region, y_data='counts', manual_bg=None, by_min=Fa
 
     return background
 
+
 def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
@@ -191,6 +193,7 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
 
     return output
 
+
 def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min=False, tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
     """If shirleyfirst=False, calculates the linear background using left and
     right ends of the region or using the minimum and the end that is furthest
@@ -214,6 +217,7 @@ def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min
 
     return background
 
+
 def smoothen(region, y_data='counts', interval=3, add_column=True):
     """Smoothed intensity."""
     intensity = region.getData(column=y_data)
@@ -230,6 +234,7 @@ def smoothen(region, y_data='counts', interval=3, add_column=True):
 
     return avged
 
+
 def normalize(region, y_data='counts', const=None, add_column=True):
     """Normalize counts by maximum. If const is given, normalizes by this number
     """
@@ -243,6 +248,7 @@ def normalize(region, y_data='counts', const=None, add_column=True):
     if add_column:
         region.addColumn("normalized", output, overwrite=True)
     return output
+
 
 def normalizeByBackground(region, start, stop, y_data='counts', add_column=True):
     """Correct counts by the average background level given by the interval
@@ -270,6 +276,7 @@ def normalizeByBackground(region, start, stop, y_data='counts', add_column=True)
         region.addColumn("bgnormalized", output, overwrite=True)
     return output
 
+
 def shiftByBackground(region, interval, y_data='counts', add_column=True):
     """Correct counts by the average background level given by the interval
     [start, stop]
@@ -295,6 +302,7 @@ def shiftByBackground(region, interval, y_data='counts', add_column=True):
     if add_column:
         region.addColumn("bgshifted", output, overwrite=True)
     return output
+
 
 def plotRegion(region,
             figure=1,
@@ -364,6 +372,7 @@ def plotRegion(region,
     if log_scale:
         ax.set_yscale('log')
 
+
 def plotPeak(peak,
             y_offset=0,
             figure=1,
@@ -389,6 +398,7 @@ def plotPeak(peak,
         ax.fill_between(peakLine[0], peakLine[1].min()+y_offset, peakLine[1]+y_offset, facecolor=ax.get_lines()[-1].get_color(), alpha=0.3)
     if legend:
         ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})
+
 
 def plotFit(fitter,
             y_offset=0,

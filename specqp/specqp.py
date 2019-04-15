@@ -1,11 +1,8 @@
 import sys
+from gui import main as call_gui
 
-import helpers
-from datahandler import Experiment, Spectrum, Region
-from fitter import Fitter, Peak
-from gui import main as callGUI
 
-def main(*args, **kwargs):
+def main(*args, **kwargs):  # TODO think and write the logics for the batch mode
     """Defines the behavior of the app if run in batch mode
     """
     print("Running in batch mode")
@@ -16,6 +13,7 @@ def main(*args, **kwargs):
         for key, value in kwargs.items():
             print(f"{key}={value}")
 
+
 if __name__ == "__main__":
 
     # Enable the case below to force the user to provide arguments
@@ -23,8 +21,8 @@ if __name__ == "__main__":
     #     raise SyntaxError("Insufficient arguments.")
 
     if len(sys.argv) == 1:
-        # If only script name is specified call GUI for interacive work
-        callGUI()
+        # If only script name is specified call GUI for interactive work
+        call_gui()
     if len(sys.argv) > 1:
         # If there are additional arguments run in batch mode
         args = []
