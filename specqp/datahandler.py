@@ -1,9 +1,10 @@
 """The module contains classes and functions responsible
 for loading and storing spectroscopy data. It also provides
 general handles for the outside modules and scripts.
+
 The hierarchy of objects is as follows:
 1. Class Experiment contains all data for an executed experiment.
-Usually it shoul contains one uninterrupted set of measurements
+Usually it should contain one uninterrupted set of measurements
 for one sample.
 2. Class SetOfSpectra contains a number of spectra measured under the same
 conditions. Usually a few spectra including Fermi edge measurement.
@@ -17,9 +18,21 @@ changing conditions or such.
 """
 import os
 import copy
-import tkinter as tk
-from tkinter import filedialog
 import pandas as pd
+
+
+class DataFile(file_abspath, fileID=None):
+    """The class that knows the loaded file and knows how to read it properly
+    """
+    def __init__(self):
+        self.filepath = file_abspath
+        if fileID:
+            self.ID = fileID
+        else:
+            self.ID = file_abspath
+
+
+
 
 
 def _loadScientaTXT(filename, regions_number_line=1):

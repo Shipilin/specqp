@@ -1,10 +1,14 @@
+import os
+import tkinter as tk
+from tkinter import ttk
+import warnings
+
 import matplotlib
 matplotlib.use('TkAgg')
-from numpy import arange, sin, pi
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
-# implement the default mpl key bindings
-from matplotlib.backend_bases import key_press_handler
-from matplotlib.figure import Figure
+# import matplotlib.animation as animation
+from matplotlib import style
+style.use('ggplot')
+
 
 class PlotWindow(tk.Frame):
     def __init__(self, master, window_ID):
