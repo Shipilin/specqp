@@ -21,18 +21,34 @@ import copy
 import pandas as pd
 
 
-class DataFile(file_abspath, fileID=None):
-    """The class that knows the loaded file and knows how to read it properly
+class SpectraCollection:
+    """Keeps track of the list of spectra being in work simultaneously in the GUI or the batch mode
     """
     def __init__(self):
-        self.filepath = file_abspath
-        if fileID:
-            self.ID = fileID
-        else:
-            self.ID = file_abspath
+        self.spectra = []
+        self.spectra_IDs = []
 
+    def add_spectra(self, list_of_new_spectra):
+        """Adds spectrum objects
+        :param list_of_new_spectra: List of spectrum objects (can be also single object in the list form, e.g. [obj,])
+        :return: None
+        """
+        for new_spectrum in list_of_new_spectra:
+            self.spectra_IDs.append(new_spectrum.get_ID)
+            self.spectra.append(new_spectrum)
 
+    def add_spectra_from_file(self, file_path):
+        """Adds spectrum objects after extracting them from the file
+        :param file_path: Absolute path to the data file from which the spectra shall be extracted
+        :return: list of IDs for spectra loaded from the file
+        """
+        pass
 
+    def get_IDs(self):
+        """Returns the list of spectra IDs
+        :return: list of IDs
+        """
+        return self.spectra_IDs
 
 
 def _loadScientaTXT(filename, regions_number_line=1):
