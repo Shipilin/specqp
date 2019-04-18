@@ -1,6 +1,7 @@
 __pycache__
 specqp/gui_test.py
-data/app.log
+data/log/
+data/specqp.init
 jnotebook/
 scripts/
 .idea/

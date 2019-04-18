@@ -12,14 +12,17 @@ from matplotlib import style
 # from matplotlib.backend_bases import key_press_handler
 # from matplotlib.figure import Figure
 
-from service import INITFILE_NAME
-from service import LARGE_FONT
+from service import set_default_data_folder
+from service import get_default_data_folder
+
+# Default font for the GUI
+LARGE_FONT = ("Verdana", "12")
 
 logger = logging.getLogger("specqp.gui")  # Configuring child logger
 matplotlib.use('TkAgg')  # Configuring matplotlib interaction with tkinter
 style.use('ggplot')  # Configuring matplotlib style
 
-test_file = os.path.abspath("/".join([os.path.dirname(__file__), "../", "tests/scienta_single_region_1.txt"]))
+test_file = "../tests/scienta_single_region_1.txt"
 
 
 class CustomText(tk.Text):
@@ -124,7 +127,7 @@ class BrowserPanel(ttk.Frame):
         self.winfo_toplevel().load_file()
 
     def _quit(self):
-        self.winfo_toplevel().quit()        # stops mainloop
+        self.winfo_toplevel().quit()  # stops mainloop
 
 
 class MainWindow(ttk.Frame):
@@ -174,8 +177,11 @@ class Root(tk.Tk):
     def open_file_as_text(self):
         """Open a read-only view of a text file in a Toplevel widget
         """
-        file_path = filedialog.askopenfilename(parent=self, initialdir=os.getcwd())
+        file_path = filedialog.askopenfilename(parent=self, initialdir=get_default_data_folder())
         if file_path:
+            # If the user open a file, remember the file folder to use it next time when the open request is received
+            set_default_data_folder(os.path.dirname(file_path))
+
             text_view = tk.Toplevel(self)
             self.child_windows.append(text_view)
             text_view.wm_title(ntpath.basename(file_path))

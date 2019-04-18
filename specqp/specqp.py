@@ -1,9 +1,11 @@
 import sys
 
-from service import initialize_logging
+from service import initialize_app
 from gui import main as call_gui
 
-initialize_logging()
+
+initialize_app()
+
 
 def main(*args, **kwargs):  # TODO: think and write the logics for the batch mode
     """Defines the behavior of the app if run in batch mode
