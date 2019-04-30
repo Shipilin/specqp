@@ -1,46 +1,50 @@
 """Provides functions for handling and fitting the data
 """
+import logging
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
 from fitter import Peak
+from matplotlib import pyplot as plt
 
+helpers_logger = logging.getLogger("specqp.helpers")  # Creating child logger
 
-def fitFermiEdge(region, initial_params, add_column=True, overwrite=True):
+def fit_fermi_edge(region, initial_params, add_column=True, overwrite=True):
     """Fits error function to fermi level scan. If add_column flag
     is True, adds the fitting results as a column to the Region object.
     NOTE: Overwrites the 'fitFermi' column if already present.
     Returns a list [shift, fittingError]
     """
+
     # f(x) = s/(exp(-1*(x-m)/(8.617*(10^-5)*t)) + 1) + a*x + b
-    def errorFunc(x, a0, a1, a2, a3):
+    def error_func(x, a0, a1, a2, a3):
         """Defines a complementary error function of the form
         (a0/2)*sp.special.erfc((a1-x)/a2) + a3
         """
-        return (a0/2)*sp.special.erfc((a1-x)/a2) + a3
+        return (a0 / 2) * sp.special.erfc((a1 - x) / a2) + a3
 
-    if not region.getFlags()["fermi_flag"]:
-        print(f"Can't fit the error func to non-Fermi region {region.getID()}")
+    if not region.get_flags()["fermi_flag"]:
+        helpers_logger.error(f"Can't fit the error func to non-Fermi region {region.get_id()}")
         return
 
     # Parameters and parameters covariance of the fit
-    popt, pcov = curve_fit(errorFunc,
-                    region.getData(column='energy'),
-                    region.getData(column='counts'),
-                    p0=initial_params)
+    popt, pcov = curve_fit(error_func,
+                           region.get_data(column='energy'),
+                           region.get_data(column='counts'),
+                           p0=initial_params)
 
     if add_column:
-        region.addColumn("fitFermi", errorFunc(region.getData(column='energy'),
-                             popt[0],
-                             popt[1],
-                             popt[2],
-                             popt[3]),
-                             overwrite=overwrite)
+        region.add_column("fitFermi", error_func(region.get_data(column='energy'),
+                                                popt[0],
+                                                popt[1],
+                                                popt[2],
+                                                popt[3]),
+                          overwrite=overwrite)
 
     return [popt, np.sqrt(np.diag(pcov))]
 
 
-def calculateLinearBackground(region, y_data='counts', manual_bg=None, by_min=False, add_column=True, overwrite=True):
+def calculate_linear_background(region, y_data='counts', manual_bg=None, by_min=False, add_column=True, overwrite=True):
     """Calculates the linear background using left and right ends of the region
     or using the minimum on Y-axis and the end that is furthest from the minimum
     on the X-axis. Manual background can be provided by passing approximate intervals
@@ -48,32 +52,33 @@ def calculateLinearBackground(region, y_data='counts', manual_bg=None, by_min=Fa
     intervals will be calculated and assigned to the end points of the line
     describing the background.
     """
-    def calculateLine(min_position):
+
+    def calculate_line(min_position):
         """Helper function to calculate the line cross the whole
         spectrum given coordinates of two points and "left" or "right" value
         of min_position to know in which direction the line must be extended
         """
         # School algebra to calculate the line coordinates given two points
-        if min_position == "right": # Line from left end to min
+        if min_position == "right":  # Line from left end to min
             x1 = energy[0]
             x2 = energy[counts_min_index]
             y1 = counts[0]
             y2 = counts_min
-            slope = (y1-y2)/(x1-x2)
-            b = (x1*y1 - x2*y1)/(x1-x2)
-            line_end = slope*energy[-1] + b
+            slope = (y1 - y2) / (x1 - x2)
+            b = (x1 * y1 - x2 * y1) / (x1 - x2)
+            line_end = slope * energy[-1] + b
             return np.linspace(counts[0], line_end, len(energy))
         elif min_position == "left":
             x1 = energy[counts_min_index]
             x2 = energy[-1]
             y1 = counts_min
             y2 = counts[-1]
-            slope = (y1-y2)/(x1-x2)
-            b = (x1*y1 - x2*y1)/(x1-x2)
-            line_end = slope*energy[0] + b
+            slope = (y1 - y2) / (x1 - x2)
+            b = (x1 * y1 - x2 * y1) / (x1 - x2)
+            line_end = slope * energy[0] + b
             return np.linspace(line_end, counts[-1], len(energy))
 
-    def calculateManualBG(x, y, x_intervals):
+    def calculate_manual_bg(x, y, x_intervals):
         left_interval = x_intervals[0]
         right_interval = x_intervals[1]
         # Checking that left is left and right is right. Swop otherwise.
@@ -86,68 +91,58 @@ def calculateLinearBackground(region, y_data='counts', manual_bg=None, by_min=Fa
         right_bg_values = []
 
         first_left_index = 0
-        last_left_index = len(x)-1
+        last_left_index = len(x) - 1
         first_right_index = 0
-        last_right_index = len(x)-1
+        last_right_index = len(x) - 1
         for i in range(1, len(x)):
-            if ((x[i-1] >= left_interval[0] and x[i] <= left_interval[0]) or
-                (x[i-1] <= left_interval[0] and x[i] >= left_interval[0])):
+            if (x[i - 1] >= left_interval[0] >= x[i]) or (x[i - 1] <= left_interval[0] <= x[i]):
                 first_left_index = i
-            if ((x[i-1] >= left_interval[1] and x[i] <= left_interval[1]) or
-                (x[i-1] <= left_interval[1] and x[i] >= left_interval[1])):
+            if (x[i - 1] >= left_interval[1] >= x[i]) or (x[i - 1] <= left_interval[1] <= x[i]):
                 last_left_index = i
-            if ((x[i-1] >= right_interval[0] and x[i] <= right_interval[0]) or
-                (x[i-1] <= right_interval[0] and x[i] >= right_interval[0])):
+            if (x[i - 1] >= right_interval[0] >= x[i]) or (x[i - 1] <= right_interval[0] <= x[i]):
                 first_right_index = i
-            if ((x[i-1] >= right_interval[1] and x[i] <= right_interval[1]) or
-                (x[i-1] <= right_interval[1] and x[i] >= right_interval[1])):
+            if (x[i - 1] >= right_interval[1] >= x[i]) or (x[i - 1] <= right_interval[1] <= x[i]):
                 last_right_index = i
 
-        left_background = y[first_left_index:last_left_index+1]
+        left_background = y[first_left_index:last_left_index + 1]
         left_average = np.mean(left_background)
-        #sum(left_background)/float(len(left_background))
-        right_background = y[first_right_index:last_right_index+1]
+        # sum(left_background)/float(len(left_background))
+        right_background = y[first_right_index:last_right_index + 1]
         right_average = np.mean(right_background)
-        #sum(right_background)/float(len(right_background))
+        # sum(right_background)/float(len(right_background))
 
         return [left_average, right_average]
 
-    if y_data in list(region.getData()):
-        counts = region.getData(column=y_data).tolist()
-    else:
-        counts = region.getData(column='counts').tolist()
-    energy = region.getData(column='energy').tolist()
+    counts = region.get_data(column=y_data).tolist()
+    energy = region.get_data(column="energy").tolist()
 
     if by_min:
         counts_min = min(counts)
         counts_min_index = counts.index(counts_min)
         # If minimum lies closer to the right side of the region
-        if counts_min_index > len(energy)//2:
-            background = calculateLine("right")
+        if counts_min_index > len(energy) // 2:
+            background = calculate_line("right")
         else:
-            background = calculateLine("left")
+            background = calculate_line("left")
     else:
         if manual_bg:
-            line_end_values = calculateManualBG(energy, counts, manual_bg)
+            line_end_values = calculate_manual_bg(energy, counts, manual_bg)
             background = np.linspace(line_end_values[0], line_end_values[1], len(energy))
         else:
             background = np.linspace(counts[0], counts[-1], len(energy))
 
     if add_column:
-        region.addColumn("linearBG", counts - background, overwrite=overwrite)
+        region.add_column("linearBG", counts - background, overwrite=overwrite)
 
     return background
 
 
-def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
+def calculate_shirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
-    if y_data in list(region.getData()):
-        counts = region.getData(column=y_data)
-    else:
-        counts = region.getData(column='counts')
-    energy = region.getData(column='energy')
+    counts = region.get_data(column=y_data)
+    energy = region.get_data(column="energy")
 
     if energy[0] < energy[-1]:
         is_reversed = True
@@ -179,7 +174,7 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
             background = bnew.copy()
         iteration += 1
     if iteration >= maxiter:
-        print(f"{region.getID()} - Background calculation failed due to excessive iterations")
+        helpers_logger.warning(f"{region.get_id()} - Background calculation failed due to excessive iterations")
 
     output = background
     if is_reversed:
@@ -189,38 +184,40 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
         corrected = counts - output
         if np.amin(corrected) < 0:
             corrected += np.absolute(np.amin(corrected))
-        region.addColumn("shirleyBG", corrected, overwrite=overwrite)
+        region.add_column("shirleyBG", corrected, overwrite=overwrite)
 
     return output
 
 
-def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min=False, tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
+def calculate_linear_and_shirley(region, y_data='counts', shirleyfirst=True, by_min=False, tolerance=1e-5, maxiter=50,
+                                 add_column=True, overwrite=True):
     """If shirleyfirst=False, calculates the linear background using left and
     right ends of the region or using the minimum and the end that is furthest
     from the minimum if by_min=True. Then calculates shirley background.
     If shirleyfirst=True, does shirley first and linear second.
     """
-    if y_data in list(region.getData()):
-        counts = region.getData(column=y_data)
+    if y_data in list(region.get_data()):
+        counts = region.get_data(column=y_data)
     else:
-        counts = region.getData(column='counts')
+        counts = region.get_data(column='counts')
 
     if shirleyfirst:
-        shirley_bg = calculateShirley(region, tolerance=tolerance, maxiter=maxiter, add_column=add_column)
-        linear_bg = calculateLinearBackground(region, y_data='shirleyBG', by_min=by_min, add_column=add_column)
+        shirley_bg = calculate_shirley(region, tolerance=tolerance, maxiter=maxiter, add_column=add_column)
+        linear_bg = calculate_linear_background(region, y_data='shirleyBG', by_min=by_min, add_column=add_column)
     else:
-        linear_bg = calculateLinearBackground(region, by_min=by_min, add_column=add_column)
-        shirley_bg = calculateShirley(region, y_data="linearBG", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
+        linear_bg = calculate_linear_background(region, by_min=by_min, add_column=add_column)
+        shirley_bg = calculate_shirley(region, y_data="linearBG", tolerance=tolerance, maxiter=maxiter,
+                                       add_column=add_column)
     background = linear_bg + shirley_bg
     if add_column:
-        region.addColumn("linear+shirleyBG", counts - background, overwrite=overwrite)
+        region.add_column("linear+shirleyBG", counts - background, overwrite=overwrite)
 
     return background
 
 
 def smoothen(region, y_data='counts', interval=3, add_column=True):
-    """Smoothed intensity."""
-    intensity = region.getData(column=y_data)
+    """Smoothes intensity averaging the data within the given interval"""
+    intensity = region.get_data(column=y_data)
     odd = int(interval / 2) * 2 + 1
     even = int(interval / 2) * 2
     cumsum = np.cumsum(np.insert(intensity, 0, 0))
@@ -230,7 +227,7 @@ def smoothen(region, y_data='counts', interval=3, add_column=True):
         avged = np.insert(avged, -1, avged[-1])
 
     if add_column:
-        region.addColumn("averaged", avged, overwrite=True)
+        region.add_column("averaged", avged, overwrite=True)
 
     return avged
 
@@ -239,127 +236,109 @@ def normalize(region, y_data='counts', const=None, add_column=True):
     """Normalize counts by maximum. If const is given, normalizes by this number
     """
     # If we want to use other column than "counts" for calculations
-    counts = region.getData(column=y_data)
+    counts = region.get_data(column=y_data)
     if const:
         output = counts / float(const)
     else:
         output = counts / float(max(counts))
 
     if add_column:
-        region.addColumn("normalized", output, overwrite=True)
+        region.add_column("normalized", output, overwrite=True)
     return output
 
 
-def normalizeByBackground(region, start, stop, y_data='counts', add_column=True):
-    """Correct counts by the average background level given by the interval
-    [start, stop]
+def normalize_by_background(region, start, stop, y_data='counts', add_column=True):
+    """Correct counts by the average background level given by the interval [start, stop]
     """
     # If we want to use other column than "counts" for calculations
-    counts = region.getData(column=y_data)
-    energy = region.getData(column="energy")
+    counts = region.get_data(column=y_data)
+    energy = region.get_data(column="energy")
 
     first_index = 0
     last_index = len(counts) - 1
 
     for i in range(0, len(energy)):
         if i > 0:
-            if ((energy[i - 1] <= start and energy[i] >= start) or
-                (energy[i - 1] >= start and energy[i] <= start)):
+            if (energy[i - 1] <= start <= energy[i]) or (energy[i - 1] >= start >= energy[i]):
                 first_index = i
-            if ((energy[i - 1] <= stop and energy[i] >= stop) or
-                (energy[i - 1] >= stop and energy[i] <= stop)):
+            if (energy[i - 1] <= stop <= energy[i]) or (energy[i - 1] >= stop >= energy[i]):
                 last_index = i
 
     output = counts / float(np.mean(counts[first_index:last_index]))
 
     if add_column:
-        region.addColumn("bgnormalized", output, overwrite=True)
+        region.add_column("bgnormalized", output, overwrite=True)
     return output
 
 
-def shiftByBackground(region, interval, y_data='counts', add_column=True):
-    """Correct counts by the average background level given by the interval
-    [start, stop]
+def shift_by_background(region, interval, y_data='counts', add_column=True):
+    """Correct counts by the average background level given by the interval [start, stop]
     """
     # If we want to use other column than "counts" for calculations
-    counts = region.getData(column=y_data)
-    energy = region.getData(column="energy")
+    counts = region.get_data(column=y_data)
+    energy = region.get_data(column="energy")
 
     first_index = 0
     last_index = len(counts) - 1
 
     for i in range(0, len(energy)):
         if i > 0:
-            if ((energy[i - 1] <= interval[0] and energy[i] >= interval[0]) or
-                (energy[i - 1] >= interval[0] and energy[i] <= interval[0])):
+            if (energy[i - 1] <= interval[0] <= energy[i]) or (energy[i - 1] >= interval[0] >= energy[i]):
                 first_index = i
-            if ((energy[i - 1] <= interval[1] and energy[i] >= interval[1]) or
-                (energy[i - 1] >= interval[1] and energy[i] <= interval[1])):
+            if (energy[i - 1] <= interval[1] <= energy[i]) or (energy[i - 1] >= interval[1] >= energy[i]):
                 last_index = i
 
     output = counts - float(np.mean(counts[first_index:last_index]))
 
     if add_column:
-        region.addColumn("bgshifted", output, overwrite=True)
+        region.add_column("bgshifted", output, overwrite=True)
     return output
 
 
-def plotRegion(region,
-            figure=1,
-            ax=None,
-            invert_x=True,
-            log_scale=False,
-            y_offset=0,
-            x_data='energy',
-            y_data='final',
-            scatter=False,
-            label=None,
-            color=None,
-            title=True,
-            legend=True,
-            legend_pos='best'):
+def plot_region(region, figure=1, ax=None, invert_x=True, log_scale=False, y_offset=0, x_data='energy', y_data='final',
+                scatter=False, label=None, color=None, title=True, legend=True, legend_pos='best'):
     """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
     """
-    if x_data in list(region.getData()):
-        x = region.getData(column=x_data)
+    if x_data in list(region.get_data()):
+        x = region.get_data(column=x_data)
     else:
-        x = region.getData(column='energy')
-    if y_data in list(region.getData()):
-        y = region.getData(column=y_data)
+        x = region.get_data(column='energy')
+    if y_data in list(region.get_data()):
+        y = region.get_data(column=y_data)
     else:
-        y = region.getData(column='counts')
+        y = region.get_data(column='counts')
 
     plt.figure(figure)
     if not ax:
         ax = plt.gca()
-
     if not label:
-        label=f"{region.getID()} ({region.getConditions()['Temperature']})"
+        label = f"{region.get_id()} ({region.get_conditions()['Temperature']})"
     # If we want scatter plot
     if scatter:
-        ax.scatter(x, y+y_offset, s=7, c=color, label=label)
+        ax.scatter(x, y + y_offset, s=7, c=color, label=label)
     else:
-        ax.plot(x, y+y_offset, color=color, label=label)
+        ax.plot(x, y + y_offset, color=color, label=label)
     if legend:
         if legend_pos == 'lower center':
-            ax.set_ylim(ymin=-1*np.amax(y))
+            ax.set_ylim(ymin=-1 * np.amax(y))
             plt.tick_params(
-                axis='y',          # changes apply to the y-axis
-                which='both',      # both major and minor ticks are affected
-                left=False,      # ticks along the left edge are off
-                right=False)         # ticks along the right edge are off
+                axis='y',  # changes apply to the y-axis
+                which='both',  # both major and minor ticks are affected
+                left=False,  # ticks along the left edge are off
+                right=False)  # ticks along the right edge are off
         ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})
     if title:
-        title_str=""
-        if region.isSweepsNormalized():
-            title_str = f"Pass: {region.getInfo('Pass Energy')}   |   File: {region.getInfo('File Name')}"
+        title_str = ""
+        if region.is_sweeps_normalized():
+            title_str = f"Pass: {region.get_info('Pass Energy')}   |   File: {region.get_info('File Name')}"
         else:
-            title_str = f"Pass: {region.getInfo('Pass Energy')}   |   Sweeps: {region.getInfo('Sweeps Number')}   |   File: {region.getInfo('File Name')}"
+            title_str = f"Pass: {region.get_info('Pass Energy')}   |   Sweeps: {region.get_info('Sweeps Number')}" \
+                f"   |   File: {region.get_info('File Name')}"
         ax.set_title(title_str)
 
     #   Stiling axes
     x_label_prefix = "Binding"
-    if region.getInfo("Energy Scale") == "Kinetic":
+    if region.get_info("Energy Scale") == "Kinetic":
         x_label_prefix = "Kinetic"
 
     ax.set_xlabel(f"{x_label_prefix} energy (eV)")
@@ -373,67 +352,40 @@ def plotRegion(region,
         ax.set_yscale('log')
 
 
-def plotPeak(peak,
-            y_offset=0,
-            figure=1,
-            ax=None,
-            label=None,
-            color=None,
-            fill=True,
-            legend=True,
-            legend_pos='best'):
+def plot_peak(peak, y_offset=0, figure=1, ax=None, label=None, color=None, fill=True, legend=True, legend_pos='best'):
     """Plotting fit peak with pyplot using given plt.figure and a number of optional arguments
     """
-    peakLine = peak.getData()
+    peak_line = peak.get_data()
     plt.figure(figure)
     if not ax:
         ax = plt.gca()
-
     if not label:
-        label=f"Cen: {peak.getParameters('center'):.2f}; LorentzFWHM: {peak.getParameters('fwhm'):.2f}"
+        label = f"Cen: {peak.get_parameters('center'):.2f}; LorentzFWHM: {peak.get_parameters('fwhm'):.2f}"
 
-    ax.plot(peak.getData()[0], peak.getData()[1]+y_offset, color=color, label=label)
+    ax.plot(peak.get_data()[0], peak.get_data()[1] + y_offset, color=color, label=label)
     if fill:
         # Fill the peak shape with color that is retrieved from the last plotted line
-        ax.fill_between(peakLine[0], peakLine[1].min()+y_offset, peakLine[1]+y_offset, facecolor=ax.get_lines()[-1].get_color(), alpha=0.3)
+        ax.fill_between(peak_line[0], peak_line[1].min() + y_offset, peak_line[1] + y_offset,
+                        facecolor=ax.get_lines()[-1].get_color(), alpha=0.3)
     if legend:
         ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})
 
 
-def plotFit(fitter,
-            y_offset=0,
-            figure=1,
-            ax=None,
-            label=None,
-            color='black',
-            legend=True,
-            legend_pos='best',
-            addresiduals=True):
+def plot_fit(fitter, y_offset=0, figure=1, ax=None, label=None, color='black', legend=True, legend_pos='best',
+             addresiduals=True):
     """Plotting fit line with pyplot using given plt.figure and a number of optional arguments
     """
     plt.figure(figure)
     if not ax:
         ax = plt.gca()
     if not label:
-        label="fit"
-    ax.plot(fitter.getData()[0].tolist(),
-            (fitter.getFitLine()+y_offset).tolist(),
-            linestyle='--',
-            color=color,
-            label=label)
+        label = "fit"
+    fit_x = fitter.get_data()[0].tolist()
+    fit_y = (fitter.get_fit_line() + y_offset).tolist()
+    ax.plot(fit_x, fit_y, linestyle='--', color=color, label=label)
     # Add residuals if specified
     if addresiduals:
-        ax.plot(fitter.getData()[0].tolist(),
-                (fitter.getResiduals()+y_offset).tolist(),
-                linestyle=':',
-                alpha=1,
-                color='black',
-                label=f"Chi^2 = {fitter.getChiSquared():.2f}\nRMS = {fitter.getRMS():.2f}")
-        # Get the position of the original axis object
-        #pos = ax.get_position()
-        #ax.set_position([pos.x0, pos.y0 + 0.3, pos.width, 0.7])
-        #ax2 = plt.gcf().add_axes([pos.x0, pos.y0, pos.width, 0.1])
-        #ax2.plot(residuals[0], residuals[1], 'o', color='grey', label='residuals')
-
+        ax.plot(fit_x, fit_y, linestyle=':', alpha=1, color='black',
+                label=f"Chi^2 = {fitter.get_chi_squared():.2f}\nRMS = {fitter.get_rms():.2f}")
     if legend:
         ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})
