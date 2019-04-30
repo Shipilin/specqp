@@ -1,7 +1,7 @@
 from specqp.datahandler import Experiment, Spectrum, AddDimensionSpectrum, Region
 from specqp.fitter import Fitter, Peak
 from specqp import helpers
-from specqp import plotter
+from specqp import gui_plotter
 
 __appname__ = "SpecQP"
 __version__ = "0.1"
@@ -12,5 +12,5 @@ __all__ = [
         'datahandler',
         'helpers',
         'fitter',
-        'plotter'
+    'gui_plotter.py'
         ]

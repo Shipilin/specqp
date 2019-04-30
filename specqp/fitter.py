@@ -1,8 +1,10 @@
 """ Provides class Fitter with helping functions
 """
+import logging
 import numpy as np
 from scipy.optimize import curve_fit
 
+fitter_logger = logging.getLogger("specqp.fitter")  # Creating child logger
 
 class Peak:
     """Contains information about one peak fitted to a region.
@@ -37,12 +39,12 @@ class Peak:
         output = "\n".join((output, f"Area: {self._Area:.4f}"))
         return output
 
-    def getData(self):
+    def get_data(self):
         """Returns a list of x and y data
         """
         return [self._X, self._Y]
 
-    def getParameters(self, parameter=None):
+    def get_parameters(self, parameter=None):
         """Returns all fitting parameters or one specified by name from 'peak_types'
         """
         if not parameter:
@@ -51,9 +53,9 @@ class Peak:
             for i, par_name in enumerate(self.peak_types[self._PeakType]):
                 if parameter == par_name:
                     return self._Popt[i]
-        print("No such parameter")
+        fitter_logger.error(f"Couldn't get fitting parameters from a Peak instance")
 
-    def getCovariance(self, parameter=None):
+    def get_covariance(self, parameter=None):
         """Returns all fitting parameters covariances or one specified by name 'peak_types'
         """
         if not parameter:
@@ -62,9 +64,9 @@ class Peak:
             for i, par_name in enumerate(self.peak_types[self._PeakType]):
                 if parameter == par_name:
                     return self._Pcov[i]
-        print("No such parameter")
+        fitter_logger.error(f"Couldn't get covariance from a Peak instance")
 
-    def getFittingErrors(self, parameter=None):
+    def get_fitting_errors(self, parameter=None):
         """Returns fitting errors for all parameters or one specified by name 'peak_types'
         """
         if not parameter:
@@ -73,9 +75,9 @@ class Peak:
             for i, par_name in enumerate(self.peak_types[self._PeakType]):
                 if parameter == par_name:
                     return self._FittingErrors[i]
-        print("No such parameter")
+        fitter_logger.error(f"Couldn't get fitting errors from a Peak instance")
 
-    def getPeakType(self):
+    def get_peak_type(self):
         return self._PeakType
 
 
@@ -86,11 +88,11 @@ class Fitter:
         """Creates an object that contains information about fitting of
         a particular XPS region.
         """
-        self._X_data = region.getData(column='energy')
-        self._Y_data = region.getData(column=y_data)
+        self._X_data = region.get_data(column='energy')
+        self._Y_data = region.get_data(column=y_data)
         # Following attributes are assigned during the fitting procedure
-        self._FitLine = region.getData(column=y_data)*0
-        self._Residuals = region.getData(column=y_data)*0
+        self._FitLine = region.get_data(column=y_data) * 0
+        self._Residuals = region.get_data(column=y_data) * 0
         self._Rsquared = 0
         self._Chisquared = 0
         self._RMS = 0
@@ -99,7 +101,7 @@ class Fitter:
         # experiment. So, if we know it, we should fix this parameter in
         # fitting.
         self._GaussFWHM = gauss_fwhm*1.0
-        self._ID = region.getID()
+        self._ID = region.get_id()
 
     def __str__(self):
         output = ""
@@ -112,7 +114,7 @@ class Fitter:
         return output
 
     @staticmethod
-    def _multiGaussian(x, *args):  # TODO change gamma and fwhm
+    def _multi_gaussian(x, *args):  # TODO change gamma and fwhm
         cnt = 0
         func = 0
         while cnt < len(args):
@@ -121,7 +123,7 @@ class Fitter:
         return func
 
     @staticmethod
-    def _multiLorentzian(x, *args):  # TODO change gamma and fwhm
+    def _multi_lorentzian(x, *args):  # TODO change gamma and fwhm
         """Creates a single or multiple Lorentzian shape taking amplitude, Center
         and FWHM parameters
         """
@@ -133,7 +135,7 @@ class Fitter:
             cnt += 3
         return func
 
-    def _multiVoigt(self, x, *args):
+    def _multi_voigt(self, x, *args):
         """Creates a single or multiple pseudo Voigt shape.
         Takes constant sigma for gaussian contribution if known.
         """
@@ -176,62 +178,54 @@ class Fitter:
             cnt += 3
         return func
 
-    def fitGaussian(self, initial_params):  # TODO change gamma and fwhm
+    def fit_gaussian(self, initial_params):  # TODO change gamma and fwhm
         """Fits Gaussian function(s) to Region object based on initial values
         of three parameters (amplitude, center, and sigma). If list with more than
         one set of three parameters is given, the function fits more than one peak.
         """
 
         if len(initial_params) % 3 != 0:
-            print("Check the number of initial parameters.")
+            fitter_logger.debug(f"Check the number of initial parameters in fitter.fit_gaussian method.")
             return
 
         # Parameters and parameters covariance of the fit
-        popt, pcov = curve_fit(Fitter._multiGaussian,
-                        self._X_data,
-                        self._Y_data,
-                        p0=initial_params)
+        popt, pcov = curve_fit(Fitter._multi_gaussian, self._X_data, self._Y_data, p0=initial_params)
 
         cnt = 0
         while cnt < len(initial_params):
-            peak_y = Fitter._multiGaussian(self._X_data, popt[cnt], popt[cnt+1], popt[cnt+2])
-            self._Peaks.append(Peak(self._X_data,
-                                    peak_y,
+            peak_y = Fitter._multi_gaussian(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
+            self._Peaks.append(Peak(self._X_data, peak_y,
                                     [popt[cnt], popt[cnt+1], popt[cnt+2]],
                                     [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
                                     "gaussian"))
             cnt += 3
 
-        self._makeFit()
+        self._make_fit()
 
-    def fitLorentzian(self, initial_params):  # TODO change gamma and fwhm
+    def fit_lorentzian(self, initial_params):  # TODO change gamma and fwhm
         """Fits one Lorentzian function to Region object based on initial values
         of three parameters (amplitude, center, and width). If list with more than
         one set of three parameters is given, the function fits more than one peak.
         """
 
         if len(initial_params) % 3 != 0:
-            print("Check the number of initial parameters.")
+            fitter_logger.debug(f"Check the number of initial parameters in fitter.fit_lorentzian method.")
             return
 
         # Parameters and parameters covariance of the fit
-        popt, pcov = curve_fit(Fitter._multiLorentzian,
-                        self._X_data,
-                        self._Y_data,
-                        p0=initial_params)
+        popt, pcov = curve_fit(Fitter._multi_lorentzian, self._X_data, self._Y_data, p0=initial_params)
 
         cnt = 0
         while cnt < len(initial_params):
-            peak_y = Fitter._multiLorentzian(self._X_data, popt[cnt], popt[cnt+1], popt[cnt+2])
-            self._Peaks.append(Peak(self._X_data,
-                                    peak_y,
+            peak_y = Fitter._multi_lorentzian(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
+            self._Peaks.append(Peak(self._X_data, peak_y,
                                     [popt[cnt], popt[cnt+1], popt[cnt+2]],
                                     [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
                                     "lorentzian"))
             cnt += 3
-        self._makeFit()
+        self._make_fit()
 
-    def fitVoigt(self, initial_params, fix_pars=None, boundaries=None):
+    def fit_voigt(self, initial_params, fix_pars=None, boundaries=None):
         """Fits one or more Voigt function(s) to Region object based on initial values
         of three parameters (amplitude, center, and fwhm). If sigma for Gaussian
         is known from experiment, the fwhm parameter changes only for Lorentzian.
@@ -245,7 +239,7 @@ class Fitter:
         peak. Ex: {"cen": {1: [34,35], 2: [35,36]}}
         """
         if len(initial_params) % 3 != 0:
-            print(f"Check the number of initial parameters.")
+            fitter_logger.debug(f"Check the number of initial parameters in fitter.fit_voigt method.")
             return
 
         bounds_low = []
@@ -303,31 +297,27 @@ class Fitter:
             bounds_low.append(-np.inf)
             bounds_high.append(np.inf)
         # Parameters and parameters covariance of the fit
-        popt, pcov = curve_fit(self._multiVoigt,
-                        self._X_data,
-                        self._Y_data,
-                        p0=initial_params,
-                        bounds=(bounds_low, bounds_high))
+        popt, pcov = curve_fit(self._multi_voigt, self._X_data, self._Y_data, p0=initial_params,
+                               bounds=(bounds_low, bounds_high))
 
         cnt = 0
         while cnt < len(initial_params):
-            peak_y = self._multiVoigt(self._X_data, popt[cnt], popt[cnt+1], popt[cnt+2])
-            self._Peaks.append(Peak(self._X_data,
-                                    peak_y,
+            peak_y = self._multi_voigt(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
+            self._Peaks.append(Peak(self._X_data, peak_y,
                                     [popt[cnt], popt[cnt+1], popt[cnt+2]],
                                     [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
                                     "voigt"))
             cnt += 3
-        self._makeFit()
+        self._make_fit()
 
-    def _makeFit(self):
+    def _make_fit(self):
         """Calculates the total fit line including all peaks and calculates the
         residuals and r-squared.
         """
         # Calculate fit line
         for peak in self._Peaks:
-            #for peak_y in peak.getData()[1]:
-            self._FitLine += peak.getData()[1]
+            #for peak_y in peak.get_data()[1]:
+            self._FitLine += peak.get_data()[1]
         # Calculate residuals
         #for i, y in enumerate(self._Y_data):
         self._Residuals = self._Y_data - self._FitLine
@@ -340,47 +330,47 @@ class Fitter:
         self._Chisquared = np.sum(((self._Y_data - self._FitLine)/std_d)**2)
         self._RMS = np.sum((self._Y_data - self._FitLine)**2)
 
-    def getFitLine(self):
+    def get_fit_line(self):
         """Returns x and y coordinates for the fit line based on all fitted peaks
         """
         if not self._FitLine.size == 0:
             return self._FitLine
-        print("Do fit first")
+        fitter_logger.warning("Can't get Fit Line from a Fitter instance. Do fit first.")
 
-    def getResiduals(self):
+    def get_residuals(self):
         if not self._Residuals.size == 0:
             return self._Residuals
-        print("Do fit first")
+        fitter_logger.warning("Can't get residuals from a Fitter instance. Do fit first.")
 
-    def getRsquared(self):
+    def get_rsquared(self):
         if not self._Rsquared == 0:
             return self._Rsquared
-        print("Do fit first")
+        fitter_logger.warning("Can't get R Squared from a Fitter instance. Do fit first.")
 
-    def getChiSquared(self):
+    def get_chi_squared(self):
         if not self._Chisquared == 0:
             return self._Chisquared
-        print("Do fit first")
+        fitter_logger.warning("Can't get Chi Squared from a Fitter instance. Do fit first.")
 
-    def getRMS(self):
+    def get_rms(self):
         if not self._RMS == 0:
             return self._RMS
-        print("Do fit first")
+        fitter_logger.warning("Can't get RMS from a Fitter instance. Do fit first.")
 
-    def getPeaks(self, peak_num=None):  # TODO add peak ID
+    def get_peaks(self, peak_num=None):  # TODO add peak ID
         if not self._Peaks:
-            print("Do fit first")
+            fitter_logger.warning("Can't get peaks from a Fitter instance. Do fit first.")
             return
         if not peak_num:
             return self._Peaks
         else:
             return self._Peaks[peak_num]
 
-    def getData(self):
+    def get_data(self):
         return [self._X_data, self._Y_data]
 
-    def getID(self):
+    def get_id(self):
         return self._ID
 
-    def getGaussFWHM(self):
+    def get_gauss_fwhm(self):
         return self._GaussFWHM

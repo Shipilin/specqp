@@ -41,7 +41,7 @@ class RegionsCollection:
         :return: None
         """
         for new_region in list_of_new_regions:
-            self.regions[new_region.getID()] = new_region
+            self.regions[new_region.get_id()] = new_region
 
     def add_regions_from_file(self, file_path, file_type=DATA_FILE_TYPES[0]):
         """Adds region objects after extracting them from the file
@@ -56,8 +56,8 @@ class RegionsCollection:
         elif file_type == DATA_FILE_TYPES[1]:
             regions = load_specs_xy(file_path)
         for region in regions:
-            self.regions[region.getID()] = region
-            values.append(region.getID())
+            self.regions[region.get_id()] = region
+            values.append(region.get_id())
         return values
 
     def get_ids(self):
@@ -318,9 +318,9 @@ def read_csv(filename): # TODO rewrite
 class Experiment:
     """Class contains a number of regions that were taken as one set of measurements.
     Usually for one sample and one reaction with changing conditions.
-    The main attribute is Spectra dictionary {"spectrumID": spectrum}
+    The main attribute is Spectra dictionary {"spectrum_id": spectrum}
     It is empty upon object instance initialization and has to be populated using
-    addSpectrum method.
+    add_spectrum method.
     """
     def __init__(self):
         self._Spectra = {}
@@ -339,42 +339,42 @@ class Experiment:
                     output = "\n".join((output, self._Spectra[key].__str__()))
         return output
 
-    def addSpectrum(self, spectrum):
+    def add_spectrum(self, spectrum):
         """Adds spectrum to the Experiment object
         """
-        self._Spectra[spectrum.getID()] = spectrum
+        self._Spectra[spectrum.get_id()] = spectrum
 
-    def addEnergyShift(self, energy_shift, spectrumID):
+    def add_energy_shift(self, energy_shift, spectrum_id):
         """Adds energy shift to the spectrum with specified ID within
         Experiment object
         """
-        self._EnergyShifts[spectrumID] = energy_shift
+        self._EnergyShifts[spectrum_id] = energy_shift
 
-    def addEnergyShift(self, gauss_fwhm, spectrumID):
+    def add_gauss_fwhm(self, gauss_fwhm, spectrum_id):
         """Adds gaussian widening to the spectrum with specified ID within
         Experiment object
         """
-        self._GaussFWHMs[spectrumID] = gauss_fwhm
+        self._GaussFWHMs[spectrum_id] = gauss_fwhm
 
-    def getSpectrum(self, spectrumID):
-        if not spectrumID in self._Spectra:
-            print(f"Spectrum {spectrumID} is not loaded in the experiment.")
+    def get_spectrum(self, spectrum_id):
+        if not spectrum_id in self._Spectra:
+            datahandler_logger.warning(f"Spectrum {spectrum_id} is not loaded in the experiment.")
             return
-        return self._Spectra[spectrumID]
+        return self._Spectra[spectrum_id]
 
-    def getEnergyShift(self, spectrumID):
-        if not spectrumID in self._Spectra:
-            print(f"Spectrum {spectrumID} is not loaded in the experiment.")
+    def get_energy_shift(self, spectrum_id):
+        if not spectrum_id in self._Spectra:
+            datahandler_logger.warning(f"Spectrum {spectrum_id} is not loaded in the experiment.")
             return
-        return self._EnergyShifts[spectrumID]
+        return self._EnergyShifts[spectrum_id]
 
-    def getGaussFWHM(self, spectrumID):
-        if not spectrumID in self._Spectra:
-            print(f"Spectrum {spectrumID} is not loaded in the experiment.")
+    def get_gauss_fwhm(self, spectrum_id):
+        if not spectrum_id in self._Spectra:
+            datahandler_logger.warning(f"Spectrum {spectrum_id} is not loaded in the experiment.")
             return
-        return self._GaussFWHMs[spectrumID]
+        return self._GaussFWHMs[spectrum_id]
 
-    def getSpectraID(self):
+    def get_spectra_id(self):
         return self._Spectra.keys()
 
 
@@ -383,24 +383,24 @@ class Spectrum:
     regions. It knows also how to parse data files since each file normally
     contains one spectrum.
     """
-    def __init__(self, path=None, conditions=None, ID=None, excitation_energy=None, file_type="scienta"):
+    def __init__(self, path=None, conditions=None, id=None, excitation_energy=None, file_type=DATA_FILE_TYPES[0]):
         if not path:
             path = _ask_path(folder_flag=False, multiple_files_flag=False)
 
         self._Path = path
-        if file_type == "scienta":
+        if file_type == DATA_FILE_TYPES[0]:
             self._Regions = load_scienta_txt(self._Path)
-        elif file_type == "specs":
+        elif file_type == DATA_FILE_TYPES[1]:
             self._Regions = load_specs_xy(self._Path)
             if not excitation_energy and self._Regions:
-                excitation_energy = float(self.getRegion().getInfo("Excitation Energy"))
-        self._setConditions(conditions)
-        self._setExcitationEnergy(excitation_energy)
+                excitation_energy = float(self.get_region().get_info("Excitation Energy"))
+        self._set_conditions(conditions)
+        self._set_excitation_energy(excitation_energy)
 
-        if not ID:
+        if not id:
             # Set name of the file without extention as ID
-            ID = path.rpartition("/")[2].split(".", 1)[0]
-        self._setID(ID)
+            id = path.rpartition("/")[2].split(".", 1)[0]
+        self._set_id(id)
 
     def __str__(self):
         output = ""
@@ -412,30 +412,30 @@ class Spectrum:
                 for key, val in self._Conditions.items():
                     output = "\n".join((output, f"{key}: {val}"))
             for region in self._Regions:
-                output = "\n--->".join((output, region.getID()))
+                output = "\n--->".join((output, region.get_id()))
         return output
 
-    def _setID(self, spectrumID):
-        self._ID = spectrumID
+    def _set_id(self, spectrum_id):
+        self._ID = spectrum_id
 
-    def _setConditions(self, conditions):
+    def _set_conditions(self, conditions):
         """Set spectrum's experimental conditions to a dictionary
         {"Property": Value}. Also transfers them to every Region object within
         the Spectrum object
         """
         self._Conditions = conditions
         for region in self._Regions:
-            region._setConditions(conditions)
+            region._set_conditions(conditions)
 
-    def _setExcitationEnergy(self, excitation_energy):
+    def _set_excitation_energy(self, excitation_energy):
         """Set spectrum's excitation energy. Also transfers the value to
         every Region object within the Spectrum object
         """
         self._ExcitationEnergy = excitation_energy
         for region in self._Regions:
-            region._setExcitationEnergy(excitation_energy, overwrite=True)
+            region._set_excitation_energy(excitation_energy, overwrite=True)
 
-    def isEmpty(self):
+    def is_empty(self):
         """Returns True if there are no regions in spectrum objects.
         False otherwise.
         """
@@ -443,17 +443,17 @@ class Spectrum:
             return False
         return True
 
-    def setFermiFlag(self, regionID):
+    def set_fermi_flag(self, region_id):
         """Sets True for Fermi flag of the region specified by regionID
         """
         for region in self._Regions:
-            if region.getID() == regionID:
-                region.setFermiFlag()
+            if region.get_id() == region_id:
+                region.set_fermi_flag()
 
-    def getID(self):
+    def get_id(self):
         return self._ID
 
-    def getConditions(self, property=None):
+    def get_conditions(self, property=None):
         """Returns experimental conditions as a dictionary {"Property": Value} or
         the value of the specified property.
         """
@@ -461,34 +461,34 @@ class Spectrum:
             return self._Conditions[property]
         return self._Conditions
 
-    def getExcitationEnergy(self):
+    def get_excitation_energy(self):
         return self._ExcitationEnergy
 
-    def getRegions(self):
+    def get_regions(self):
         """Returns a list of regions
         """
         return self._Regions
 
-    def getRegion(self, regionID=None):
+    def get_region(self, region_id=None):
         """If there is only one region in the spectrum, which is often the case,
         returns this region as a single object.
         """
-        if regionID:
+        if region_id:
             for region in self._Regions:
-                if region.getID() == regionID:
+                if region.get_id() == region_id:
                     return region
                 else:
-                    print(f"Spectrum {self.getID()} doesn't contain {regionID} region")
+                    datahandler_logger.warning(f"Spectrum {self.get_id()} doesn't contain {region_id} region")
         else:
             if len(self._Regions) == 1:
                 return self._Regions[0]
             else:
-                if self.isEmpty():
-                    print(f"The spetrum {self.getID()} is empty")
+                if self.is_empty():
+                    datahandler_logger.warning(f"The spetrum {self.get_id()} is empty")
                 else:
-                    print(f"The spetrum {self.getID()} contains more than one region")
+                    datahandler_logger.warning(f"The spetrum {self.get_id()} contains more than one region")
 
-    def getFilePath(self):
+    def get_file_path(self):
         """Returns the path to the original file with the data
         """
         return self._Path
@@ -543,9 +543,9 @@ class Region:
         self._Info = info
         self._RawInfo = info
         # Experimental conditions
-        self._setConditions(conditions)
+        self._set_conditions(conditions)
         # Excitation energy
-        self._setExcitationEnergy(excitation_energy)
+        self._set_excitation_energy(excitation_energy)
         # Default values for flags
         self._Flags = {
                 Region._region_flags[0]: False,
@@ -563,7 +563,7 @@ class Region:
             # take string 'FileNumber:RegionName' as ID
             if not id:
                 id = f"{self._Info[Region._info_entries[7]]}:{self._Info[Region._info_entries[0]]}"
-        self._setID(id)
+        self._set_id(id)
 
         self._Fitter = None # After fitting of the region we want to save the
                             # results and the Region object should know about it
@@ -579,27 +579,27 @@ class Region:
     def __sub__(self, other_region): # TODO: write region subtraction routine
         """Returns the difference of the "final" column of two instances
         """
-        return self._Data["final"] - other_region.getData("final")
+        return self._Data["final"] - other_region.get_data("final")
 
-    def _setID(self, regionID):
+    def _set_id(self, regionID):
         self._ID = regionID
 
-    def _setConditions(self, conditions):
+    def _set_conditions(self, conditions):
         """Set experimental conditions as a dictionary {"Property": Value}
         """
         self._Conditions = conditions
 
-    def _setExcitationEnergy(self, excitation_energy, overwrite=False):
+    def _set_excitation_energy(self, excitation_energy, overwrite=False):
         """Set regions's excitation energy.
         """
         self._ExcitationEnergy = excitation_energy
         if overwrite:
             self._Info[Region._info_entries[3]] = str(excitation_energy)
 
-    def setFermiFlag(self):
+    def set_fermi_flag(self):
         self._Flags[Region._region_flags[2]] = True
 
-    def getConditions(self, property=None):
+    def get_conditions(self, property=None):
         """Returns experimental conditions as a dictionary {"Property": Value} or
         th evalue of the specified property.
         """
@@ -607,32 +607,32 @@ class Region:
             return self._Conditions[property]
         return self._Conditions
 
-    def getExcitationEnergy(self):
+    def get_excitation_energy(self):
         return self._ExcitationEnergy
 
-    def getID(self):
+    def get_id(self):
         return self._ID
 
-    def resetRegion(self):
+    def reset_region(self):
         """Removes all the changes made to the Region and restores the initial
         "counts" and "energy" columns together with the _Info
         """
         self._Data = self._Raw
         self._Info = self._RawInfo
 
-    def invertToBinding(self):
+    def invert_to_binding(self):
         """Changes the energy scale of the region from kinetic to binding energy.
         """
         if not self._Flags[Region._region_flags[1]]:
-            self.invertEnergyScale()
+            self.invert_energy_scale()
 
-    def invertToKinetic(self):
+    def invert_to_kinetic(self):
         """Changes the energy scale of the region from binding to kinetic energy.
         """
         if self._Flags[Region._region_flags[1]]:
-            self.invertEnergyScale()
+            self.invert_energy_scale()
 
-    def invertEnergyScale(self):
+    def invert_energy_scale(self):
         """Changes the energy scale of the region from the currently defined to
         the alternative one. From kinetic to binding energy
         or from binding to kinetic energy.
@@ -646,14 +646,14 @@ class Region:
         else:
             self._Info[Region._info_entries[4]] = "Kinetic"
 
-    def correctEnergyShift(self, shift):
+    def correct_energy_shift(self, shift):
         if not self._Flags[Region._region_flags[0]]:
             self._Data['energy'] += shift
             self._Flags[Region._region_flags[0]] = True
         else:
-            print(f"The region {self.getID()} has already been energy corrected.")
+            datahandler_logger.info(f"The region {self.get_id()} has already been energy corrected.")
 
-    def normalizeBySweeps(self):
+    def normalize_by_sweeps(self):
         # If not yet normalized
         if not self._Flags[self._region_flags[3]]:
             if self._Info and (Region._info_entries[2] in self._Info):
@@ -692,7 +692,7 @@ class Region:
         tmp_region._Data.reset_index(drop=True, inplace=True)
         return tmp_region
 
-    def getData(self, column=None):
+    def get_data(self, column=None):
         """Returns pandas DataFrame with data columns. If column name is
         provided, returns 1D numpy.ndarray of specified column.
         """
@@ -700,7 +700,7 @@ class Region:
             return self._Data[column].values
         return self._Data
 
-    def getInfo(self, parameter=None):
+    def get_info(self, parameter=None):
         """Returns 'info' dictionary {"name": value} or the value of specified
         parameter.
         """
@@ -714,7 +714,7 @@ class Region:
         """
         output = ""
         if not self._Info:
-            output = f"No info available for region {self.getID()}"
+            output = f"No info available for region {self.get_id()}"
         else:
             # If no specific arguments provided, add everything to the output
             if len(args) == 0:
@@ -726,18 +726,18 @@ class Region:
                     output = "\n".join((output, f"{arg}: {self._Info[arg]}"))
         return output
 
-    def getFlags(self):
+    def get_flags(self):
         """Returns the dictionary of flags
         """
         return self._Flags
 
-    def isEnergyCorrected(self):
+    def is_energy_corrected(self):
         return self._Flags[self._region_flags[0]]
 
-    def isSweepsNormalized(self):
+    def is_sweeps_normalized(self):
         return self._Flags[self._region_flags[3]]
 
-    def isBinding(self):
+    def is_binding(self):
         return self._Flags[1]
 
     def add_column(self, column_label, array, overwrite=False):
@@ -747,19 +747,20 @@ class Region:
         """
         if column_label in self._Data.columns:
             if not overwrite:
-                print(f"Column '{column_label}' already exists in {self.getID()}")
-                print("Pass overwrite=True to overwrite the existing values.")
+                datahandler_logger.warning(f"Column '{column_label}' already exists in {self.get_id()}"
+                                           "Pass overwrite=True to overwrite the existing values.")
         self._Data[column_label] = array
 
-    def addFitter(self, fitter, overwrite=False):
+    def add_fitter(self, fitter, overwrite=False):
         if self._Fitter and (not overwrite):
-            print(f"Region {self.getID()} already has a fitter. Add overwrite=True parameter to overwrite.")
+            datahandler_logger.warning(f"Region {self.get_id()} already has a fitter. "
+                                       f"Add overwrite=True parameter to overwrite.")
             return
         self._Fitter = fitter
 
-    def getFitter(self):
+    def get_fitter(self):
         if not self._Fitter:
-            print(f"Region {self.getID()} doesn't have a fitter.")
+            datahandler_logger.warning(f"Region {self.get_id()} doesn't have a fitter.")
             return
         return self._Fitter
 

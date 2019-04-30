@@ -13,7 +13,7 @@ import matplotlib.image as mpimg
 
 import service
 import datahandler
-from plotter import SpecqpPlot
+import gui_plotter
 
 # Default font for the GUI
 LARGE_FONT = ("Verdana", "12")
@@ -192,7 +192,7 @@ class PlotPanel(ttk.Frame):
 
         self.start_page_img = mpimg.imread(logo_img_file)
 
-        self.figure = SpecqpPlot(dpi=100)
+        self.figure = gui_plotter.SpecqpPlot(dpi=100)
         self.figure_axes = self.figure.add_subplot(111)
         self.figure_axes.set_axis_off()
         self.figure_axes.imshow(self.start_page_img)
@@ -240,7 +240,7 @@ class CorrectionsPanel(ttk.Frame):  # TODO: add a slider for y-offseted plotting
                 self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes.clear()
                 for spectrum_ID in spectra_for_plotting:
                     # TODO: write proper plotting routine
-                    # helpers.plotRegion(self.winfo_toplevel().loaded_regions.get_by_ID(spectrum_ID),
+                    # helpers.plot_region(self.winfo_toplevel().loaded_regions.get_by_ID(spectrum_ID),
                     #                    figure=self.winfo_toplevel().gui_widgets["PlotPanel"].figure,
                     #                    )
                     self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes.plot([1, 2, 3], [1, 2, 3])
