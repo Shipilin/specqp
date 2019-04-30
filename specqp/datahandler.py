@@ -6,8 +6,8 @@ The hierarchy of objects is as follows:
 1. Class Experiment contains all data for an executed experiment.
 Usually it should contain one uninterrupted set of measurements
 for one sample.
-2. Class SetOfSpectra contains a number of spectra measured under the same
-conditions. Usually a few spectra including Fermi edge measurement.
+2. Class SetOfSpectra contains a number of regions measured under the same
+conditions. Usually a few regions including Fermi edge measurement.
 3. Class Spectrum contains a single spectrum with possibly several
 regions.
 4. Class AddDimensionSpectrum is on the same hierarchical level with
@@ -17,41 +17,62 @@ changing conditions or such.
 5. Class Region contains the data for one region.
 """
 import os
+import logging
 import copy
 import pandas as pd
 
+datahandler_logger = logging.getLogger("specqp.datahandler")  # Creating child logger
 
-class SpectraCollection:
-    """Keeps track of the list of spectra being in work simultaneously in the GUI or the batch mode
+DATA_FILE_TYPES = (
+    "scienta",
+    "specs"
+)
+
+
+class RegionsCollection:
+    """Keeps track of the list of regions being in work simultaneously in the GUI or the batch mode
     """
     def __init__(self):
-        self.spectra = []
-        self.spectra_IDs = []
+        self.regions = {}
 
-    def add_spectra(self, list_of_new_spectra):
-        """Adds spectrum objects
-        :param list_of_new_spectra: List of spectrum objects (can be also single object in the list form, e.g. [obj,])
+    def add_regions(self, list_of_new_regions):
+        """Adds region objects
+        :param list_of_new_regions: List of region objects (can be also single object in the list form, e.g. [obj,])
         :return: None
         """
-        for new_spectrum in list_of_new_spectra:
-            self.spectra_IDs.append(new_spectrum.get_ID)
-            self.spectra.append(new_spectrum)
+        for new_region in list_of_new_regions:
+            self.regions[new_region.getID()] = new_region
 
-    def add_spectra_from_file(self, file_path):
-        """Adds spectrum objects after extracting them from the file
-        :param file_path: Absolute path to the data file from which the spectra shall be extracted
-        :return: list of IDs for spectra loaded from the file
+    def add_regions_from_file(self, file_path, file_type=DATA_FILE_TYPES[0]):
+        """Adds region objects after extracting them from the file
+        :param file_path: Absolute path to the data file from which the regions shall be extracted
+        :param file_type: File type to be processed
+        :return: list of IDs for regions loaded from the file
         """
-        pass
+        values = []
+        regions = []
+        if file_type == DATA_FILE_TYPES[0]:
+            regions = load_scienta_txt(file_path)
+        elif file_type == DATA_FILE_TYPES[1]:
+            regions = load_specs_xy(file_path)
+        for region in regions:
+            self.regions[region.getID()] = region
+            values.append(region.getID())
+        return values
 
-    def get_IDs(self):
-        """Returns the list of spectra IDs
+    def get_ids(self):
+        """Returns the list of regions IDs
         :return: list of IDs
         """
-        return self.spectra_IDs
+        return list(self.regions.keys())
+
+    def get_by_id(self, spectrum_ID):
+        if spectrum_ID in self.regions:
+            return self.regions[spectrum_ID]
 
 
-def _loadScientaTXT(filename, regions_number_line=1):
+# TODO: Add error handling for cases when a file with a wrong type is passed
+def load_scienta_txt(filename, regions_number_line=1):
     """Opens and parses provided scienta file returning the data and info for all regions
     as a list of Region objects. Variable 'regions_number_line' gives the
     number of the line in the scienta file where the number of regions is given
@@ -59,7 +80,7 @@ def _loadScientaTXT(filename, regions_number_line=1):
     contains the information).
     """
     # Info block parsing routine
-    def parseScientaFileInfo(lines):
+    def parse_scienta_file_info(lines):
         """Helper function that parses the list of lines read from Scienta.txt
         file info block and returns 'info' dictionary {property: value}
         """
@@ -103,16 +124,16 @@ def _loadScientaTXT(filename, regions_number_line=1):
     # [Info N] - important info
     # [Data N] - data
     for i, line in enumerate(lines):
-        if ("[Region %d]" % cnt) in line:
+        if f"[Region {cnt}]" in line:
             # If it is not the first region, than the data section of the previous
             # region ends on the previous line
             if cnt > 1:
                 data_indices.append(i-1)
             continue
-        if ("[Info %d]" % cnt) in line:
+        if f"[Info {cnt}]" in line:
             info_indices.append(i+1)
             continue
-        if ("[Data %d]" % cnt) in line:
+        if f"[Data {cnt}]" in line:
             info_indices.append(i-1)
             data_indices.append(i+1)
             if cnt == regions_number:
@@ -145,19 +166,18 @@ def _loadScientaTXT(filename, regions_number_line=1):
                     counts.append(y)
 
         # Info block of the current region
-        info_lines = parseScientaFileInfo(lines[val[0][0]:val[0][1]+1])
+        info_lines = parse_scienta_file_info(lines[val[0][0]:val[0][1]+1])
         # Not all info entries are important for data analysis,
         # Choose only important ones
-        info_lines_revised = {}
-        info_lines_revised[Region._info_entries[0]] = info_lines["Region Name"]
-        info_lines_revised[Region._info_entries[1]] = info_lines["Pass Energy"]
-        info_lines_revised[Region._info_entries[2]] = info_lines["Number of Sweeps"]
-        info_lines_revised[Region._info_entries[3]] = info_lines["Excitation Energy"]
-        info_lines_revised[Region._info_entries[4]] = info_lines["Energy Scale"]
-        info_lines_revised[Region._info_entries[5]] = info_lines["Energy Step"]
-        info_lines_revised[Region._info_entries[6]] = info_lines["Step Time"]
-        info_lines_revised[Region._info_entries[7]] = info_lines["File"]
-        info_lines_revised[Region._info_entries[8]] = f"{info_lines['Date']} {info_lines['Time']}"
+        info_lines_revised = {Region._info_entries[0]: info_lines["Region Name"],
+                              Region._info_entries[1]: info_lines["Pass Energy"],
+                              Region._info_entries[2]: info_lines["Number of Sweeps"],
+                              Region._info_entries[3]: info_lines["Excitation Energy"],
+                              Region._info_entries[4]: info_lines["Energy Scale"],
+                              Region._info_entries[5]: info_lines["Energy Step"],
+                              Region._info_entries[6]: info_lines["Step Time"],
+                              Region._info_entries[7]: info_lines["File"],
+                              Region._info_entries[8]: f"{info_lines['Date']} {info_lines['Time']}"}
 
         # Create a Region object for the current region
         regions.append(Region(energy, counts, info=info_lines_revised))
@@ -165,12 +185,12 @@ def _loadScientaTXT(filename, regions_number_line=1):
     return regions
 
 
-def _loadSpecsXY(filename):
+def load_specs_xy(filename):
     """Opens and parses provided SPECS file returning the data and info for recorded
     region as a list of Region objects in order to be consistent with the Scienta
     loading routine.
     """
-    def parseSpecFileInfo(lines):
+    def parse_spec_file_info(lines):
         """Parses the list of lines read from SPEC.xy file info block
         and returns 'info' dictionary
         """
@@ -206,7 +226,7 @@ def _loadSpecsXY(filename):
     # The file might be empty, then we ignore it
     if energy:
         # Switch from list to dictionary
-        info_lines = parseSpecFileInfo(info_lines)
+        info_lines = parse_spec_file_info(info_lines)
 
         # Check which energy scale is used:
         if info_lines["Energy Axis"] == "Kinetic Energy":
@@ -216,46 +236,46 @@ def _loadSpecsXY(filename):
 
         # Not all info entries are important for data analysis,
         # Choose only important ones
-        info_lines_revised = {}
-        info_lines_revised[Region._info_entries[0]] = info_lines["Region"]
-        info_lines_revised[Region._info_entries[1]] = info_lines["Pass Energy"]
-        info_lines_revised[Region._info_entries[2]] = info_lines["Number of Scans"]
-        info_lines_revised[Region._info_entries[3]] = info_lines["Excitation Energy"]
-        info_lines_revised[Region._info_entries[4]] = info_lines["Energy Axis"]
-        info_lines_revised[Region._info_entries[5]] = str(abs(energy[-1] - energy[0])/int(info_lines["Values/Curve"]))
-        info_lines_revised[Region._info_entries[6]] = info_lines["Dwell Time"]
-        info_lines_revised[Region._info_entries[7]] = filename.rpartition('.')[0].rpartition('/')[2]
-        info_lines_revised[Region._info_entries[8]] = info_lines["Acquisition Date"]
+        info_lines_revised = {Region._info_entries[0]: info_lines["Region"],
+                              Region._info_entries[1]: info_lines["Pass Energy"],
+                              Region._info_entries[2]: info_lines["Number of Scans"],
+                              Region._info_entries[3]: info_lines["Excitation Energy"],
+                              Region._info_entries[4]: info_lines["Energy Axis"],
+                              Region._info_entries[5]: str(abs(energy[-1]-energy[0]) / int(info_lines["Values/Curve"])),
+                              Region._info_entries[6]: info_lines["Dwell Time"],
+                              Region._info_entries[7]: filename.rpartition('.')[0].rpartition('/')[2],
+                              Region._info_entries[8]: info_lines["Acquisition Date"]}
 
         # Create a Region object for the current region
         regions.append(Region(energy, counts, info=info_lines_revised))
     return regions
 
 
-def _askPath(folder_flag=True, multiple_files_flag=False):
+def _ask_path(folder_flag=True, multiple_files_flag=False):
     """Makes a tkinter dialog for choosing the folder if folder_flag=True
     or file(s) otherwise. For multiple files the multiple_files_flag should
     be True.
     """
+    # This method is almost never used, so the required imports are locally called
+    import tkinter as tk
+    from tkinter import filedialog
+
     root = tk.Tk()
     root.withdraw()
     path = os.getcwd()
     if folder_flag: # Open folder
-        path = filedialog.askdirectory(parent=root, initialdir=path,
-                                    title='Please select experiment directory')
+        path = filedialog.askdirectory(parent=root, initialdir=path, title='Please select experiment directory')
     else: # Open file
         if multiple_files_flag:
-            path = filedialog.askopenfilenames(parent=root, initialdir=path,
-                                    title='Please select data files')
+            path = filedialog.askopenfilenames(parent=root, initialdir=path, title='Please select data files')
             path = root.tk.splitlist(path)
         else:
-            path = filedialog.askopenfilename(parent=root, initialdir=path,
-                                    title='Please select data file')
+            path = filedialog.askopenfilename(parent=root, initialdir=path, title='Please select data file')
     root.destroy()
     return path
 
 
-def readCSV(filename): # TODO rewrite for new classes
+def read_csv(filename): # TODO rewrite
     """Reads csv file and returns Region object. Values of flags and info
     is retrieved from the comment lines marked with '#' simbol at the beginning
     of the file.
@@ -296,7 +316,7 @@ def readCSV(filename): # TODO rewrite for new classes
 
 
 class Experiment:
-    """Class contains a number of spectra that were taken as one set of measurements.
+    """Class contains a number of regions that were taken as one set of measurements.
     Usually for one sample and one reaction with changing conditions.
     The main attribute is Spectra dictionary {"spectrumID": spectrum}
     It is empty upon object instance initialization and has to be populated using
@@ -310,7 +330,7 @@ class Experiment:
     def __str__(self):
         output = ""
         if not self._Spectra:
-            output = "No spectra were loaded"
+            output = "No regions were loaded"
         else:
             for i, key in enumerate(self._Spectra.keys()):
                 if i == 0:
@@ -365,13 +385,13 @@ class Spectrum:
     """
     def __init__(self, path=None, conditions=None, ID=None, excitation_energy=None, file_type="scienta"):
         if not path:
-            path = _askPath(folder_flag=False, multiple_files_flag=False)
+            path = _ask_path(folder_flag=False, multiple_files_flag=False)
 
         self._Path = path
         if file_type == "scienta":
-            self._Regions = _loadScientaTXT(self._Path)
+            self._Regions = load_scienta_txt(self._Path)
         elif file_type == "specs":
-            self._Regions = _loadSpecsXY(self._Path)
+            self._Regions = load_specs_xy(self._Path)
             if not excitation_energy and self._Regions:
                 excitation_energy = float(self.getRegion().getInfo("Excitation Energy"))
         self._setConditions(conditions)
@@ -506,15 +526,8 @@ class Region:
         "sweeps_normalized"
     )
 
-    def __init__(self,
-                 energy,
-                 counts,
-                 info=None,
-                 excitation_energy=None,
-                 conditions=None,
-                 ID=None,
-                 fermiFlag=False):
-        """Creates an object using two variables (of type list or similar).
+    def __init__(self, energy, counts, info=None, excitation_energy=None, conditions=None, id=None, fermi_flag=False):
+        """Creates an object using two iterables.
         The first goes for energy (X) axis, the second - for counts (Y) axis.
         Info about the region is stored as a dictionary {property: value}.
         The same goes for experimental conditions.
@@ -537,7 +550,7 @@ class Region:
         self._Flags = {
                 Region._region_flags[0]: False,
                 Region._region_flags[1]: None,
-                Region._region_flags[2]: fermiFlag,
+                Region._region_flags[2]: fermi_flag,
                 Region._region_flags[3]: False
                 }
         # Check which energy scale is used:
@@ -548,22 +561,22 @@ class Region:
                 self._Flags[Region._region_flags[1]] = False
             # If info is available for the region and the ID is not assigned,
             # take string 'FileNumber:RegionName' as ID
-            if not ID:
-                ID = f"{self._Info[Region._info_entries[7]]}:{self._Info[Region._info_entries[0]]}"
-        self._setID(ID)
+            if not id:
+                id = f"{self._Info[Region._info_entries[7]]}:{self._Info[Region._info_entries[0]]}"
+        self._setID(id)
 
         self._Fitter = None # After fitting of the region we want to save the
                             # results and the Region object should know about it
 
-        self.addColumn('final', self._Data["counts"])
+        self.add_column('final', self._Data["counts"])
 
     def __str__(self):
-        """Prints the info read from the Scienta file
+        """Prints the info read from the data file
         Possible to add keys of the Info dictionary to be printed
         """
-        return self.getInfoString()
+        return self.get_info_string()
 
-    def __sub__(self, other_region): # TODO
+    def __sub__(self, other_region): # TODO: write region subtraction routine
         """Returns the difference of the "final" column of two instances
         """
         return self._Data["final"] - other_region.getData("final")
@@ -647,7 +660,7 @@ class Region:
                 self._Data['counts'] = self._Data['counts'] / float(self._Info[Region._info_entries[2]])
                 self._Flags[self._region_flags[3]] = True
 
-    def cropRegion(self, start=None, stop=None, changesource=False):
+    def crop_region(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
         on 'energy' axis. Interval is given in real units of the data. If start or
         stop or both are not specified the method takes first (or/and last) values.
@@ -660,14 +673,12 @@ class Region:
         if start:
             for i in s.index:
                 if i > 0:
-                    if ((s[i - 1] <= start and s[i] >= start) or
-                        (s[i - 1] >= start and s[i] <= start)):
+                    if (s[i - 1] <= start <= s[i]) or (s[i - 1] >= start >= s[i]):
                         first_index = i
         if stop:
             for i in s.index:
                 if i > 0:
-                    if ((s[i - 1] <= stop and s[i] >= stop) or
-                        (s[i - 1] >= stop and s[i] <= stop)):
+                    if (s[i - 1] <= stop <= s[i]) or (s[i - 1] >= stop >= s[i]):
                         last_index = i
 
         if changesource:
@@ -697,7 +708,7 @@ class Region:
             return self._Info[parameter]
         return self._Info
 
-    def getInfoString(self, *args):
+    def get_info_string(self, *args):
         """Returns info string with the information about the region
         Possible to add keys of the Info dictionary to be printed
         """
@@ -729,7 +740,7 @@ class Region:
     def isBinding(self):
         return self._Flags[1]
 
-    def addColumn(self, column_label, array, overwrite=False):
+    def add_column(self, column_label, array, overwrite=False):
         """Adds one column to the data object assigning it the name 'column_label'.
         Choose descriptive labels. If label already exists but 'overwrite' flag
         is set to True, the method overwrites the data in the column.
@@ -752,24 +763,24 @@ class Region:
             return
         return self._Fitter
 
-    def makeFinalColumn(self, parent_column, overwrite=False):
+    def make_final_column(self, parent_column, overwrite=False):
         """Adds a column with name "final" and populates it with the values
-        from the column "parent_column", which is supposed to contain original
+        from the column "parent_column", which contains original
         data values corrected by background, normalized etc. It is used then for
         data analysis later on.
         """
-        self.addColumn('final', self._Data[parent_column], overwrite)
+        self.add_column('final', self._Data[parent_column], overwrite)
 
-    def removeColumn(self, column_label):
+    def remove_column(self, column_label):
         """Removes one of the columns of the data object except two main ones:
         'energy' and 'counts'.
         """
         if (column_label == 'energy') or (column_label == 'counts'):
-            print("Basic data columns can't be removed!")
+            datahandler_logger.warning("Basic data columns can't be removed!")
             return
         self._Data = self._Data.drop(column_label, 1)
 
-    def saveCSV(self, filename): # TODO change the struture of file
+    def save_csv(self, filename): # TODO change the structure of file
         """Saves Region object in the csv file with given name. Flags and info are
         stored in the comment lines marked with '#' simbol at the beginning of
         the file.

@@ -1,53 +1,56 @@
 import os
 import logging
 
-# Service folders and files
-LOG_FILE_NAME = "../data/log/app.log"
-INIT_FILE_NAME = "../data/specqp.init"
 
-SERVICE_CONSTANTS = (
-    "DEFAULT_DATA_FOLDER",
-)
+service_logger = logging.getLogger("specqp.service")  # Configuring child logger
+
+# Don't change the sequence of constants. If new constants are to be added, add them to the end
+service_vars = {
+    "DEFAULT_DATA_FOLDER": "../",
+    "LOG_FILE_NAME": "../data/log/app.log",
+    "INIT_FILE_NAME": "../data/specqp.init"
+}
 
 
-def prepare_service_files():
-    # Create the log directory if doesn't exist
-    directory = os.path.dirname(LOG_FILE_NAME)
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    # Create the init file if doesn't exist
-    if not os.path.isfile(INIT_FILE_NAME):
-        with open(INIT_FILE_NAME, 'w') as init_file:
-            init_file.write(f"{SERVICE_CONSTANTS[0]}={os.getcwd()}")
+def prepare_startup():
+    # Read the last used data folder from .init file if exists. Create the .init file if doesn't exist
+    if os.path.isfile(service_vars["INIT_FILE_NAME"]):
+        service_vars["DEFAULT_DATA_FOLDER"] = read_default_data_folder_from_file()
+    else:
+        with open(service_vars["INIT_FILE_NAME"], 'w') as init_file:
+            service_vars["DEFAULT_DATA_FOLDER"] = os.getcwd()
+            init_file.write(f"DEFAULT_DATA_FOLDER={service_vars['DEFAULT_DATA_FOLDER']}")
 
 
 def set_default_data_folder(new_dir):
-    new_line = f"{SERVICE_CONSTANTS[0]}={new_dir}"
+    # If the new folder is actually the same as before do nothing
+    if new_dir == service_vars["DEFAULT_DATA_FOLDER"]:
+        return
+    service_vars["DEFAULT_DATA_FOLDER"] = new_dir
+    new_line = f"DEFAULT_DATA_FOLDER={new_dir}"
     try:
-        with open(INIT_FILE_NAME, 'r') as init_file:
+        with open(service_vars["INIT_FILE_NAME"], 'r') as init_file:
             lines = init_file.readlines()
             for i, line in enumerate(lines):
-                if SERVICE_CONSTANTS[0] in line:
+                if "DEFAULT_DATA_FOLDER" in line:
                     lines[i] = new_line
                     break
             # If not found in .init file add at the end of the file
             if new_line not in lines:
                 lines.append(new_line)
-        with open(INIT_FILE_NAME, 'w') as init_file:
+        with open(service_vars["INIT_FILE_NAME"], 'w') as init_file:
             init_file.writelines(lines)
     except IOError:
-        logger = logging.getLogger("specqp.service")  # Configuring child logger
-        logger.error(f"Can't access the file {INIT_FILE_NAME}", exc_info=True)
+        service_logger.error(f"Can't access the file {service_vars['INIT_FILE_NAME']}", exc_info=True)
 
 
-def get_default_data_folder():
+def read_default_data_folder_from_file():
     try:
-        with open(INIT_FILE_NAME, 'r') as init_file:
+        with open(service_vars["INIT_FILE_NAME"], 'r') as init_file:
             lines = init_file.readlines()
             for i, line in enumerate(lines):
-                if SERVICE_CONSTANTS[0] in line:
+                if "DEFAULT_DATA_FOLDER" in line:
                     # Return the part of the line after the constant name and '=' sign
-                    return line[(len(SERVICE_CONSTANTS[0]) + 1):]
+                    return line[(len("DEFAULT_DATA_FOLDER") + 1):]
     except IOError:
-        logger = logging.getLogger("specqp.service")  # Configuring child logger
-        logger.error(f"Can't access the file {INIT_FILE_NAME}", exc_info=True)
+        service_logger.error(f"Can't access the file {service_vars['INIT_FILE_NAME']}", exc_info=True)

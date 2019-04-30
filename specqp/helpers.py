@@ -30,12 +30,12 @@ def fitFermiEdge(region, initial_params, add_column=True, overwrite=True):
                     p0=initial_params)
 
     if add_column:
-        region.addColumn("fitFermi", errorFunc(region.getData(column='energy'),
-                             popt[0],
-                             popt[1],
-                             popt[2],
-                             popt[3]),
-                             overwrite=overwrite)
+        region.add_column("fitFermi", errorFunc(region.getData(column='energy'),
+                                                popt[0],
+                                                popt[1],
+                                                popt[2],
+                                                popt[3]),
+                          overwrite=overwrite)
 
     return [popt, np.sqrt(np.diag(pcov))]
 
@@ -134,7 +134,7 @@ def calculateLinearBackground(region, y_data='counts', manual_bg=None, by_min=Fa
             background = np.linspace(counts[0], counts[-1], len(energy))
 
     if add_column:
-        region.addColumn("linearBG", counts - background, overwrite=overwrite)
+        region.add_column("linearBG", counts - background, overwrite=overwrite)
 
     return background
 
@@ -189,7 +189,7 @@ def calculateShirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_co
         corrected = counts - output
         if np.amin(corrected) < 0:
             corrected += np.absolute(np.amin(corrected))
-        region.addColumn("shirleyBG", corrected, overwrite=overwrite)
+        region.add_column("shirleyBG", corrected, overwrite=overwrite)
 
     return output
 
@@ -213,7 +213,7 @@ def calculateLinearAndShirley(region, y_data='counts', shirleyfirst=True, by_min
         shirley_bg = calculateShirley(region, y_data="linearBG", tolerance=tolerance, maxiter=maxiter, add_column=add_column)
     background = linear_bg + shirley_bg
     if add_column:
-        region.addColumn("linear+shirleyBG", counts - background, overwrite=overwrite)
+        region.add_column("linear+shirleyBG", counts - background, overwrite=overwrite)
 
     return background
 
@@ -230,7 +230,7 @@ def smoothen(region, y_data='counts', interval=3, add_column=True):
         avged = np.insert(avged, -1, avged[-1])
 
     if add_column:
-        region.addColumn("averaged", avged, overwrite=True)
+        region.add_column("averaged", avged, overwrite=True)
 
     return avged
 
@@ -246,7 +246,7 @@ def normalize(region, y_data='counts', const=None, add_column=True):
         output = counts / float(max(counts))
 
     if add_column:
-        region.addColumn("normalized", output, overwrite=True)
+        region.add_column("normalized", output, overwrite=True)
     return output
 
 
@@ -273,7 +273,7 @@ def normalizeByBackground(region, start, stop, y_data='counts', add_column=True)
     output = counts / float(np.mean(counts[first_index:last_index]))
 
     if add_column:
-        region.addColumn("bgnormalized", output, overwrite=True)
+        region.add_column("bgnormalized", output, overwrite=True)
     return output
 
 
@@ -300,7 +300,7 @@ def shiftByBackground(region, interval, y_data='counts', add_column=True):
     output = counts - float(np.mean(counts[first_index:last_index]))
 
     if add_column:
-        region.addColumn("bgshifted", output, overwrite=True)
+        region.add_column("bgshifted", output, overwrite=True)
     return output
 
 

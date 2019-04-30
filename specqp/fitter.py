@@ -2,7 +2,7 @@
 """
 import numpy as np
 from scipy.optimize import curve_fit
-from datahandler import Region
+
 
 class Peak:
     """Contains information about one peak fitted to a region.
@@ -80,7 +80,7 @@ class Peak:
 
 
 class Fitter:
-    """Provides fitting possibilities for XPS spectra
+    """Provides fitting possibilities for XPS regions
     """
     def __init__(self, region, y_data='counts', gauss_fwhm=None):
         """Creates an object that contains information about fitting of

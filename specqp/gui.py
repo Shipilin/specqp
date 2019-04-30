@@ -1,6 +1,5 @@
 import os
 import tkinter as tk
-import tkinter.tix as tix
 from tkinter import ttk
 from tkinter import filedialog
 import ntpath
@@ -12,20 +11,18 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.backend_bases import key_press_handler
 import matplotlib.image as mpimg
 
-from service import set_default_data_folder
-from service import get_default_data_folder
+import service
+import datahandler
 from plotter import SpecqpPlot
-from datahandler import SpectraCollection
 
 # Default font for the GUI
 LARGE_FONT = ("Verdana", "12")
 
-gui_logger = logging.getLogger("specqp.gui")  # Configuring child logger
+gui_logger = logging.getLogger("specqp.gui")  # Creating child logger
 matplotlib.use('TkAgg')  # Configuring matplotlib interaction with tkinter
 style.use('ggplot')  # Configuring matplotlib style
 
 logo_img_file = "assets/specqp_icon.png"
-test_file = "../tests/scienta_single_region_1.txt"
 
 
 class CustomText(tk.Text):
@@ -98,7 +95,7 @@ class FileViewerWindow(ttk.Frame):
             with open(filepath, "r") as file:
                 self.text.insert(0.0, file.read())
                 self.text.config(state=tk.DISABLED)
-        except IOError:
+        except OSError:
             gui_logger.warning(f"Can't open the file {filepath}", exc_info=True)
             self.text.insert(0.0, f"Can't open the file: {filepath}")
             self.text.config(state=tk.DISABLED)
@@ -115,7 +112,7 @@ class FileViewerWindow(ttk.Frame):
 
 class BrowserTreeView(ttk.Frame):
     def __init__(self, parent, default_items=None, *args, **kwargs):
-        """Creates a check list with loaded file names as sections and corresponding spectra IDs as checkable items
+        """Creates a check list with loaded file names as sections and corresponding regions IDs as checkable items
         :param default_items: dictionary {"file_name1": ("ID1, ID2,..."), "file_name2": ("ID1", "ID2", ...)}
         :param args:
         :param kwargs:
@@ -125,7 +122,8 @@ class BrowserTreeView(ttk.Frame):
 
         self.check_list_items = []
         if default_items:
-            self.add_items_to_check_list(default_items.keys(), default_items.items())
+            for key, val in default_items.items():
+                self.add_items_to_check_list(key, val)
 
     def get_checked_items(self):
         values = []
@@ -136,9 +134,9 @@ class BrowserTreeView(ttk.Frame):
         return values
 
     def add_items_to_check_list(self, section_name, items):
-        """A call to the function dinamically adds a section with loaded spectra IDs to the checkbox list
+        """A call to the function dinamically adds a section with loaded regions IDs to the checkbox list
         :param section_name: the name of the file that was loaded
-        :param items: the IDs of spectra loaded from the file
+        :param items: the IDs of regions loaded from the file
         :return: None
         """
         file_name_label = tk.Label(self, text=section_name, anchor=tk.W)
@@ -161,8 +159,14 @@ class BrowserPanel(ttk.Frame):
         # Action buttons panel
         self.buttons_panel = ttk.Frame(self, borderwidth=1, relief="groove")
         # Action buttons
-        self.add_file_button = ttk.Button(self.buttons_panel, text='Load File', command=self._ask_load_file)
-        self.add_file_button.pack(side=tk.TOP, fill=tk.X)
+        self.load_label = ttk.Label(self.buttons_panel, text="Load File", anchor=tk.W)
+        self.load_label.pack(side=tk.TOP, fill=tk.X)
+        self.add_sc_file_button = ttk.Button(self.buttons_panel, text='Load SCIENTA', command=self._ask_load_scienta_file)
+        self.add_sc_file_button.pack(side=tk.TOP, fill=tk.X)
+        self.add_sp_file_button = ttk.Button(self.buttons_panel, text='Load SPECS', command=self._ask_load_specs_file)
+        self.add_sp_file_button.pack(side=tk.TOP, fill=tk.X)
+        self.blank_label = ttk.Label(self.buttons_panel, text="", anchor=tk.W)
+        self.blank_label.pack(side=tk.TOP, fill=tk.X)
         self.app_quit_button = ttk.Button(self.buttons_panel, text='Quit', command=self._quit)
         self.app_quit_button.pack(side=tk.TOP, fill=tk.X)
         self.buttons_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
@@ -171,12 +175,11 @@ class BrowserPanel(ttk.Frame):
         self.spectra_tree_panel = BrowserTreeView(self, borderwidth=1, relief="groove")
         self.spectra_tree_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
 
-    def _ask_load_file(self):
-        file_path, loaded_IDs = self.winfo_toplevel().load_file()
-        if file_path and loaded_IDs:
-            self.spectra_tree_panel.add_items_to_check_list(os.path.basename(file_path), loaded_IDs)
-        else:
-            gui_logger.debug("Something went wrong when loading spectra by clicking the button in BrowserPanel")
+    def _ask_load_scienta_file(self):
+        self.winfo_toplevel().load_file(file_type=datahandler.DATA_FILE_TYPES[0])
+
+    def _ask_load_specs_file(self):
+        self.winfo_toplevel().load_file(file_type=datahandler.DATA_FILE_TYPES[1])
 
     def _quit(self):
         self.winfo_toplevel().quit()  # stops mainloop
@@ -194,7 +197,7 @@ class PlotPanel(ttk.Frame):
         self.figure_axes.set_axis_off()
         self.figure_axes.imshow(self.start_page_img)
 
-        self.canvas = FigureCanvasTkAgg(figure, master=self)
+        self.canvas = FigureCanvasTkAgg(self.figure, master=self)
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self.canvas.draw()
 
@@ -203,13 +206,18 @@ class PlotPanel(ttk.Frame):
         self.toolbar.update()
 
         self.canvas.mpl_connect("key_press_event", self._on_key_press)
+        # self.canvas.mpl_connect("button_press_event", self._on_mouse_click)
 
     def _on_key_press(self, event):
         gui_logger.info(f"{event.key} pressed on plot canvas")
         key_press_handler(event, self.canvas, self.toolbar)
 
+    # def _on_mouse_click(self, event):
+    #     gui_logger.info(f"{event.button} pressed on plot canvas")
+    #     key_press_handler(event, self.canvas, self.toolbar)
 
-class CorrectionsPanel(ttk.Frame):
+
+class CorrectionsPanel(ttk.Frame):  # TODO: add a slider for y-offseted plotting
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["CorrectionsPanel"] = self
@@ -220,14 +228,24 @@ class CorrectionsPanel(ttk.Frame):
         self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
         self.buttons_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
 
+        # TODO: add tree view of corrections
         # Corrections tree panel
 #       self.corrections_tree_panel = BrowserTreeView(self, borderwidth=1, relief="groove")
 #       self.corrections_tree_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
 
     def _plot_checked(self):
         if "BrowserTreeView" in self.winfo_toplevel().gui_widgets:
-            # TODO: write functionality for "Plot checked" button
-            print(self.winfo_toplevel().gui_widgets["BrowserTreeView"].get_checked_items())
+            spectra_for_plotting = self.winfo_toplevel().gui_widgets["BrowserTreeView"].get_checked_items()
+            if spectra_for_plotting:
+                self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes.clear()
+                for spectrum_ID in spectra_for_plotting:
+                    # TODO: write proper plotting routine
+                    # helpers.plotRegion(self.winfo_toplevel().loaded_regions.get_by_ID(spectrum_ID),
+                    #                    figure=self.winfo_toplevel().gui_widgets["PlotPanel"].figure,
+                    #                    )
+                    self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes.plot([1, 2, 3], [1, 2, 3])
+                    self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes.plot([3, 2, 1], [1, 2, 3])
+                self.winfo_toplevel().gui_widgets["PlotPanel"].canvas.draw()
         else:
             gui_logger.debug("CorrectionPanel tries to access BrowserTreeView with no success")
 
@@ -236,7 +254,6 @@ class MainWindow(ttk.PanedWindow):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["MainWindow"] = self
-
         self.browser_panel = BrowserPanel(self, borderwidth=1, relief="groove")
         self.add(self.browser_panel)
         self.corrections_panel = CorrectionsPanel(self, borderwidth=1, relief="groove")
@@ -254,8 +271,8 @@ class Root(tk.Tk):
         self.gui_widgets = {}
         # List of toplevel objects of the app (not including MainWindow and its children)
         self.toplevel_windows = []
-        # Attribute keeping track of all spectra loaded in the current GUI session
-        self.loaded_spectra = SpectraCollection()
+        # Attribute keeping track of all regions loaded in the current GUI session
+        self.loaded_regions = datahandler.RegionsCollection()
 
         self.main_menu_bar = tk.Menu(self)
         self.file_menu = tk.Menu(self.main_menu_bar, tearoff=0)
@@ -270,13 +287,16 @@ class Root(tk.Tk):
         """Configuring the app menu
         """
         # File menu
-        self.file_menu.add_command(label="Load File", command=self.load_file)
+        self.file_menu.add_command(label="Load SCIENTA File", command=self.load_file)
+        self.file_menu.add_command(label="Load SPECS File", command=self.load_specs_file)
         self.file_menu.add_command(label="Open File as Text", command=self.open_file_as_text)
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Quit", command=self.quit)
         self.main_menu_bar.add_cascade(label="File", menu=self.file_menu)
 
         # Help menu
+        self.help_menu.add_command(label="Export log", command=self.export_log)
+        self.help_menu.add_separator()
         self.help_menu.add_command(label="About", command=self.show_about)
         self.help_menu.add_separator()
         self.help_menu.add_command(label="Help...", command=self.show_help)
@@ -287,28 +307,43 @@ class Root(tk.Tk):
     def open_file_as_text(self):
         """Open the read-only view of a text file in a Toplevel widget
         """
-        file_path = filedialog.askopenfilename(parent=self, initialdir=get_default_data_folder())
+        file_path = filedialog.askopenfilename(parent=self, initialdir=service.service_vars["DEFAULT_DATA_FOLDER"])
         if file_path:
             # If the user open a file, remember the file folder to use it next time when the open request is received
-            set_default_data_folder(os.path.dirname(file_path))
+            service.set_default_data_folder(os.path.dirname(file_path))
 
             text_view = tk.Toplevel(self)
             self.toplevel_windows.append(text_view)
             text_view.wm_title(ntpath.basename(file_path))
             text_panel = FileViewerWindow(text_view, file_path)
             text_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-    def load_file(self):
-        file_path = filedialog.askopenfilename(parent=self, initialdir=get_default_data_folder())
-        if file_path:
-            # If the user open a file, remember the file folder to use it next time when the open request is received
-            set_default_data_folder(os.path.dirname(file_path))
-            # TODO: exchange dummy code with the proper one
-            #loaded_IDs = self.loaded_spectra.add_spectra_from_file(file_path)
-            loaded_IDs = [1, 2, 3]
-            return file_path, loaded_IDs
         else:
-            gui_logger.debug(f"Couldn't get the file path from the load_file function in Root class")
+            gui_logger.debug(f"Couldn't get the file path from the open_file_as_text dialog in Root class")
+
+    def load_specs_file(self):
+        self.load_file(file_type=datahandler.DATA_FILE_TYPES[1])
+
+    def load_file(self, file_type=datahandler.DATA_FILE_TYPES[0]):
+        # TODO: add multiple files handling
+        # {"file_path": (ID1, ID2,...), ...}
+        file_path = filedialog.askopenfilename(parent=self, initialdir=service.service_vars["DEFAULT_DATA_FOLDER"])
+        loaded_ids = None
+        if file_path:
+            # If the user opens a file, remember the file folder to use it next time when the open request is received
+            service.set_default_data_folder(os.path.dirname(file_path))
+            loaded_ids = self.loaded_regions.add_regions_from_file(file_path, file_type)
+        else:
+            gui_logger.debug(f"Couldn't get the file path from the load_file dialog in Root class")
+
+        assert loaded_ids, "Loading regions crashed. Loaded_IDs variable is empty"
+        if loaded_ids:
+            self.gui_widgets["BrowserPanel"].spectra_tree_panel.add_items_to_check_list(os.path.basename(file_path),
+                                                                                        loaded_ids)
+        else:
+            gui_logger.warning(f"The file {file_path} provided 0 regions. Possible reason: it is empty or broken.")
+
+    def export_log(self):
+        pass
 
     def show_about(self):
         print("About")
