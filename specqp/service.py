@@ -22,6 +22,18 @@ def prepare_startup():
             init_file.write(f"DEFAULT_DATA_FOLDER={service_vars['DEFAULT_DATA_FOLDER']}")
 
 
+def read_default_data_folder_from_file():
+    try:
+        with open(service_vars["INIT_FILE_NAME"], 'r') as init_file:
+            lines = init_file.readlines()
+            for i, line in enumerate(lines):
+                if "DEFAULT_DATA_FOLDER" in line:
+                    # Return the part of the line after the constant name and '=' sign
+                    return line[(len("DEFAULT_DATA_FOLDER") + 1):]
+    except IOError:
+        service_logger.error(f"Can't access the file {service_vars['INIT_FILE_NAME']}", exc_info=True)
+
+
 def set_default_data_folder(new_dir):
     # If the new folder is actually the same as before do nothing
     if new_dir == service_vars["DEFAULT_DATA_FOLDER"]:
@@ -40,17 +52,5 @@ def set_default_data_folder(new_dir):
                 lines.append(new_line)
         with open(service_vars["INIT_FILE_NAME"], 'w') as init_file:
             init_file.writelines(lines)
-    except IOError:
-        service_logger.error(f"Can't access the file {service_vars['INIT_FILE_NAME']}", exc_info=True)
-
-
-def read_default_data_folder_from_file():
-    try:
-        with open(service_vars["INIT_FILE_NAME"], 'r') as init_file:
-            lines = init_file.readlines()
-            for i, line in enumerate(lines):
-                if "DEFAULT_DATA_FOLDER" in line:
-                    # Return the part of the line after the constant name and '=' sign
-                    return line[(len("DEFAULT_DATA_FOLDER") + 1):]
     except IOError:
         service_logger.error(f"Can't access the file {service_vars['INIT_FILE_NAME']}", exc_info=True)

@@ -21,6 +21,7 @@ import logging
 import copy
 import pandas as pd
 
+
 datahandler_logger = logging.getLogger("specqp.datahandler")  # Creating child logger
 
 DATA_FILE_TYPES = (
@@ -38,10 +39,13 @@ class RegionsCollection:
     def add_regions(self, list_of_new_regions):
         """Adds region objects
         :param list_of_new_regions: List of region objects (can be also single object in the list form, e.g. [obj,])
-        :return: None
+        :return: list of IDs for regions that were added
         """
-        for new_region in list_of_new_regions:
-            self.regions[new_region.get_id()] = new_region
+        ids = []
+        for i, new_region in enumerate(list_of_new_regions):
+            ids.append(new_region.get_id())
+            self.regions[ids[i]] = new_region
+        return ids
 
     def add_regions_from_file(self, file_path, file_type=DATA_FILE_TYPES[0]):
         """Adds region objects after extracting them from the file
@@ -49,29 +53,32 @@ class RegionsCollection:
         :param file_type: File type to be processed
         :return: list of IDs for regions loaded from the file
         """
-        values = []
-        regions = []
-        if file_type == DATA_FILE_TYPES[0]:
-            regions = load_scienta_txt(file_path)
-        elif file_type == DATA_FILE_TYPES[1]:
-            regions = load_specs_xy(file_path)
-        for region in regions:
-            self.regions[region.get_id()] = region
-            values.append(region.get_id())
-        return values
+        ids = []
+        try:
+            if file_type == DATA_FILE_TYPES[0]:
+                ids = self.add_regions(load_scienta_txt(file_path))
+            elif file_type == DATA_FILE_TYPES[1]:
+                ids = self.add_regions(load_specs_xy(file_path))
+        except OSError:
+            datahandler_logger.error(f"Couldn't access the file {file_path}", exc_info=True)
+        except UnicodeDecodeError:
+            datahandler_logger.error(f"Couldn't decode the file {file_path}", exc_info=True)
+        except ValueError:
+            datahandler_logger.error(f"The file {file_path} has unexpected characters", exc_info=True)
+        return ids
 
     def get_ids(self):
-        """Returns the list of regions IDs
+        """Returns the list of IDs for regions in RegionCollection object
         :return: list of IDs
         """
         return list(self.regions.keys())
 
-    def get_by_id(self, spectrum_ID):
-        if spectrum_ID in self.regions:
-            return self.regions[spectrum_ID]
+    def get_by_id(self, region_id):
+        if region_id in self.regions:
+            return self.regions[region_id]
 
 
-# TODO: Add error handling for cases when a file with a wrong type is passed
+# TODO: Add error raising for the case when a file with a wrong type is passed
 def load_scienta_txt(filename, regions_number_line=1):
     """Opens and parses provided scienta file returning the data and info for all regions
     as a list of Region objects. Variable 'regions_number_line' gives the
@@ -142,7 +149,7 @@ def load_scienta_txt(filename, regions_number_line=1):
             else:
                 cnt += 1
 
-    # Reseting region number counter to 1 to start again from the first region
+    # Resetting region number counter to 1 to start again from the first region
     # and do the mapping procedure
     cnt = 1
     for j in range(1, len(info_indices), 2):
@@ -169,15 +176,15 @@ def load_scienta_txt(filename, regions_number_line=1):
         info_lines = parse_scienta_file_info(lines[val[0][0]:val[0][1]+1])
         # Not all info entries are important for data analysis,
         # Choose only important ones
-        info_lines_revised = {Region._info_entries[0]: info_lines["Region Name"],
-                              Region._info_entries[1]: info_lines["Pass Energy"],
-                              Region._info_entries[2]: info_lines["Number of Sweeps"],
-                              Region._info_entries[3]: info_lines["Excitation Energy"],
-                              Region._info_entries[4]: info_lines["Energy Scale"],
-                              Region._info_entries[5]: info_lines["Energy Step"],
-                              Region._info_entries[6]: info_lines["Step Time"],
-                              Region._info_entries[7]: info_lines["File"],
-                              Region._info_entries[8]: f"{info_lines['Date']} {info_lines['Time']}"}
+        info_lines_revised = {Region.info_entries[0]: info_lines["Region Name"],
+                              Region.info_entries[1]: info_lines["Pass Energy"],
+                              Region.info_entries[2]: info_lines["Number of Sweeps"],
+                              Region.info_entries[3]: info_lines["Excitation Energy"],
+                              Region.info_entries[4]: info_lines["Energy Scale"],
+                              Region.info_entries[5]: info_lines["Energy Step"],
+                              Region.info_entries[6]: info_lines["Step Time"],
+                              Region.info_entries[7]: info_lines["File"],
+                              Region.info_entries[8]: f"{info_lines['Date']} {info_lines['Time']}"}
 
         # Create a Region object for the current region
         regions.append(Region(energy, counts, info=info_lines_revised))
@@ -236,15 +243,15 @@ def load_specs_xy(filename):
 
         # Not all info entries are important for data analysis,
         # Choose only important ones
-        info_lines_revised = {Region._info_entries[0]: info_lines["Region"],
-                              Region._info_entries[1]: info_lines["Pass Energy"],
-                              Region._info_entries[2]: info_lines["Number of Scans"],
-                              Region._info_entries[3]: info_lines["Excitation Energy"],
-                              Region._info_entries[4]: info_lines["Energy Axis"],
-                              Region._info_entries[5]: str(abs(energy[-1]-energy[0]) / int(info_lines["Values/Curve"])),
-                              Region._info_entries[6]: info_lines["Dwell Time"],
-                              Region._info_entries[7]: filename.rpartition('.')[0].rpartition('/')[2],
-                              Region._info_entries[8]: info_lines["Acquisition Date"]}
+        info_lines_revised = {Region.info_entries[0]: info_lines["Region"],
+                              Region.info_entries[1]: info_lines["Pass Energy"],
+                              Region.info_entries[2]: info_lines["Number of Scans"],
+                              Region.info_entries[3]: info_lines["Excitation Energy"],
+                              Region.info_entries[4]: info_lines["Energy Axis"],
+                              Region.info_entries[5]: str(abs(energy[-1] - energy[0]) / int(info_lines["Values/Curve"])),
+                              Region.info_entries[6]: info_lines["Dwell Time"],
+                              Region.info_entries[7]: filename.rpartition('.')[0].rpartition('/')[2],
+                              Region.info_entries[8]: info_lines["Acquisition Date"]}
 
         # Create a Region object for the current region
         regions.append(Region(energy, counts, info=info_lines_revised))
@@ -293,7 +300,7 @@ def read_csv(filename): # TODO rewrite
     for line in lines:
         # Reading the flags
         if line.strip().startswith('#F'):
-            for flag in Region._region_flags:
+            for flag in Region.region_flags:
                 if flag in line:
                     flags[flag] = line.lstrip('#F').strip().split("=")[1]
             continue
@@ -308,8 +315,8 @@ def read_csv(filename): # TODO rewrite
         info[line_content[0].strip()] = line_content[1].strip()
 
     region = Region(df['energy'].values, df['counts'].values,
-                    energy_shift_corrected=flags[Region._region_flags[0]],
-                    binding_energy_flag=flags[Region._region_flags[1]],
+                    energy_shift_corrected=flags[Region.region_flags[0]],
+                    binding_energy_flag=flags[Region.region_flags[1]],
                     info=info)
 
     return region
@@ -504,9 +511,9 @@ class AddDimensionSpectrum(Spectrum): # TODO finish writing the class
 
 
 class Region:
-    """Class Region contains the data for one region.
+    """Class Region contains the data and info for one measured region, e.g. C1s
     """
-    _info_entries = (
+    info_entries = (
         "Region Name",          # 0
         "Pass Energy",          # 1
         "Sweeps Number",        # 2
@@ -519,24 +526,28 @@ class Region:
         "Conditions"            # 9
     )
 
-    _region_flags = (
-        "energy_shift_corrected",
-        "binding_energy_flag",
-        "fermi_flag",
-        "sweeps_normalized"
+    region_flags = (
+        "energy_shift_corrected",  # 0
+        "binding_energy_flag",     # 1
+        "fermi_flag",              # 2
+        "sweeps_normalized"        # 3
     )
 
-    def __init__(self, energy, counts, info=None, excitation_energy=None, conditions=None, id=None, fermi_flag=False):
-        """Creates an object using two iterables.
-        The first goes for energy (X) axis, the second - for counts (Y) axis.
-        Info about the region is stored as a dictionary {property: value}.
-        The same goes for experimental conditions.
+    def __init__(self, energy, counts, id=None, fermi_flag=False, info=None, conditions=None, excitation_energy=None):
         """
+        :param energy: goes for energy (X) axis
+        :param counts: goes for counts (Y) axis
+        :param id: ID of the region (usually the string "filename:regionname")
+        :param fermi_flag: True if the region stores the measurement of the Fermi level
+        :param info: Info about the region is stored as a dictionary {property: value} based on info_entries tuple
+        :param conditions: Experimental conditions are stored as a dictionary {property: value}
+        :param excitation_energy: Photon energy used in the experiment
+        """
+
         # The main attribute of the class is pandas dataframe
         self._Data = pd.DataFrame(data={'energy': energy, 'counts': counts}, dtype=float)
-        # This is a dataframe identical to _Data at the beginning. It works as as
-        # a backup, which can be used to restore the initial state of
-        # the region data in case of cropping or similar.
+        # This is a dataframe identical to _Data at the beginning. It works as as a backup, which can be used
+        # to restore the initial state of the region object data.
         self._Raw = pd.DataFrame(data={'energy': energy, 'counts': counts}, dtype=float)
         if not info:
             info = {}
@@ -548,25 +559,25 @@ class Region:
         self._set_excitation_energy(excitation_energy)
         # Default values for flags
         self._Flags = {
-                Region._region_flags[0]: False,
-                Region._region_flags[1]: None,
-                Region._region_flags[2]: fermi_flag,
-                Region._region_flags[3]: False
+                Region.region_flags[0]: False,
+                Region.region_flags[1]: None,
+                Region.region_flags[2]: fermi_flag,
+                Region.region_flags[3]: False
                 }
         # Check which energy scale is used:
-        if self._Info: # Info can be None
-            if self._Info[Region._info_entries[4]] == "Binding":
-                self._Flags[Region._region_flags[1]] = True
+        if self._Info:  # Info can be None or empty
+            if self._Info[Region.info_entries[4]] == "Binding":
+                self._Flags[Region.region_flags[1]] = True
             else:
-                self._Flags[Region._region_flags[1]] = False
+                self._Flags[Region.region_flags[1]] = False
             # If info is available for the region and the ID is not assigned,
             # take string 'FileNumber:RegionName' as ID
             if not id:
-                id = f"{self._Info[Region._info_entries[7]]}:{self._Info[Region._info_entries[0]]}"
+                id = f"{self._Info[Region.info_entries[7]]}:{self._Info[Region.info_entries[0]]}"
         self._set_id(id)
 
-        self._Fitter = None # After fitting of the region we want to save the
-                            # results and the Region object should know about it
+        self._Fitter = None  # After fitting of the region we want to save the results
+                                # and the Region object should know about it
 
         self.add_column('final', self._Data["counts"])
 
@@ -581,9 +592,6 @@ class Region:
         """
         return self._Data["final"] - other_region.get_data("final")
 
-    def _set_id(self, regionID):
-        self._ID = regionID
-
     def _set_conditions(self, conditions):
         """Set experimental conditions as a dictionary {"Property": Value}
         """
@@ -594,10 +602,13 @@ class Region:
         """
         self._ExcitationEnergy = excitation_energy
         if overwrite:
-            self._Info[Region._info_entries[3]] = str(excitation_energy)
+            self._Info[Region.info_entries[3]] = str(excitation_energy)
+
+    def _set_id(self, region_id):
+        self._ID = region_id
 
     def set_fermi_flag(self):
-        self._Flags[Region._region_flags[2]] = True
+        self._Flags[Region.region_flags[2]] = True
 
     def get_conditions(self, property=None):
         """Returns experimental conditions as a dictionary {"Property": Value} or
@@ -623,13 +634,13 @@ class Region:
     def invert_to_binding(self):
         """Changes the energy scale of the region from kinetic to binding energy.
         """
-        if not self._Flags[Region._region_flags[1]]:
+        if not self._Flags[Region.region_flags[1]]:
             self.invert_energy_scale()
 
     def invert_to_kinetic(self):
         """Changes the energy scale of the region from binding to kinetic energy.
         """
-        if self._Flags[Region._region_flags[1]]:
+        if self._Flags[Region.region_flags[1]]:
             self.invert_energy_scale()
 
     def invert_energy_scale(self):
@@ -638,27 +649,27 @@ class Region:
         or from binding to kinetic energy.
         """
         self._Data['energy'] = [(self._ExcitationEnergy - value) for value in self._Data['energy']]
-        self._Flags[Region._region_flags[1]] = not self._Flags[Region._region_flags[1]]
+        self._Flags[Region.region_flags[1]] = not self._Flags[Region.region_flags[1]]
 
         # We need to change "Energy Scale" info entry also
-        if self._Flags[Region._region_flags[1]]:
-            self._Info[Region._info_entries[4]] = "Binding"
+        if self._Flags[Region.region_flags[1]]:
+            self._Info[Region.info_entries[4]] = "Binding"
         else:
-            self._Info[Region._info_entries[4]] = "Kinetic"
+            self._Info[Region.info_entries[4]] = "Kinetic"
 
     def correct_energy_shift(self, shift):
-        if not self._Flags[Region._region_flags[0]]:
+        if not self._Flags[Region.region_flags[0]]:
             self._Data['energy'] += shift
-            self._Flags[Region._region_flags[0]] = True
+            self._Flags[Region.region_flags[0]] = True
         else:
             datahandler_logger.info(f"The region {self.get_id()} has already been energy corrected.")
 
     def normalize_by_sweeps(self):
         # If not yet normalized
-        if not self._Flags[self._region_flags[3]]:
-            if self._Info and (Region._info_entries[2] in self._Info):
-                self._Data['counts'] = self._Data['counts'] / float(self._Info[Region._info_entries[2]])
-                self._Flags[self._region_flags[3]] = True
+        if not self._Flags[self.region_flags[3]]:
+            if self._Info and (Region.info_entries[2] in self._Info):
+                self._Data['counts'] = self._Data['counts'] / float(self._Info[Region.info_entries[2]])
+                self._Flags[self.region_flags[3]] = True
 
     def crop_region(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
@@ -732,10 +743,10 @@ class Region:
         return self._Flags
 
     def is_energy_corrected(self):
-        return self._Flags[self._region_flags[0]]
+        return self._Flags[self.region_flags[0]]
 
     def is_sweeps_normalized(self):
-        return self._Flags[self._region_flags[3]]
+        return self._Flags[self.region_flags[3]]
 
     def is_binding(self):
         return self._Flags[1]

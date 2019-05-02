@@ -1,7 +1,6 @@
-from specqp.datahandler import Experiment, Spectrum, AddDimensionSpectrum, Region
+from specqp.datahandler import RegionsCollection, Experiment, Spectrum, AddDimensionSpectrum, Region
 from specqp.fitter import Fitter, Peak
 from specqp import helpers
-from specqp import gui_plotter
 
 __appname__ = "SpecQP"
 __version__ = "0.1"
@@ -11,6 +10,5 @@ __website__ = "https://github.com/Shipilin/specqp"
 __all__ = [
         'datahandler',
         'helpers',
-        'fitter',
-    'gui_plotter.py'
+        'fitter'
         ]

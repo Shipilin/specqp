@@ -4,10 +4,12 @@ import logging
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
-from fitter import Peak
+#from specqp.fitter import Peak
 from matplotlib import pyplot as plt
 
+
 helpers_logger = logging.getLogger("specqp.helpers")  # Creating child logger
+
 
 def fit_fermi_edge(region, initial_params, add_column=True, overwrite=True):
     """Fits error function to fermi level scan. If add_column flag
