@@ -36,7 +36,8 @@ def initialize_logging():
     specqp_logger.addHandler(file_handler)
 
 
-def main(*args, **kwargs):  # TODO: think and write the logics for the batch mode
+# TODO: think and write the logics for the batch mode
+def main(*args, **kwargs):
     """Defines the behavior of the app if run in batch mode
     """
     specqp_logger.info("Running the app in batch mode")

@@ -4,8 +4,8 @@ import logging
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
-#from specqp.fitter import Peak
-from matplotlib import pyplot as plt
+# from specqp.fitter import Peak
+# from matplotlib import pyplot as plt
 
 
 helpers_logger = logging.getLogger("specqp.helpers")  # Creating child logger
@@ -295,99 +295,3 @@ def shift_by_background(region, interval, y_data='counts', add_column=True):
     if add_column:
         region.add_column("bgshifted", output, overwrite=True)
     return output
-
-
-def plot_region(region, figure=1, ax=None, invert_x=True, log_scale=False, y_offset=0, x_data='energy', y_data='final',
-                scatter=False, label=None, color=None, title=True, legend=True, legend_pos='best'):
-    """Plotting spectrum with pyplot using given plt.figure and a number of optional arguments
-    """
-    if x_data in list(region.get_data()):
-        x = region.get_data(column=x_data)
-    else:
-        x = region.get_data(column='energy')
-    if y_data in list(region.get_data()):
-        y = region.get_data(column=y_data)
-    else:
-        y = region.get_data(column='counts')
-
-    plt.figure(figure)
-    if not ax:
-        ax = plt.gca()
-    if not label:
-        label = f"{region.get_id()} ({region.get_conditions()['Temperature']})"
-    # If we want scatter plot
-    if scatter:
-        ax.scatter(x, y + y_offset, s=7, c=color, label=label)
-    else:
-        ax.plot(x, y + y_offset, color=color, label=label)
-    if legend:
-        if legend_pos == 'lower center':
-            ax.set_ylim(ymin=-1 * np.amax(y))
-            plt.tick_params(
-                axis='y',  # changes apply to the y-axis
-                which='both',  # both major and minor ticks are affected
-                left=False,  # ticks along the left edge are off
-                right=False)  # ticks along the right edge are off
-        ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})
-    if title:
-        title_str = ""
-        if region.is_sweeps_normalized():
-            title_str = f"Pass: {region.get_info('Pass Energy')}   |   File: {region.get_info('File Name')}"
-        else:
-            title_str = f"Pass: {region.get_info('Pass Energy')}   |   Sweeps: {region.get_info('Sweeps Number')}" \
-                f"   |   File: {region.get_info('File Name')}"
-        ax.set_title(title_str)
-
-    #   Stiling axes
-    x_label_prefix = "Binding"
-    if region.get_info("Energy Scale") == "Kinetic":
-        x_label_prefix = "Kinetic"
-
-    ax.set_xlabel(f"{x_label_prefix} energy (eV)")
-    ax.set_ylabel("Counts (a.u.)")
-
-    # Inverting x-axis if desired and not yet inverted
-    if invert_x and not ax.xaxis_inverted():
-        ax.invert_xaxis()
-
-    if log_scale:
-        ax.set_yscale('log')
-
-
-def plot_peak(peak, y_offset=0, figure=1, ax=None, label=None, color=None, fill=True, legend=True, legend_pos='best'):
-    """Plotting fit peak with pyplot using given plt.figure and a number of optional arguments
-    """
-    peak_line = peak.get_data()
-    plt.figure(figure)
-    if not ax:
-        ax = plt.gca()
-    if not label:
-        label = f"Cen: {peak.get_parameters('center'):.2f}; LorentzFWHM: {peak.get_parameters('fwhm'):.2f}"
-
-    ax.plot(peak.get_data()[0], peak.get_data()[1] + y_offset, color=color, label=label)
-    if fill:
-        # Fill the peak shape with color that is retrieved from the last plotted line
-        ax.fill_between(peak_line[0], peak_line[1].min() + y_offset, peak_line[1] + y_offset,
-                        facecolor=ax.get_lines()[-1].get_color(), alpha=0.3)
-    if legend:
-        ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})
-
-
-def plot_fit(fitter, y_offset=0, figure=1, ax=None, label=None, color='black', legend=True, legend_pos='best',
-             addresiduals=True):
-    """Plotting fit line with pyplot using given plt.figure and a number of optional arguments
-    """
-    plt.figure(figure)
-    if not ax:
-        ax = plt.gca()
-    if not label:
-        label = "fit"
-    fit_x = fitter.get_data()[0].tolist()
-    fit_y = (fitter.get_fit_line() + y_offset).tolist()
-    ax.plot(fit_x, fit_y, linestyle='--', color=color, label=label)
-    # Add residuals if specified
-    if addresiduals:
-        ax.plot(fit_x, fit_y, linestyle=':', alpha=1, color='black',
-                label=f"Chi^2 = {fitter.get_chi_squared():.2f}\nRMS = {fitter.get_rms():.2f}")
-    if legend:
-        ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': 8})

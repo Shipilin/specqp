@@ -7,13 +7,14 @@ import logging
 
 import matplotlib
 from matplotlib import style
+from matplotlib.backend_tools import ToolBase
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.backend_bases import key_press_handler
 import matplotlib.image as mpimg
 
 import service
 import datahandler
-import gui_plotter
+import plotter
 
 # Default font for the GUI
 LARGE_FONT = ("Verdana", "12")
@@ -23,6 +24,9 @@ matplotlib.use('TkAgg')  # Configuring matplotlib interaction with tkinter
 style.use('ggplot')  # Configuring matplotlib style
 
 logo_img_file = "assets/specqp_icon.png"
+tool_bar_images = {
+    "invert_x": "assets/invert_x.png"
+}
 
 
 class CustomText(tk.Text):
@@ -120,10 +124,105 @@ class BrowserTreeView(ttk.Frame):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["BrowserTreeView"] = self
 
+        self.scrollable_canvas = tk.Canvas(self)
+        self.scrollable_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.vsb = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.scrollable_canvas.yview)
+        self.vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        self.scrollable_canvas.configure(yscrollcommand=self.vsb.set)
+
+        self.treeview = ttk.Frame(self.scrollable_canvas)
+        self.treeview.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.interior_id = self.scrollable_canvas.create_window((0, 0), window=self.treeview, anchor='nw')
+        self.treeview.bind("<Configure>", self._configure_treeview)
+        self.scrollable_canvas.bind('<Enter>', self._bound_to_mousewheel)
+        self.scrollable_canvas.bind('<Leave>', self._unbound_to_mousewheel)
+        self.treeview.bind('<Enter>', self._bound_to_mousewheel)
+        self.treeview.bind('<Leave>', self._unbound_to_mousewheel)
+        self.vsb.bind('<Enter>', self._bound_to_mousewheel)
+        self.vsb.bind('<Leave>', self._unbound_to_mousewheel)
+
+        # When the check list items will be created, the "Check all" item should appear and rule them all.
+        self.check_all_item = None
+        self.check_all_box = None
         self.check_list_items = []
+        self.check_boxes = []
         if default_items:
             for key, val in default_items.items():
                 self.add_items_to_check_list(key, val)
+
+    def _bound_to_mousewheel(self, event):
+        self.scrollable_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _change_check_all(self):
+        for item in self.check_list_items:
+            if not item.get():
+                self.check_all_box.deselect()
+                return
+        self.check_all_box.select()
+
+    # def _configure_canvas(self, event):
+    #     if self.treeview.winfo_reqwidth() != self.scrollable_canvas.winfo_width():
+    #         # Update the inner frame's width to fill the canvas
+    #         self.scrollable_canvas.itemconfigure(self.interior_id, width=self.scrollable_canvas.winfo_width())
+
+    def _configure_treeview(self, event):
+        # Update the scrollbars to match the size of the inner frame
+        self.scrollable_canvas.config(scrollregion=f"0 0 {self.treeview.winfo_reqwidth()} {self.treeview.winfo_reqheight()}")
+        if self.treeview.winfo_reqwidth() != self.scrollable_canvas.winfo_width():
+            # Update the canvas's width to fit the inner frame
+            self.scrollable_canvas.config(width=self.treeview.winfo_reqwidth())
+
+    def _on_mousewheel(self, event):
+        # For OSX use event.delta
+        # For Wondows use (event.delta / 120)
+        # For X11 systems use (event.delta / number), number depends on the desired speed of scrolling. Also the binding
+        # should be done for <Button-4> and <Button-5>
+        if self.treeview.winfo_height() > self.winfo_height():
+            self.scrollable_canvas.yview_scroll(int(-1 * event.delta), "units")
+
+    def _toggle_all(self):
+        for cb in self.check_boxes:
+            if self.check_all_item.get():
+                cb.select()
+            else:
+                cb.deselect()
+        self.update()
+
+    def _unbound_to_mousewheel(self, event):
+        self.scrollable_canvas.unbind_all("<MouseWheel>")
+
+    def add_items_to_check_list(self, section_name, items):
+        """A call to the function dinamically adds a section with loaded regions IDs to the checkbox list
+        :param section_name: the name of the file that was loaded
+        :param items: the IDs of regions loaded from the file
+        :return: None
+        """
+        # When the first item(s) are added, add the "Check all" button on top.
+        if not self.check_list_items:
+            if items:
+                self.check_all_item = tk.StringVar(value="Check all")
+                self.check_all_box = tk.Checkbutton(self.treeview, var=self.check_all_item, text="Check all",
+                                                    onvalue="Check all", offvalue="",
+                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                                    command=self._toggle_all
+                                                    )
+                self.check_all_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+                sep = ttk.Separator(self.treeview, orient=tk.HORIZONTAL)
+                sep.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+
+        file_name_label = tk.Label(self.treeview, text=section_name, anchor=tk.W)
+        file_name_label.pack(side=tk.TOP, fill=tk.X)
+        for item in items:
+            var = tk.StringVar(value=item)
+            self.check_list_items.append(var)
+            cb = tk.Checkbutton(self.treeview, var=var, text=item,
+                                onvalue=item, offvalue="",
+                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                command=self._change_check_all
+                                )
+            cb.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+            self.check_boxes.append(cb)
 
     def get_checked_items(self):
         values = []
@@ -132,23 +231,6 @@ class BrowserTreeView(ttk.Frame):
             if value:
                 values.append(value)
         return values
-
-    def add_items_to_check_list(self, section_name, items):
-        """A call to the function dinamically adds a section with loaded regions IDs to the checkbox list
-        :param section_name: the name of the file that was loaded
-        :param items: the IDs of regions loaded from the file
-        :return: None
-        """
-        file_name_label = tk.Label(self, text=section_name, anchor=tk.W)
-        file_name_label.pack(side=tk.TOP, fill=tk.X)
-        for item in items:
-            var = tk.StringVar(value=item)
-            self.check_list_items.append(var)
-            cb = tk.Checkbutton(self, var=var, text=item,
-                                onvalue=item, offvalue="",
-                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-                                )
-            cb.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
 
 
 class BrowserPanel(ttk.Frame):
@@ -165,6 +247,8 @@ class BrowserPanel(ttk.Frame):
         self.add_sc_file_button.pack(side=tk.TOP, fill=tk.X)
         self.add_sp_file_button = ttk.Button(self.buttons_panel, text='Load SPECS', command=self._ask_load_specs_file)
         self.add_sp_file_button.pack(side=tk.TOP, fill=tk.X)
+        self.plot_checked_button = ttk.Button(self.buttons_panel, text='Plot Checked', command=self._plot_checked)
+        self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
         self.blank_label = ttk.Label(self.buttons_panel, text="", anchor=tk.W)
         self.blank_label.pack(side=tk.TOP, fill=tk.X)
         self.app_quit_button = ttk.Button(self.buttons_panel, text='Quit', command=self._quit)
@@ -184,6 +268,48 @@ class BrowserPanel(ttk.Frame):
     def _quit(self):
         self.winfo_toplevel().quit()  # stops mainloop
 
+    def _plot_checked(self):
+        regions_for_plotting = self.spectra_tree_panel.get_checked_items()
+        if regions_for_plotting:
+            self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting)
+
+
+class CustomToolbar(NavigationToolbar2Tk):
+    def home(self):
+        NavigationToolbar2Tk.home(self)
+        self.update()
+        self.canvas.draw()
+
+    def zoom(self):
+        NavigationToolbar2Tk.zoom(self)
+        self.update()
+        self.canvas.draw()
+
+    def invert_x(self):
+        self.canvas.figure.axes[0].invert_xaxis()
+        self.canvas.draw()
+
+    def save_figure(self):
+        NavigationToolbar2Tk.save_figure(self)
+        self.update()
+        self.canvas.draw()
+
+    def __init__(self, canvas, parent):
+        invert_x_tool = ToolBase(self, 'invert_x')
+        self.toolitems = (
+            ('Home', 'Reset original view', 'home', 'home'),
+            #('Back', 'Back to previous view', 'back', 'back'),
+            #('Forward', 'Forward to next view', 'forward', 'forward'),
+            #('Pan', 'Pan axes with left mouse, zoom with right', 'move', 'pan'),
+            ('Zoom', 'Zoom to rectangle', 'zoom_to_rect', 'zoom'),
+            #('Subplots', 'Configure subplots', 'subplots', 'configure_subplots'),
+            (None, None, None, None),
+            ('InvertX', 'Invert X-axis', 'back', 'invert_x'),
+            (None, None, None, None),
+            ('Save', 'Save the figure', 'filesave', 'save_figure'),
+            )
+        NavigationToolbar2Tk.__init__(self, canvas, parent)
+
 
 class PlotPanel(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
@@ -192,62 +318,75 @@ class PlotPanel(ttk.Frame):
 
         self.start_page_img = mpimg.imread(logo_img_file)
 
-        self.figure = gui_plotter.SpecqpPlot(dpi=100)
+        self.figure = plotter.SpecqpPlot(dpi=100)
         self.figure_axes = self.figure.add_subplot(111)
         self.figure_axes.set_axis_off()
         self.figure_axes.imshow(self.start_page_img)
 
         self.canvas = FigureCanvasTkAgg(self.figure, master=self)
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self.canvas.draw()
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self)
-        self.toolbar.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
+        self.toolbar = CustomToolbar(self.canvas, self)  # NavigationToolbar2Tk(self.canvas, self)
         self.toolbar.update()
+        #self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.toolbar.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
 
         self.canvas.mpl_connect("key_press_event", self._on_key_press)
-        # self.canvas.mpl_connect("button_press_event", self._on_mouse_click)
+        self.canvas.mpl_connect("button_press_event", self._on_mouse_click)
 
     def _on_key_press(self, event):
-        gui_logger.info(f"{event.key} pressed on plot canvas")
+        gui_logger.debug(f"{event.key} pressed on plot canvas")
         key_press_handler(event, self.canvas, self.toolbar)
 
-    # def _on_mouse_click(self, event):
-    #     gui_logger.info(f"{event.button} pressed on plot canvas")
-    #     key_press_handler(event, self.canvas, self.toolbar)
+    def _on_mouse_click(self, event):
+        gui_logger.debug(f"{event.button} pressed on plot canvas")
+        key_press_handler(event, self.canvas, self.toolbar)
+
+    def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0,
+                    scatter=False, label=None, color=None, title=True, font_size=8, legend=True,
+                    legend_features=('Temperature',), legend_pos='best'):
+        if regions:
+            if not ax:
+                ax = self.figure_axes
+            ax.clear()
+            for region_id in regions:
+                region = self.winfo_toplevel().loaded_regions.get_by_id(region_id)
+                plotter.plot_region(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
+                                    y_offset=y_offset, scatter=scatter, label=label, color=color, title=title,
+                                    font_size=font_size, legend=legend, legend_features=legend_features,
+                                    legend_pos=legend_pos)
+            if len(regions) > 1:
+                ax.set_title(None)
+            ax.set_aspect('auto')
+            self.canvas.draw()
+            self.toolbar.update()
 
 
-class CorrectionsPanel(ttk.Frame):  # TODO: add a slider for y-offseted plotting
+class CorrectionsPanel(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["CorrectionsPanel"] = self
-        # Action buttons panel
-        self.buttons_panel = ttk.Frame(self, borderwidth=1, relief="groove")
-        # Action buttons
-        self.plot_checked_button = ttk.Button(self.buttons_panel, text='Plot Checked', command=self._plot_checked)
-        self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
-        self.buttons_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
+
+        # Quick corrections section
+
+
+        self.quick_label = ttk.Label(self, text="Quick Corrections", anchor=tk.W)
+        self.quick_label.pack(side=tk.TOP, fill=tk.X)
+        # Correction buttons
+        # self.excitation_e_button = ttk.Button(self, text='Correct shift', command=self._plot_checked)
+        # self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
+        # self.buttons_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
+
+        # Advanced corrections section
 
         # TODO: add tree view of corrections
         # Corrections tree panel
 #       self.corrections_tree_panel = BrowserTreeView(self, borderwidth=1, relief="groove")
 #       self.corrections_tree_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
 
-    def _plot_checked(self):
-        if "BrowserTreeView" in self.winfo_toplevel().gui_widgets:
-            spectra_for_plotting = self.winfo_toplevel().gui_widgets["BrowserTreeView"].get_checked_items()
-            if spectra_for_plotting:
-                self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes.clear()
-                for spectrum_ID in spectra_for_plotting:
-                    # TODO: write proper plotting routine
-                    # helpers.plot_region(self.winfo_toplevel().loaded_regions.get_by_ID(spectrum_ID),
-                    #                    figure=self.winfo_toplevel().gui_widgets["PlotPanel"].figure,
-                    #                    )
-                    self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes.plot([1, 2, 3], [1, 2, 3])
-                    self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes.plot([3, 2, 1], [1, 2, 3])
-                self.winfo_toplevel().gui_widgets["PlotPanel"].canvas.draw()
-        else:
-            gui_logger.debug("CorrectionPanel tries to access BrowserTreeView with no success")
+    # def _plot_checked(self):
+    #     pass
 
 
 class MainWindow(ttk.PanedWindow):
@@ -324,32 +463,37 @@ class Root(tk.Tk):
         self.load_file(file_type=datahandler.DATA_FILE_TYPES[1])
 
     def load_file(self, file_type=datahandler.DATA_FILE_TYPES[0]):
-        # TODO: add multiple files handling
-        # {"file_path": (ID1, ID2,...), ...}
-        file_path = filedialog.askopenfilename(parent=self, initialdir=service.service_vars["DEFAULT_DATA_FOLDER"])
-        loaded_ids = None
-        if file_path:
+        file_names = filedialog.askopenfilenames(filetypes=[("XPS text", ".txt .TXT .xy .XY"), ("All files", ".*")],
+                                                 parent=self,
+                                                 title="Choose data files to load",
+                                                 initialdir=service.service_vars["DEFAULT_DATA_FOLDER"],
+                                                 multiple=True)
+        if file_names:
+            loaded_ids = {}
             # If the user opens a file, remember the file folder to use it next time when the open request is received
-            service.set_default_data_folder(os.path.dirname(file_path))
-            loaded_ids = self.loaded_regions.add_regions_from_file(file_path, file_type)
+            service.set_default_data_folder(os.path.dirname(file_names[0]))
+            for file_name in file_names:
+                loaded_ids[file_name] = self.loaded_regions.add_regions_from_file(file_name, file_type)
         else:
-            gui_logger.debug(f"Couldn't get the file path from the load_file dialog in Root class")
+            gui_logger.warning("Couldn't get the file path from the load_file dialog in Root class")
+            return
 
-        assert loaded_ids, "Loading regions crashed. Loaded_IDs variable is empty"
+        assert loaded_ids, f"No regions were loaded from the file {file_names}"
         if loaded_ids:
-            self.gui_widgets["BrowserPanel"].spectra_tree_panel.add_items_to_check_list(os.path.basename(file_path),
-                                                                                        loaded_ids)
-        else:
-            gui_logger.warning(f"The file {file_path} provided 0 regions. Possible reason: it is empty or broken.")
+            for key, val in loaded_ids.items():
+                # The 'loaded_ids' dictionary can contain several None values, which will be evaluated as True
+                # in the previous 'if' clause. Therefore, we need to check every member as well.
+                if val:
+                    self.gui_widgets["BrowserPanel"].spectra_tree_panel.add_items_to_check_list(os.path.basename(key), val)
 
     def export_log(self):
         pass
 
     def show_about(self):
-        print("About")
+        pass
 
     def show_help(self):
-        print("Help")
+        pass
 
 
 def main():

@@ -6,6 +6,7 @@ from scipy.optimize import curve_fit
 
 fitter_logger = logging.getLogger("specqp.fitter")  # Creating child logger
 
+
 class Peak:
     """Contains information about one peak fitted to a region.
     """
@@ -113,27 +114,74 @@ class Fitter:
             output = "\n".join((output, peak.__str__()))
         return output
 
-    @staticmethod
-    def _multi_gaussian(x, *args):  # TODO change gamma and fwhm
-        cnt = 0
-        func = 0
-        while cnt < len(args):
-            func += args[cnt]*(1/(args[cnt+2]*(np.sqrt(2*np.pi))))*(np.exp(-((x-args[cnt+1])**2)/(2*(args[cnt+2])**2)))
-            cnt += 3
-        return func
-
-    @staticmethod
-    def _multi_lorentzian(x, *args):  # TODO change gamma and fwhm
-        """Creates a single or multiple Lorentzian shape taking amplitude, Center
-        and FWHM parameters
+    # TODO change gamma and fwhm
+    def fit_gaussian(self, initial_params):
+        """Fits Gaussian function(s) to Region object based on initial values
+        of three parameters (amplitude, center, and sigma). If list with more than
+        one set of three parameters is given, the function fits more than one peak.
         """
+
+        def _multi_gaussian(x, *args):
+            cnt = 0
+            func = 0
+            while cnt < len(args):
+                func += args[cnt] * (1 / (args[cnt + 2] * (np.sqrt(2 * np.pi)))) * (
+                    np.exp(-((x - args[cnt + 1]) ** 2) / (2 * (args[cnt + 2]) ** 2)))
+                cnt += 3
+            return func
+
+        if len(initial_params) % 3 != 0:
+            fitter_logger.debug(f"Check the number of initial parameters in fitter.fit_gaussian method.")
+            return
+
+        # Parameters and parameters covariance of the fit
+        popt, pcov = curve_fit(_multi_gaussian, self._X_data, self._Y_data, p0=initial_params)
+
         cnt = 0
-        func = 0
-        while cnt < len(args):
-            func += args[cnt]*(1/np.pi*(args[cnt+2]/2))*((args[cnt+2]/2)**2)/(((x-args[cnt+1])**2)+(args[cnt+2]/2)**2)
-            #args[cnt]*args[cnt+2]**2/((x-args[cnt+1])**2+args[cnt+2]**2)
+        while cnt < len(initial_params):
+            peak_y = _multi_gaussian(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
+            self._Peaks.append(Peak(self._X_data, peak_y,
+                                    [popt[cnt], popt[cnt+1], popt[cnt+2]],
+                                    [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
+                                    "gaussian"))
             cnt += 3
-        return func
+
+        self._make_fit()
+
+    # TODO change gamma and fwhm
+    def fit_lorentzian(self, initial_params):
+        """Fits one Lorentzian function to Region object based on initial values
+        of three parameters (amplitude, center, and width). If list with more than
+        one set of three parameters is given, the function fits more than one peak.
+        """
+        def _multi_lorentzian(x, *args):
+            """Creates a single or multiple Lorentzian shape taking amplitude, Center
+            and FWHM parameters
+            """
+            cnt = 0
+            func = 0
+            while cnt < len(args):
+                func += args[cnt] * (1 / np.pi * (args[cnt + 2] / 2)) * ((args[cnt + 2] / 2) ** 2) / (
+                            ((x - args[cnt + 1]) ** 2) + (args[cnt + 2] / 2) ** 2)
+                cnt += 3
+            return func
+
+        if len(initial_params) % 3 != 0:
+            fitter_logger.debug(f"Check the number of initial parameters in fitter.fit_lorentzian method.")
+            return
+
+        # Parameters and parameters covariance of the fit
+        popt, pcov = curve_fit(_multi_lorentzian, self._X_data, self._Y_data, p0=initial_params)
+
+        cnt = 0
+        while cnt < len(initial_params):
+            peak_y = _multi_lorentzian(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
+            self._Peaks.append(Peak(self._X_data, peak_y,
+                                    [popt[cnt], popt[cnt+1], popt[cnt+2]],
+                                    [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
+                                    "lorentzian"))
+            cnt += 3
+        self._make_fit()
 
     def _multi_voigt(self, x, *args):
         """Creates a single or multiple pseudo Voigt shape.
@@ -152,7 +200,6 @@ class Fitter:
         def pseudo_voigt( x, cen, gFWHM, lFWHM, amp ):
             f = ( gFWHM**5 +  2.69269 * gFWHM**4 * lFWHM + 2.42843 * gFWHM**3 * lFWHM**2 + 4.47163 * gFWHM**2 * lFWHM**3 + 0.07842 * gFWHM * lFWHM**4 + lFWHM**5)**(1./5.)
             eta = 1.36603 * ( lFWHM / f ) - 0.47719 * ( lFWHM / f )**2 + 0.11116 * ( lFWHM / f )**3
-            # print(f"Gauss {gFWHM:.2f}, Lorentz {lFWHM:.2f}, eta {eta:.2f}")
             pv_func = ( eta * lorentz( x, cen, f) + ( 1 - eta ) * gauss( x, cen, f ) )
             return amp * pv_func / np.amax(pv_func) # Normalizing to 1
 
@@ -167,8 +214,6 @@ class Fitter:
             amp = args[cnt]
             cen = args[cnt+1]
             lFWHM = args[cnt+2]
-            # if cnt >= 3 and cnt < 6:
-            #     print(f"Second peak: {amp}")
             if not self._GaussFWHM:
                 gFWHM = lFWHM
             else:
@@ -177,53 +222,6 @@ class Fitter:
 
             cnt += 3
         return func
-
-    def fit_gaussian(self, initial_params):  # TODO change gamma and fwhm
-        """Fits Gaussian function(s) to Region object based on initial values
-        of three parameters (amplitude, center, and sigma). If list with more than
-        one set of three parameters is given, the function fits more than one peak.
-        """
-
-        if len(initial_params) % 3 != 0:
-            fitter_logger.debug(f"Check the number of initial parameters in fitter.fit_gaussian method.")
-            return
-
-        # Parameters and parameters covariance of the fit
-        popt, pcov = curve_fit(Fitter._multi_gaussian, self._X_data, self._Y_data, p0=initial_params)
-
-        cnt = 0
-        while cnt < len(initial_params):
-            peak_y = Fitter._multi_gaussian(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
-            self._Peaks.append(Peak(self._X_data, peak_y,
-                                    [popt[cnt], popt[cnt+1], popt[cnt+2]],
-                                    [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
-                                    "gaussian"))
-            cnt += 3
-
-        self._make_fit()
-
-    def fit_lorentzian(self, initial_params):  # TODO change gamma and fwhm
-        """Fits one Lorentzian function to Region object based on initial values
-        of three parameters (amplitude, center, and width). If list with more than
-        one set of three parameters is given, the function fits more than one peak.
-        """
-
-        if len(initial_params) % 3 != 0:
-            fitter_logger.debug(f"Check the number of initial parameters in fitter.fit_lorentzian method.")
-            return
-
-        # Parameters and parameters covariance of the fit
-        popt, pcov = curve_fit(Fitter._multi_lorentzian, self._X_data, self._Y_data, p0=initial_params)
-
-        cnt = 0
-        while cnt < len(initial_params):
-            peak_y = Fitter._multi_lorentzian(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
-            self._Peaks.append(Peak(self._X_data, peak_y,
-                                    [popt[cnt], popt[cnt+1], popt[cnt+2]],
-                                    [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
-                                    "lorentzian"))
-            cnt += 3
-        self._make_fit()
 
     def fit_voigt(self, initial_params, fix_pars=None, boundaries=None):
         """Fits one or more Voigt function(s) to Region object based on initial values
@@ -258,11 +256,9 @@ class Fitter:
                             bounds_low.append(min(boundaries["amp"][peak_number]))
                             bounds_high.append(max(boundaries["amp"][peak_number]))
                             continue
-                # Fixing the lower limit for amplitude at 0 and the higher
-                # limit at data_y max
+                # Fixing the lower limit for amplitude at 0 and the higher limit at data_y max
                 bounds_low.append(0)
-                # The upper boundary of amplitude should not be lower than the
-                # value of initial guess
+                # The upper boundary of amplitude should not be lower than the value of initial guess
                 if initial_params[i] < np.amax(self._Y_data):
                     bounds_high.append(np.amax(self._Y_data))
                 else:
@@ -316,10 +312,8 @@ class Fitter:
         """
         # Calculate fit line
         for peak in self._Peaks:
-            #for peak_y in peak.get_data()[1]:
             self._FitLine += peak.get_data()[1]
         # Calculate residuals
-        #for i, y in enumerate(self._Y_data):
         self._Residuals = self._Y_data - self._FitLine
         # Calculate R-squared
         ss_res = np.sum(self._Residuals**2)
@@ -357,7 +351,8 @@ class Fitter:
             return self._RMS
         fitter_logger.warning("Can't get RMS from a Fitter instance. Do fit first.")
 
-    def get_peaks(self, peak_num=None):  # TODO add peak ID
+    # TODO add peak ID
+    def get_peaks(self, peak_num=None):
         if not self._Peaks:
             fitter_logger.warning("Can't get peaks from a Fitter instance. Do fit first.")
             return
