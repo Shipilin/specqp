@@ -1,22 +1,9 @@
-"""The module contains classes and functions responsible
-for loading and storing spectroscopy data. It also provides
-general handles for the outside modules and scripts.
-
-The hierarchy of objects is as follows:
-1. Class Experiment contains all data for an executed experiment.
-Usually it should contain one uninterrupted set of measurements
-for one sample.
-2. Class SetOfSpectra contains a number of regions measured under the same
-conditions. Usually a few regions including Fermi edge measurement.
-3. Class Spectrum contains a single spectrum with possibly several
-regions.
-4. Class AddDimensionSpectrum is on the same hierarchical level with
-the class Spectrum, but is dedicated to "add dimension" measurements
-where the same spectrum is taken a number of times in a row under
-changing conditions or such.
-5. Class Region contains the data for one region.
+"""The module provides classes and functions responsible for loading and storing spectroscopy data.
+Class Region contains the data for one region.
+Class RegionCollection stores a number of Region objects
 """
 import os
+import ntpath
 import logging
 import copy
 import pandas as pd
@@ -54,29 +41,29 @@ def ask_path(folder_flag=True, multiple_files_flag=False):
     return path
 
 
-# TODO: Add error raising for the case when a file with a wrong type is passed
-def load_scienta_txt(filename, regions_number_line=1):
-    """Opens and parses provided scienta file returning the data and info for all regions
+def load_scienta_txt(filename, regions_number_line=1, first_region_number=1):
+    """Opens and parses provided scienta.txt file returning the data and info for all regions
     as a list of Region objects. Variable 'regions_number_line' gives the
     number of the line in the scienta file where the number of regions is given
     (the line numbering starts with 0 and by default it is the line number 1 that
     contains the information).
+    The functions doesn't do any internal checks for file format, file access, file errors etc. and, therefore,
+    should be wrapped with error handler when in use.
     """
-    # Info block parsing routine
-    def parse_scienta_file_info(lines):
+
+    def parse_scienta_file_info(lines_):
         """Helper function that parses the list of lines read from Scienta.txt
         file info block and returns 'info' dictionary {property: value}
         """
         info = {}
-        for line in lines:
-            line = line.strip()
-            if '=' in line:
-                line_content = line.split('=', 1)
+        for line_ in lines_:
+            line_ = line_.strip()  # Make sure that no space characters are present on teh ends
+            if '=' in line_:
+                line_content = line_.split('=', 1)
                 # Modify the file name
                 if line_content[0].strip() == "File":
-                    line_content[1] = line_content[1].rpartition("\\")[2].split(".", 1)[0]
+                    line_content[1] = ntpath.basename(line_content[1]).split('.', 1)[0]
                 info[line_content[0]] = line_content[1]
-
         return info
 
     with open(filename) as f:
@@ -87,65 +74,62 @@ def load_scienta_txt(filename, regions_number_line=1):
     # Example: {"Region 1": [[0, 2], [3, 78], [81, 180]]}
     #                        Region    Info      Data
     file_map = {}
-
-    # The number of regions is given in the second line of the file
+    # Reading the number of regions from the specified line of the file
     regions_number = int(lines[regions_number_line].split("=")[1])
-    # We make a list of scan objects even for just one region
+    # We make a list of region objects even for just one region
     regions = []
-
-    # Temporary counter to know the currently treated region number in the
-    # for-loop below
-    cnt = 1
+    # Temporary counter to know the currently treated region number in the for-loop below
+    cnt = first_region_number  # (=1 by default)
     # Temporary list variables to store the first and the last indices of the
     # region, the info and the data blocks for every region
     region_indices = []
     info_indices = []
     data_indices = []
 
-    # Parsing algorithm below assumes that the file structure is constant and
-    # the blocks follow the sequence:
+    # Parsing algorithm below assumes that the file structure is constant and the blocks follow the sequence:
     # [Region N] - may contain info about add-dimension mode
     # [Info N] - important info
     # [Data N] - data
     for i, line in enumerate(lines):
         if f"[Region {cnt}]" in line:
+            region_indices.append(i + 1)
             # If it is not the first region, than the data section of the previous
             # region ends on the previous line
-            region_indices.append(i+1)
             if cnt > 1:
-                data_indices.append(i-1)
+                data_indices.append(i - 1)
             continue
         if f"[Info {cnt}]" in line:
-            region_indices.append(i-1)
-            info_indices.append(i+1)
+            info_indices.append(i + 1)
+            region_indices.append(i - 1)  # Region section ends on the previous line
             continue
         if f"[Data {cnt}]" in line:
-            info_indices.append(i-1)
-            data_indices.append(i+1)
+            data_indices.append(i + 1)
+            info_indices.append(i - 1)  # Info section ends on the previous line
+            # If it is the last region, the current Data section is the last. The last line of the file is the last
+            # line of the current Data section. Else, we go to the next region.
             if cnt == regions_number:
-                data_indices.append(len(lines)-1)
+                data_indices.append(len(lines) - 1)
                 break
             else:
                 cnt += 1
 
-    # Resetting region number counter to 1 to start again from the first region
-    # and do the mapping procedure
-    cnt = 1
+    # Resetting region number counter to 1 to start again from the first region and do the mapping procedure
+    cnt = first_region_number  # (=1 by default)
+    # Iterate through every pair [begin, end] of Region, Info and Data indices to populate the mapping dictionary
     for j in range(1, len(region_indices), 2):
         file_map[f"Region {cnt}"] = [[region_indices[j-1], region_indices[j]],
                                      [info_indices[j-1], info_indices[j]],
                                      [data_indices[j-1], data_indices[j]]]
         cnt += 1
 
-    # Iterating through regions
+    # Iterating through the mapping dictionary
     for val in file_map.values():
-
         # Variables which are necessary for the case of add-dimension region
         add_dimension_flag = False
         add_dimension_data = None
 
         # Region block of the current region
-        region_block = lines[val[0][0]:val[0][1] + 1]
+        region_block = lines[val[0][0]:val[0][1] + 1]  # List of lines within [begin, end] indices including end-values
         for line in region_block:
             # If the region is measured in add-dimension mode
             if "Dimension 2 size" in line:
@@ -166,6 +150,8 @@ def load_scienta_txt(filename, regions_number_line=1):
                               Region.info_entries[7]: info_lines["File"],
                               Region.info_entries[8]: f"{info_lines['Date']} {info_lines['Time']}"}
 
+        region_conditions = {"Comments": info_lines["Comments"]}
+
         # Data block of the current region
         data_block = lines[val[2][0]:val[2][1]+1]
         energy, counts = [], []
@@ -177,24 +163,28 @@ def load_scienta_txt(filename, regions_number_line=1):
                 energy.append(xy[0])
                 if not add_dimension_flag:
                     counts.append(xy[1])
-                # If add-dimension mode
+                # If add-dimension mode is one, there will be a number of columns instead of just two
+                # We read them row by row and then transpose the whole thing to get columns
                 else:
                     row_counts_values = []
+                    # We skip the first value every time because it contains common energy
                     for ncol in range(1, len(xy)):
                         row_counts_values.append(xy[ncol])
-                    counts.append(sum(row_counts_values))
+                    counts.append(sum(row_counts_values))  # 'counts' list value contains integrated rows
                     add_dimension_data.append(row_counts_values)
 
         if add_dimension_data:
-            add_dimension_data = list(map(list, zip(*add_dimension_data)))
+            add_dimension_data = list(map(list, zip(*add_dimension_data)))  # Transpose
         # Create a Region object for the current region
-        regions.append(Region(energy, counts, add_dimension_flag=add_dimension_flag,
-                              add_dimension_data=add_dimension_data, info=info_lines_revised))
+        region_id = f"{info_lines_revised[Region.info_entries[7]]} : {info_lines_revised[Region.info_entries[0]]}"
+        regions.append(Region(energy, counts, id_=region_id,
+                              add_dimension_flag=add_dimension_flag, add_dimension_data=add_dimension_data,
+                              info=info_lines_revised, conditions=region_conditions))
 
     return regions
 
 
-# TODO: Add error raising for the case when a file with a wrong type is passed
+# TODO: Add possibility to read add_dimension files
 def load_specs_xy(filename):
     """Opens and parses provided SPECS file returning the data and info for recorded
     region as a list of Region objects in order to be consistent with the Scienta
@@ -336,8 +326,7 @@ class Region:
         "Energy Step",          # 5
         "Dwell Time",           # 6
         "File Name",            # 7
-        "Date",                 # 8
-        "Conditions"            # 9
+        "Date"                 # 8
     )
 
     region_flags = (
@@ -348,33 +337,35 @@ class Region:
         "add_dimension_flag"       # 4
     )
 
-    def __init__(self, energy, counts, id=None, fermi_flag=False, add_dimension_flag=False, add_dimension_data=None,
-                 info=None, conditions=None, excitation_energy=None, flags=None):
+    def __init__(self, energy, counts,
+                 add_dimension_flag=False, add_dimension_data=None,
+                 info=None, conditions=None, excitation_energy=None,
+                 id_=None, fermi_flag=False, flags=None):
         """
         :param energy: goes for energy (X) axis
         :param counts: goes for counts (Y) axis
-        :param id: ID of the region (usually the string "filename:regionname")
+        :param id_: ID of the region (usually the string "filename : regionname")
         :param fermi_flag: True if the region stores the measurement of the Fermi level
         :param add_dimension_flag: True if the region stores two-dimensional data (in such case, the values in the
-        'counts' column are obtained by integration aver the second dimension and separate columns 'counts1', 'counts2'
-        etc. are added to the region object and contain separate information for sweeps)
-        :param add_dimension_data: list of iterables containing separate data for sweeps in the second dimension
+        'counts' and 'final' columns are obtained by integration over the second dimension. At the same time
+        separate columns 'counts0', 'counts1'... and 'final0', 'final1'... are added
+        to the region object and contain information for separate sweeps)
+        :param add_dimension_data: list of lists containing separate data for sweeps in the second dimension
         :param info: Info about the region is stored as a dictionary {property: value} based on info_entries tuple
         :param conditions: Experimental conditions are stored as a dictionary {property: value}
         :param excitation_energy: Photon energy used in the experiment
         :param flags: dictionary of flags if already processed data is to be imported to a new Region object
         """
-
         # The main attribute of the class is pandas dataframe
         self._data = pd.DataFrame(data={'energy': energy, 'counts': counts}, dtype=float)
         self._add_dimension_scans_number = 1
         self._info = info
-        self._id = id
+        self._id = id_
         # Experimental conditions
         self._conditions = conditions
         # Excitation energy
         self._excitation_energy = excitation_energy
-        if flags and len(flags) == len(Region.region_flags):
+        if flags and (len(flags) == len(Region.region_flags)):
             self._flags = flags
         else:
             if flags:
@@ -394,13 +385,15 @@ class Region:
             else:
                 self._flags[Region.region_flags[1]] = False
             # If info is available for the region and the ID is not assigned,
-            # take string 'FileName:RegionName' as ID
+            # take string "FileName : RegionName" as ID
             if not self._id:
                 self.set_id(f"{self._info[Region.info_entries[7]]} : {self._info[Region.info_entries[0]]}")
         if Region.region_flags[4] and add_dimension_data:
             self._add_dimension_scans_number = len(add_dimension_data)
             for i, data_set in enumerate(add_dimension_data):
                 self.add_column(f'counts{i}', data_set)
+                self.add_column(f'final{i}', data_set)
+
         # 'final' column is the main y-data column for plotting. At the beginning it is identical with the raw counts
         self.add_column('final', self._data["counts"])
 
@@ -410,8 +403,7 @@ class Region:
         self._flags_backup = self._flags
 
     def __str__(self):
-        """Prints the info read from the data file
-        Possible to add keys of the Info dictionary to be printed
+        """Prints the info read from the data file. Possible to add keys of the Info dictionary to be printed
         """
         return self.get_info_string()
 
@@ -426,11 +418,10 @@ class Region:
         Choose descriptive labels. If label already exists but 'overwrite' flag
         is set to True, the method overwrites the data in the column.
         """
-        if column_label in self._data.columns:
-            if not overwrite:
-                datahandler_logger.warning(f"Column '{column_label}' already exists in {self.get_id()}"
-                                           "Pass overwrite=True to overwrite the existing values.")
-                return
+        if column_label in self._data.columns and not overwrite:
+            datahandler_logger.warning(f"Column '{column_label}' already exists in {self.get_id()}"
+                                       "Pass overwrite=True to overwrite the existing values.")
+            return
         self._data[column_label] = array
 
     def correct_energy_shift(self, shift):
@@ -438,7 +429,7 @@ class Region:
             self._data['energy'] += shift
             self._flags[Region.region_flags[0]] = True
         else:
-            datahandler_logger.info(f"The region {self.get_id()} has already been energy corrected.")
+            datahandler_logger.info(f"The region {self._id} has already been energy corrected.")
 
     def crop_region(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
@@ -513,7 +504,7 @@ class Region:
             return self._info[parameter]
         return self._info
 
-    def get_info_string(self, *args):
+    def get_info_string(self, include_conditions=True, *args):
         """Returns info string with the information about the region
         Possible to add keys of the Info dictionary to be printed
         """
@@ -525,11 +516,16 @@ class Region:
             if len(args) == 0:
                 for key, val in self._info.items():
                     output = "\n".join((output, f"{key}: {val}"))
+                if include_conditions:
+                    for key, val in self._conditions.items():
+                        output = "\n".join((output, f"{key}: {val}"))
             else:
                 # Add only specified parameters
                 for arg in args:
                     if arg in self._info:
                         output = "\n".join((output, f"{arg}: {self._info[arg]}"))
+                    elif include_conditions and arg in self._conditions:
+                        output = "\n".join((output, f"{arg}: {self._conditions[arg]}"))
                     else:
                         datahandler_logger.warning(f"Parameter {arg} is not known for region {self._id}")
         return output
@@ -539,7 +535,7 @@ class Region:
         the alternative one. From kinetic to binding energy
         or from binding to kinetic energy.
         """
-        self._data['energy'] = [(self._excitation_energy - value) for value in self._data['energy']]
+        self._data['energy'] = -1 * self._data['energy'] + self._excitation_energy
         self._flags[Region.region_flags[1]] = not self._flags[Region.region_flags[1]]
 
         # We need to change "Energy Scale" info entry also
@@ -563,6 +559,11 @@ class Region:
     def is_add_dimension(self):
         return self._flags[self.region_flags[4]]
 
+    def is_dummy(self):
+        if len(self._data['energy']) == 0:
+            return True
+        return False
+
     def is_energy_corrected(self):
         return self._flags[self.region_flags[0]]
 
@@ -570,42 +571,40 @@ class Region:
         return self._flags[self.region_flags[3]]
 
     def is_binding(self):
-        return self._flags[1]
+        return self._flags[self.region_flags[1]]
 
     def make_final_column(self, parent_column, overwrite=False):
         """Populates the 'final' column with the values from the column "parent_column", which contains processed data.
+        Populates all'finalN' columns with values from 'parent_columnN' for add_dimension regions.
         """
         self.add_column('final', self._data[parent_column], overwrite)
+        if self.is_add_dimension():
+            for i in range(self._add_dimension_scans_number):
+                if f'{parent_column}{i}' in list(self._data):
+                    self.add_column(f'final{i}', self._data[f'{parent_column}{i}'], overwrite)
 
-    def normalize_by_sweeps(self):
-        # If not yet normalized
+    def normalize_by_sweeps(self, column='final'):
+        """
+        Normalizes 'column' column by sweeps and stores the result in the new column 'sweepsNormalized'.
+        For add_dimension regions normalizes all columns 'columnN' and creates new columns 'sweepsNormalizedN'
+        :return:
+        """
+        # If not yet normalized by sweeps
         if not self._flags[self.region_flags[3]]:
             if self._info and (Region.info_entries[2] in self._info):
                 if not self._flags[self.region_flags[4]]:
-                    self._data['counts'] = self._data['counts'] / float(self._info[Region.info_entries[2]])
+                    self._data['sweepsNormalized'] = self._data[column] / float(self._info[Region.info_entries[2]])
                 else:
-                    cnt = 0
-                    n_sweeps = self._info[Region.info_entries[2]]
-                    while True:
-                        column_label = f'counts{cnt}'
-                        if column_label in self._data.columns:
-                            self._data[column_label] = self._data[column_label] / float(n_sweeps)
-                            cnt += 1
-                        else:
-                            break
-                    self._data['counts'] = self._data['counts'] / float(n_sweeps * cnt)
+                    # This many sweeps in each add_dimension measurement
+                    sweeps_per_set = self._info[Region.info_entries[2]]
+                    for i in range(self._add_dimension_scans_number):
+                        if f'{column}{i}' in self._data.columns:
+                            self._data[f'sweepsNormalized{i}'] = self._data[f'{column}{i}'] / float(sweeps_per_set)
+                    self._data['sweepsNormalized'] = (self._data[column] /
+                                                      float(int(sweeps_per_set) * self._add_dimension_scans_number))
                 self._flags[self.region_flags[3]] = True
-
-    def remove_column(self, column_label):
-        """Removes one of the columns of the data object except two main ones:
-        'energy' and 'counts'.
-        """
-        # We don't want to remove basic data columns, which are 'energy', 'counts' and 'final'
-        # For add dimension regions we also don't want to remove separate sweeps 'counts1', 'counts2' etc.
-        if (column_label == 'energy') or ('counts' in column_label) or (column_label == 'final'):
-            datahandler_logger.warning("Basic data columns can't be removed!")
-            return
-        self._data = self._data.drop(column_label, 1)
+                return True
+        return False
 
     def reset_region(self):
         """Removes all the changes made to the Region and restores the initial
@@ -615,10 +614,18 @@ class Region:
         self._info = self._info_backup
         self._flags = self._flags_backup
 
-    def set_conditions(self, conditions):
-        """Set experimental conditions as a dictionary {"Property": Value}
+    def set_conditions(self, conditions, overwrite=False):
+        """Set experimental conditions as a dictionary {"Property": Value}. If conditions with the same names
+        already exist will skip/overwrite depending on the overwrite value.
         """
-        self._conditions = conditions
+        # If some conditions already exist
+        if self._conditions:
+            for key, val in conditions.items():
+                if key in self._conditions and not overwrite:
+                    continue
+                self._conditions[key] = val
+        else:
+            self._conditions = conditions
 
     def set_excitation_energy(self, excitation_energy):
         """Set regions's excitation energy.
@@ -639,26 +646,25 @@ class RegionsCollection:
     def __init__(self):
         self.regions = {}
 
-    def add_regions(self, list_of_new_regions):
+    def add_regions(self, new_regions):
         """Adds region objects. Checks for duplicates and rejects adding if already exists.
-        :param list_of_new_regions: List of region objects (can be also single object in the list form, e.g. [obj,])
+        :param new_regions: List of region objects (can be also single object in the list form, e.g. [obj,])
         :return: list of IDs for regions that were added
         """
         ids = []
         duplicate_ids = []  # For information purposes
-        for i, new_region in enumerate(list_of_new_regions):
+        for new_region in new_regions:
             new_id = new_region.get_id()
             if self.is_duplicate(new_id):
                 duplicate_ids.append(new_id)
                 continue
             else:
                 ids.append(new_id)
-                self.regions[ids[i]] = new_region
+                self.regions[new_id] = new_region
         if duplicate_ids:
-            datahandler_logger.warning(f"Regions already loaded to the collection in work: {duplicate_ids}")
+            datahandler_logger.warning(f"Regions are already loaded: {duplicate_ids}")
         if ids:
             return ids
-
         return None
 
     def add_regions_from_file(self, file_path, file_type=DATA_FILE_TYPES[0]):
@@ -686,7 +692,6 @@ class RegionsCollection:
         except Exception:
             datahandler_logger.error(f"The file {file_path} is corrupted", exc_info=True)
             return None
-
         return ids
 
     def get_ids(self):
@@ -699,8 +704,11 @@ class RegionsCollection:
         if region_id in self.regions:
             return self.regions[region_id]
 
-    def is_duplicate(self, id):
-        if id in self.regions:
+    def get_regions(self):
+        return self.regions.values()
+
+    def is_duplicate(self, id_):
+        if id_ in self.regions:
             return True
         else:
             return False

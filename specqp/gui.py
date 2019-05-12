@@ -124,6 +124,9 @@ class BrowserTreeView(ttk.Frame):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["BrowserTreeView"] = self
 
+        self.check_all_frame = ttk.Frame(self)
+        self.check_all_frame.pack(side=tk.TOP, fill=tk.X, expand=False)
+
         self.scrollable_canvas = tk.Canvas(self)
         self.scrollable_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.vsb = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.scrollable_canvas.yview)
@@ -202,13 +205,13 @@ class BrowserTreeView(ttk.Frame):
         if not self.check_list_items:
             if items:
                 self.check_all_item = tk.StringVar(value="Check all")
-                self.check_all_box = tk.Checkbutton(self.treeview, var=self.check_all_item, text="Check all",
+                self.check_all_box = tk.Checkbutton(self.check_all_frame, var=self.check_all_item, text="Check all",
                                                     onvalue="Check all", offvalue="",
                                                     anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
                                                     command=self._toggle_all
                                                     )
                 self.check_all_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
-                sep = ttk.Separator(self.treeview, orient=tk.HORIZONTAL)
+                sep = ttk.Separator(self.check_all_frame, orient=tk.HORIZONTAL)
                 sep.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
 
         file_name_label = tk.Label(self.treeview, text=section_name, anchor=tk.W)
@@ -249,6 +252,8 @@ class BrowserPanel(ttk.Frame):
         self.add_sp_file_button.pack(side=tk.TOP, fill=tk.X)
         self.plot_checked_button = ttk.Button(self.buttons_panel, text='Plot Checked', command=self._plot_checked)
         self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
+        self.plot_add_dimension = ttk.Button(self.buttons_panel, text='Plot Add Dimension', command=self._plot_add_dimension)
+        self.plot_add_dimension.pack(side=tk.TOP, fill=tk.X)
         self.blank_label = ttk.Label(self.buttons_panel, text="", anchor=tk.W)
         self.blank_label.pack(side=tk.TOP, fill=tk.X)
         self.app_quit_button = ttk.Button(self.buttons_panel, text='Quit', command=self._quit)
@@ -272,6 +277,12 @@ class BrowserPanel(ttk.Frame):
         regions_for_plotting = self.spectra_tree_panel.get_checked_items()
         if regions_for_plotting:
             self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting)
+
+    def _plot_add_dimension(self):
+        regions_for_plotting = self.spectra_tree_panel.get_checked_items()
+        if regions_for_plotting:
+            self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting,
+                                                                        add_dimension=True, legend=False)
 
 
 class CustomToolbar(NavigationToolbar2Tk):
@@ -344,18 +355,24 @@ class PlotPanel(ttk.Frame):
         key_press_handler(event, self.canvas, self.toolbar)
 
     def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0,
-                    scatter=False, label=None, color=None, title=True, font_size=8, legend=True,
-                    legend_features=('Temperature',), legend_pos='best'):
+                     scatter=False, label=None, color=None, title=True, font_size=8, legend=True,
+                     legend_features=('Temperature',), legend_pos='best', add_dimension=False):
         if regions:
             if not ax:
                 ax = self.figure_axes
             ax.clear()
             for region_id in regions:
                 region = self.winfo_toplevel().loaded_regions.get_by_id(region_id)
-                plotter.plot_region(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
-                                    y_offset=y_offset, scatter=scatter, label=label, color=color, title=title,
-                                    font_size=font_size, legend=legend, legend_features=legend_features,
-                                    legend_pos=legend_pos)
+                if not add_dimension:
+                    plotter.plot_region(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
+                                        y_offset=y_offset, scatter=scatter, label=label, color=color, title=title,
+                                        font_size=font_size, legend=legend, legend_features=legend_features,
+                                        legend_pos=legend_pos)
+                else:
+                    plotter.plot_add_dimension(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
+                                               y_offset=1000, scatter=scatter, label=label, color=color, title=title,
+                                               font_size=font_size, legend=legend, legend_features=legend_features,
+                                               legend_pos=legend_pos)
             if len(regions) > 1:
                 ax.set_title(None)
             ax.set_aspect('auto')
@@ -374,6 +391,8 @@ class CorrectionsPanel(ttk.Frame):
         self.quick_label = ttk.Label(self, text="Quick Corrections", anchor=tk.W)
         self.quick_label.pack(side=tk.TOP, fill=tk.X)
         # Correction buttons
+        self.normalize_by_sweeps = ttk.Button(self, text='Normalize by Sweeps', command=self._normalize_by_sweeps)
+        self.normalize_by_sweeps.pack(side=tk.TOP, fill=tk.X)
         # self.excitation_e_button = ttk.Button(self, text='Correct shift', command=self._plot_checked)
         # self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
         # self.buttons_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
@@ -385,8 +404,13 @@ class CorrectionsPanel(ttk.Frame):
 #       self.corrections_tree_panel = BrowserTreeView(self, borderwidth=1, relief="groove")
 #       self.corrections_tree_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
 
-    # def _plot_checked(self):
-    #     pass
+    def _normalize_by_sweeps(self):
+        regions_to_normalize = self.winfo_toplevel().gui_widgets["BrowserTreeView"].get_checked_items()
+        if regions_to_normalize:
+            for region_id in regions_to_normalize:
+                region = self.winfo_toplevel().loaded_regions.get_by_id(region_id)
+                region.normalize_by_sweeps()
+                region.make_final_column("sweepsNormalized", overwrite=True)
 
 
 class MainWindow(ttk.PanedWindow):

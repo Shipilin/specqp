@@ -1,6 +1,7 @@
 """Provides functions for handling and fitting the data
 """
 import logging
+from collections import Iterable
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
@@ -11,7 +12,7 @@ from scipy.optimize import curve_fit
 helpers_logger = logging.getLogger("specqp.helpers")  # Creating child logger
 
 
-def fit_fermi_edge(region, initial_params, add_column=True, overwrite=True):
+def fit_fermi_edge(region, initial_params, column="final", add_column=True, overwrite=True):
     """Fits error function to fermi level scan. If add_column flag
     is True, adds the fitting results as a column to the Region object.
     NOTE: Overwrites the 'fitFermi' column if already present.
@@ -32,7 +33,7 @@ def fit_fermi_edge(region, initial_params, add_column=True, overwrite=True):
     # Parameters and parameters covariance of the fit
     popt, pcov = curve_fit(error_func,
                            region.get_data(column='energy'),
-                           region.get_data(column='counts'),
+                           region.get_data(column=column),
                            p0=initial_params)
 
     if add_column:
@@ -46,7 +47,7 @@ def fit_fermi_edge(region, initial_params, add_column=True, overwrite=True):
     return [popt, np.sqrt(np.diag(pcov))]
 
 
-def calculate_linear_background(region, y_data='counts', manual_bg=None, by_min=False, add_column=True, overwrite=True):
+def calculate_linear_background(region, y_data='final', manual_bg=None, by_min=False, add_column=True, overwrite=True):
     """Calculates the linear background using left and right ends of the region
     or using the minimum on Y-axis and the end that is furthest from the minimum
     on the X-axis. Manual background can be provided by passing approximate intervals
@@ -139,7 +140,7 @@ def calculate_linear_background(region, y_data='counts', manual_bg=None, by_min=
     return background
 
 
-def calculate_shirley(region, y_data='counts', tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
+def calculate_shirley(region, y_data='final', tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
@@ -234,18 +235,38 @@ def smoothen(region, y_data='counts', interval=3, add_column=True):
     return avged
 
 
-def normalize(region, y_data='counts', const=None, add_column=True):
-    """Normalize counts by maximum. If const is given, normalizes by this number
+def normalize(region, y_data='final', const=None, add_column=True):
+    """Normalize counts by maximum. If const is given, normalizes by this number. If add_dimension region is received
+    normalizes the main (integrated) columns 'counts', 'final' etc. as usual. Other columns are normalized as well in
+    the case const is None (takes max of every add_dimesion column) or normalize by a constant if a list of
+    corresponding constants is provided. In case single constant is provided, add_dimension columns 'final0', 'final1'
+    etc. are not normalized.
     """
     # If we want to use other column than "counts" for calculations
-    counts = region.get_data(column=y_data)
+    y = region.get_data(column=y_data)
     if const:
-        output = counts / float(const)
+        output = y / float(const)
     else:
-        output = counts / float(max(counts))
-
+        output = y / float(max(y))
     if add_column:
         region.add_column("normalized", output, overwrite=True)
+
+    if region.is_add_dimension() and add_column:
+        if not const:
+            for i in range(region.get_add_dimension_counter()):
+                if f'{y_data}{i}' in list(region.get_data()):
+                    y = region.get_data(column=f'{y_data}{i}')
+                    region.add_column(f"normalized{i}", y / float(np.amax(y)), overwrite=True)
+        # If const is provided it should be iterable containing values for every correspomding add-dimension column
+        elif isinstance(const, Iterable):
+            if len(const) == region.get_add_dimension_counter():
+                for i, constant in enumerate(const):
+                    res = region.get_data(column=f'{y_data}{i}') / float(constant)
+                    region.add_column(f"normalized{i}", res, overwrite=True)
+            else:
+                helpers_logger.warning(f"Add-dimension data in region {region.get_id()} was not normalized.")
+                return
+
     return output
 
 
@@ -254,7 +275,7 @@ def normalize_by_background(region, start, stop, y_data='counts', add_column=Tru
     """
     # If we want to use other column than "counts" for calculations
     counts = region.get_data(column=y_data)
-    energy = region.get_data(column="energy")
+    energy = region.get_data(column='energy')
 
     first_index = 0
     last_index = len(counts) - 1
@@ -273,7 +294,7 @@ def normalize_by_background(region, start, stop, y_data='counts', add_column=Tru
     return output
 
 
-def shift_by_background(region, interval, y_data='counts', add_column=True):
+def shift_by_background(region, interval, y_data='final', add_column=True):
     """Correct counts by the average background level given by the interval [start, stop]
     """
     # If we want to use other column than "counts" for calculations

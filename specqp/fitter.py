@@ -85,7 +85,7 @@ class Peak:
 class Fitter:
     """Provides fitting possibilities for XPS regions
     """
-    def __init__(self, region, y_data='counts', gauss_fwhm=None):
+    def __init__(self, region, y_data='final', gauss_fwhm=None):
         """Creates an object that contains information about fitting of
         a particular XPS region.
         """

@@ -5,12 +5,7 @@ from matplotlib.figure import Figure
 plotter_logger = logging.getLogger("specqp.plotter")  # Creating child logger
 
 
-def plot_region(region, axs, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0,
-                scatter=False, label=None, color=None, title=True, font_size=8,
-                legend=True, legend_features=('Temperature',), legend_pos='best'):
-    """Plotting spectrum with matplotlib using given axes and a number of optional arguments. legend_features parameter
-    allows for adding distinguishing features to each plotted curve taking their values from Region._conditions.
-    """
+def _get_arrays(region, x_data, y_data):
     if x_data in list(region.get_data()):
         x = region.get_data(column=x_data)
     else:
@@ -18,7 +13,38 @@ def plot_region(region, axs, x_data='energy', y_data='final', invert_x=True, log
     if y_data in list(region.get_data()):
         y = region.get_data(column=y_data)
     else:
-        y = region.get_data(column='counts')
+        y = region.get_data(column='final')
+
+    return x, y
+
+
+def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0.1,
+                       scatter=False, label=None, color=None, title=False, font_size=8,
+                       legend=False, legend_features=None, legend_pos=None):
+    if not region.is_add_dimension():
+        return
+    for i in range(region.get_add_dimension_counter()):
+        x, y = _get_arrays(region, x_data=f'{x_data}{i}', y_data=f'{y_data}{i}')
+        _plot_curve(x, y, region, axs, invert_x=invert_x, log_scale=log_scale, y_offset=i*y_offset,
+                    scatter=scatter, label=label, color=color, title=title, font_size=font_size,
+                    legend=legend, legend_features=legend_features, legend_pos=legend_pos)
+
+
+def plot_region(region, axs, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0,
+                scatter=False, label=None, color=None, title=True, font_size=8,
+                legend=True, legend_features=('Temperature',), legend_pos='best'):
+    """Plotting spectrum with matplotlib using given axes and a number of optional arguments. legend_features parameter
+    allows for adding distinguishing features to each plotted curve taking their values from Region._conditions.
+    """
+    x, y = _get_arrays(region, x_data, y_data)
+    _plot_curve(x, y, region, axs, invert_x=invert_x, log_scale=log_scale, y_offset=y_offset,
+               scatter=scatter, label=label, color=color, title=title, font_size=font_size,
+               legend=legend, legend_features=legend_features, legend_pos=legend_pos)
+
+
+def _plot_curve(x, y, region, axs, invert_x=True, log_scale=False, y_offset=0,
+               scatter=False, label=None, color=None, title=True, font_size=8,
+               legend=True, legend_features=('Temperature',), legend_pos='best'):
 
     if not label:
         label = f"{region.get_id()}"
