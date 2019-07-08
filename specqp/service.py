@@ -4,7 +4,6 @@ import logging
 
 service_logger = logging.getLogger("specqp.service")  # Configuring child logger
 
-# Don't change the sequence of constants. If new constants are to be added, add them to the end
 service_vars = {
     "DEFAULT_DATA_FOLDER": "../",
     "LOG_FILE_NAME": "../data/log/app.log",

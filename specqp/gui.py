@@ -338,7 +338,7 @@ class PlotPanel(ttk.Frame):
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        self.toolbar = CustomToolbar(self.canvas, self)  # NavigationToolbar2Tk(self.canvas, self)
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self) # CustomToolbar(self.canvas, self)
         self.toolbar.update()
         #self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self.toolbar.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
@@ -446,7 +446,8 @@ class Root(tk.Tk):
         self.main_window = MainWindow(self, orient=tk.HORIZONTAL)
         self.main_window.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-    def generate_main_menu(self):  # TODO: write the functionality for the menu, add new menus if needed.
+    # TODO: write the functionality for the menu, add new menus if needed.
+    def generate_main_menu(self):
         """Configuring the app menu
         """
         # File menu

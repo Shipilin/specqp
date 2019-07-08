@@ -29,9 +29,9 @@ def ask_path(folder_flag=True, multiple_files_flag=False):
     root = tk.Tk()
     root.withdraw()
     path = os.getcwd()
-    if folder_flag: # Open folder
-        path = filedialog.askdirectory(parent=root, initialdir=path, title='Please select experiment directory')
-    else: # Open file
+    if folder_flag:  # Open folder
+        path = filedialog.askdirectory(parent=root, initialdir=path, title='Please select directory')
+    else:  # Open file
         if multiple_files_flag:
             path = filedialog.askopenfilenames(parent=root, initialdir=path, title='Please select data files')
             path = root.tk.splitlist(path)

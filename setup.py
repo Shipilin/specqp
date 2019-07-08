@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(name='SpecQP',
       version='0.1',
-      description='Quick plotting and correcting spectroscopic data',
+      description='Quick plotting and correcting of spectroscopic data',
       url='https://github.com/Shipilin/specqp.git',
       author='Mikhail Shipilin',
       author_email='mikhail.shipilin@gmail.com',
