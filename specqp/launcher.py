@@ -3,8 +3,8 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 
-import service
-from gui import main as call_gui
+from specqp import service
+from specqp.gui import main as call_gui
 
 
 specqp_logger = logging.getLogger("specqp")
@@ -36,7 +36,7 @@ def initialize_logging():
     specqp_logger.addHandler(file_handler)
 
 
-# TODO: think and write the logics for the batch mode
+# TODO: write the logics for the batch mode
 def main(*args, **kwargs):
     """Defines the behavior of the app if run in batch mode
     """

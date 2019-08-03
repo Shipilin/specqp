@@ -9,6 +9,6 @@ setup(name='SpecQP',
       license='MIT',
       packages=find_packages(),
       include_package_data=True,
-      unit_test='unittest',
+      unit_test='pytest',
       install_requires=['numpy', 'scipy', 'pandas', 'matplotlib']
       )

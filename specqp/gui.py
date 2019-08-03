@@ -12,9 +12,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.backend_bases import key_press_handler
 import matplotlib.image as mpimg
 
-import service
-import datahandler
-import plotter
+from specqp import service
+from specqp import datahandler
+from specqp import plotter
+from specqp.tools import Ruler
 
 # Default font for the GUI
 LARGE_FONT = ("Verdana", "12")
@@ -244,19 +245,26 @@ class BrowserPanel(ttk.Frame):
         # Action buttons panel
         self.buttons_panel = ttk.Frame(self, borderwidth=1, relief="groove")
         # Action buttons
-        self.load_label = ttk.Label(self.buttons_panel, text="Load File", anchor=tk.W)
+        self.load_label = ttk.Label(self.buttons_panel,
+                                    text="Load File", anchor=tk.W)
         self.load_label.pack(side=tk.TOP, fill=tk.X)
-        self.add_sc_file_button = ttk.Button(self.buttons_panel, text='Load SCIENTA', command=self._ask_load_scienta_file)
+        self.add_sc_file_button = ttk.Button(self.buttons_panel,
+                                             text='Load SCIENTA', command=self._ask_load_scienta_file)
         self.add_sc_file_button.pack(side=tk.TOP, fill=tk.X)
-        self.add_sp_file_button = ttk.Button(self.buttons_panel, text='Load SPECS', command=self._ask_load_specs_file)
+        self.add_sp_file_button = ttk.Button(self.buttons_panel,
+                                             text='Load SPECS', command=self._ask_load_specs_file)
         self.add_sp_file_button.pack(side=tk.TOP, fill=tk.X)
-        self.plot_checked_button = ttk.Button(self.buttons_panel, text='Plot Checked', command=self._plot_checked)
+        self.plot_checked_button = ttk.Button(self.buttons_panel,
+                                              text='Plot Checked', command=self._plot_checked)
         self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
-        self.plot_add_dimension = ttk.Button(self.buttons_panel, text='Plot Add Dimension', command=self._plot_add_dimension)
+        self.plot_add_dimension = ttk.Button(self.buttons_panel,
+                                             text='Plot Add Dimension', command=self._plot_add_dimension)
         self.plot_add_dimension.pack(side=tk.TOP, fill=tk.X)
-        self.blank_label = ttk.Label(self.buttons_panel, text="", anchor=tk.W)
+        self.blank_label = ttk.Label(self.buttons_panel,
+                                     text="", anchor=tk.W)
         self.blank_label.pack(side=tk.TOP, fill=tk.X)
-        self.app_quit_button = ttk.Button(self.buttons_panel, text='Quit', command=self._quit)
+        self.app_quit_button = ttk.Button(self.buttons_panel,
+                                          text='Quit', command=self._quit)
         self.app_quit_button.pack(side=tk.TOP, fill=tk.X)
         self.buttons_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
 
@@ -276,13 +284,14 @@ class BrowserPanel(ttk.Frame):
     def _plot_checked(self):
         regions_for_plotting = self.spectra_tree_panel.get_checked_items()
         if regions_for_plotting:
-            self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting)
+            self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting,
+                                                                        add_dimension=False, legend=True)
 
     def _plot_add_dimension(self):
         regions_for_plotting = self.spectra_tree_panel.get_checked_items()
         if regions_for_plotting:
             self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting,
-                                                                        add_dimension=True, legend=False)
+                                                                        add_dimension=True, legend=True)
 
 
 class CustomToolbar(NavigationToolbar2Tk):
@@ -300,6 +309,12 @@ class CustomToolbar(NavigationToolbar2Tk):
         self.canvas.figure.axes[0].invert_xaxis()
         self.canvas.draw()
 
+    def enable_ruler(self):
+        markerprops = dict(marker='o', markersize=5, markeredgecolor='red')
+        lineprops = dict(color='red', linewidth=2)
+        ax = self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes
+        ruler = tools.Ruler(ax=ax, useblit=True, markerprops=markerprops, lineprops=lineprops)
+
     def save_figure(self):
         NavigationToolbar2Tk.save_figure(self)
         self.update()
@@ -316,6 +331,7 @@ class CustomToolbar(NavigationToolbar2Tk):
             #('Subplots', 'Configure subplots', 'subplots', 'configure_subplots'),
             (None, None, None, None),
             ('InvertX', 'Invert X-axis', 'back', 'invert_x'),
+            ('Ruler', 'Enable ruler', 'forward', 'enable_ruler'),
             (None, None, None, None),
             ('Save', 'Save the figure', 'filesave', 'save_figure'),
             )
@@ -338,25 +354,25 @@ class PlotPanel(ttk.Frame):
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self) # CustomToolbar(self.canvas, self)
+        self.toolbar = CustomToolbar(self.canvas, self)  # NavigationToolbar2Tk(self.canvas, self)
         self.toolbar.update()
         #self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self.toolbar.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
 
         self.canvas.mpl_connect("key_press_event", self._on_key_press)
-        self.canvas.mpl_connect("button_press_event", self._on_mouse_click)
+        # self.canvas.mpl_connect("button_press_event", self._on_mouse_click)
 
     def _on_key_press(self, event):
         gui_logger.debug(f"{event.key} pressed on plot canvas")
         key_press_handler(event, self.canvas, self.toolbar)
 
-    def _on_mouse_click(self, event):
-        gui_logger.debug(f"{event.button} pressed on plot canvas")
-        key_press_handler(event, self.canvas, self.toolbar)
+    # def _on_mouse_click(self, event):
+    #     gui_logger.debug(f"{event.button} pressed on plot canvas")
+    #     key_press_handler(event, self.canvas, self.toolbar)
 
-    def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0,
-                     scatter=False, label=None, color=None, title=True, font_size=8, legend=True,
-                     legend_features=('Temperature',), legend_pos='best', add_dimension=False):
+    def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False,
+                     y_offset=0.0, scatter=True, label=None, color=None, title=True, font_size=8, legend=True,
+                     legend_features=None, legend_pos='best', add_dimension=False):
         if regions:
             if not ax:
                 ax = self.figure_axes
@@ -432,8 +448,6 @@ class Root(tk.Tk):
         super().__init__(*args, **kwargs)
         # Dictionary of all widgets of the main window
         self.gui_widgets = {}
-        # List of toplevel objects of the app (not including MainWindow and its children)
-        self.toplevel_windows = []
         # Attribute keeping track of all regions loaded in the current GUI session
         self.loaded_regions = datahandler.RegionsCollection()
 
@@ -477,7 +491,6 @@ class Root(tk.Tk):
             service.set_default_data_folder(os.path.dirname(file_path))
 
             text_view = tk.Toplevel(self)
-            self.toplevel_windows.append(text_view)
             text_view.wm_title(ntpath.basename(file_path))
             text_panel = FileViewerWindow(text_view, file_path)
             text_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -503,13 +516,14 @@ class Root(tk.Tk):
             gui_logger.warning("Couldn't get the file path from the load_file dialog in Root class")
             return
 
-        assert loaded_ids, f"No regions were loaded from the file {file_names}"
         if loaded_ids:
             for key, val in loaded_ids.items():
                 # The 'loaded_ids' dictionary can contain several None values, which will be evaluated as True
                 # in the previous 'if' clause. Therefore, we need to check every member as well.
                 if val:
                     self.gui_widgets["BrowserPanel"].spectra_tree_panel.add_items_to_check_list(os.path.basename(key), val)
+                else:
+                    gui_logger.warning(f"No regions loaded from {key}")
 
     def export_log(self):
         pass

@@ -1,7 +1,7 @@
 """Provides functions for handling and fitting the data
 """
+import os
 import logging
-from collections import Iterable
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
@@ -10,6 +10,14 @@ from scipy.optimize import curve_fit
 
 
 helpers_logger = logging.getLogger("specqp.helpers")  # Creating child logger
+
+
+def is_iterable(obj):
+    try:
+        _ = (e for e in obj)
+        return True
+    except TypeError:
+        return False
 
 
 def fit_fermi_edge(region, initial_params, column="final", add_column=True, overwrite=True):
@@ -27,7 +35,7 @@ def fit_fermi_edge(region, initial_params, column="final", add_column=True, over
         return (a0 / 2) * sp.special.erfc((a1 - x) / a2) + a3
 
     if not region.get_flags()["fermi_flag"]:
-        helpers_logger.error(f"Can't fit the error func to non-Fermi region {region.get_id()}")
+        helpers_logger.warning(f"Can't fit the error func to non-Fermi region {region.get_id()}")
         return
 
     # Parameters and parameters covariance of the fit
@@ -43,7 +51,7 @@ def fit_fermi_edge(region, initial_params, column="final", add_column=True, over
                                                 popt[2],
                                                 popt[3]),
                           overwrite=overwrite)
-
+    # Return parameters and their uncertainties
     return [popt, np.sqrt(np.diag(pcov))]
 
 
@@ -257,8 +265,9 @@ def normalize(region, y_data='final', const=None, add_column=True):
                 if f'{y_data}{i}' in list(region.get_data()):
                     y = region.get_data(column=f'{y_data}{i}')
                     region.add_column(f"normalized{i}", y / float(np.amax(y)), overwrite=True)
-        # If const is provided it should be iterable containing values for every correspomding add-dimension column
-        elif isinstance(const, Iterable):
+        # If const is provided it should be iterable containing values for every corresponding add-dimension column
+        # elif isinstance(const, Iterable):
+        elif is_iterable(const):
             if len(const) == region.get_add_dimension_counter():
                 for i, constant in enumerate(const):
                     res = region.get_data(column=f'{y_data}{i}') / float(constant)
@@ -294,6 +303,41 @@ def normalize_by_background(region, start, stop, y_data='counts', add_column=Tru
     return output
 
 
+def normalize_group(regionscollection, y_data: str = 'final',
+                    const: float = None, add_column: bool = True) -> bool:
+    """Normalize y-axis of all regions in the RegionsCollection by the maximum y-value of all included regions.
+       If const is given, normalizes by this number. If add_dimension region is received
+       normalizes the main (integrated) columns 'counts', 'final' etc. only.
+    """
+    # If we want to use other column than "counts" for calculations
+    regions = regionscollection.get_regions()
+    if const:
+        if is_iterable(const) and len(const) == len(regions):
+            for i, region in enumerate(regions):
+                output = normalize(region, y_data=y_data, const=const[i], add_column=False)
+                if add_column:
+                    region.add_column("groupnormalized", output, overwrite=True)
+            return True
+        elif is_iterable(const) and len(const) != len(regions):
+            helpers_logger.warning(f"Regions collection was not normalized because number of normalization"
+                                   f"constants was not equal to number of regions.")
+            return False
+        elif not is_iterable(const):
+            for region in regions:
+                output = normalize(region, y_data=y_data, const=const, add_column=False)
+                if add_column:
+                    region.add_column("groupnormalized", output, overwrite=True)
+            return True
+
+    # Normalization coefficient for all regions (max y-value of all regions from y_data column)
+    allmax = max([np.max(region.get_data(column=y_data)) for region in regions if len(region.get_data(column=y_data)) > 0])
+    for region in regions:
+        output = normalize(region, y_data=y_data, const=allmax, add_column=False)
+        if add_column:
+            region.add_column("groupnormalized", output, overwrite=True)
+    return True
+
+
 def shift_by_background(region, interval, y_data='final', add_column=True):
     """Correct counts by the average background level given by the interval [start, stop]
     """
@@ -316,3 +360,27 @@ def shift_by_background(region, interval, y_data='final', add_column=True):
     if add_column:
         region.add_column("bgshifted", output, overwrite=True)
     return output
+
+
+def ask_path(folder_flag=True, multiple_files_flag=False):
+    """Makes a tkinter dialog for choosing the folder if folder_flag=True
+    or file(s) otherwise. For multiple files the multiple_files_flag should
+    be True.
+    """
+    # This method is almost never used, so the required imports are locally called
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    path = os.getcwd()
+    if folder_flag:  # Open folder
+        path = filedialog.askdirectory(parent=root, initialdir=path, title='Please select directory')
+    else:  # Open file
+        if multiple_files_flag:
+            path = filedialog.askopenfilenames(parent=root, initialdir=path, title='Please select data files')
+            path = root.tk.splitlist(path)
+        else:
+            path = filedialog.askopenfilename(parent=root, initialdir=path, title='Please select data file')
+    root.destroy()
+    return path

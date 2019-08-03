@@ -8,6 +8,7 @@ import logging
 import copy
 import pandas as pd
 
+from specqp import helpers
 
 datahandler_logger = logging.getLogger("specqp.datahandler")  # Creating child logger
 
@@ -15,30 +16,6 @@ DATA_FILE_TYPES = (
     "scienta",
     "specs"
 )
-
-
-def ask_path(folder_flag=True, multiple_files_flag=False):
-    """Makes a tkinter dialog for choosing the folder if folder_flag=True
-    or file(s) otherwise. For multiple files the multiple_files_flag should
-    be True.
-    """
-    # This method is almost never used, so the required imports are locally called
-    import tkinter as tk
-    from tkinter import filedialog
-
-    root = tk.Tk()
-    root.withdraw()
-    path = os.getcwd()
-    if folder_flag:  # Open folder
-        path = filedialog.askdirectory(parent=root, initialdir=path, title='Please select directory')
-    else:  # Open file
-        if multiple_files_flag:
-            path = filedialog.askopenfilenames(parent=root, initialdir=path, title='Please select data files')
-            path = root.tk.splitlist(path)
-        else:
-            path = filedialog.askopenfilename(parent=root, initialdir=path, title='Please select data file')
-    root.destroy()
-    return path
 
 
 def load_scienta_txt(filename, regions_number_line=1, first_region_number=1):
@@ -52,18 +29,17 @@ def load_scienta_txt(filename, regions_number_line=1, first_region_number=1):
     """
 
     def parse_scienta_file_info(lines_):
-        """Helper function that parses the list of lines read from Scienta.txt
+        """Helper function that parses the list of lines acquired from Scienta.txt
         file info block and returns 'info' dictionary {property: value}
         """
         info = {}
         for line_ in lines_:
-            line_ = line_.strip()  # Make sure that no space characters are present on teh ends
             if '=' in line_:
-                line_content = line_.split('=', 1)
+                line_content = line_.strip().split('=', 1)
                 # Modify the file name
                 if line_content[0].strip() == "File":
                     line_content[1] = ntpath.basename(line_content[1]).split('.', 1)[0]
-                info[line_content[0]] = line_content[1]
+                info[line_content[0].strip()] = line_content[1].strip()
         return info
 
     with open(filename) as f:
@@ -75,7 +51,7 @@ def load_scienta_txt(filename, regions_number_line=1, first_region_number=1):
     #                        Region    Info      Data
     file_map = {}
     # Reading the number of regions from the specified line of the file
-    regions_number = int(lines[regions_number_line].split("=")[1])
+    regions_number = int(lines[regions_number_line].split("=", 1)[1])
     # We make a list of region objects even for just one region
     regions = []
     # Temporary counter to know the currently treated region number in the for-loop below
@@ -135,6 +111,7 @@ def load_scienta_txt(filename, regions_number_line=1, first_region_number=1):
             if "Dimension 2 size" in line:
                 add_dimension_flag = True
                 add_dimension_data = []
+                break
 
         # Info block of the current region
         info_lines = parse_scienta_file_info(lines[val[1][0]:val[1][1]+1])
@@ -167,7 +144,7 @@ def load_scienta_txt(filename, regions_number_line=1, first_region_number=1):
                 # We read them row by row and then transpose the whole thing to get columns
                 else:
                     row_counts_values = []
-                    # We skip the first value every time because it contains common energy
+                    # We skip the first value every time because it contains energy which is the same for all columns
                     for ncol in range(1, len(xy)):
                         row_counts_values.append(xy[ncol])
                     counts.append(sum(row_counts_values))  # 'counts' list value contains integrated rows
@@ -190,15 +167,15 @@ def load_specs_xy(filename):
     region as a list of Region objects in order to be consistent with the Scienta
     loading routine.
     """
-    def parse_spec_file_info(lines):
+    def parse_spec_file_info(lines_):
         """Parses the list of lines read from SPEC.xy file info block
         and returns 'info' dictionary
         """
         info = {}
-        for line in lines:
-            line = line.strip().lstrip('#').strip()
-            if ':' in line:
-                line_content = line.split(':', 1)
+        for line_ in lines_:
+            if ':' in line_:
+                line_ = line_.strip(' #')
+                line_content = line_.split(':', 1)
                 info[line_content[0].strip()] = line_content[1].strip()
 
         return info
@@ -210,10 +187,12 @@ def load_specs_xy(filename):
     energy, counts = [], []
     info_lines = []
     for line in lines:
-        if not line.strip():
-            continue # Scip empty lines
-        elif line.strip().startswith('#'):
-            info_lines.append(line) # Save info lines
+        line = line.strip()
+        if not line:
+            continue  # Scip empty lines
+        elif line.startswith('#'):
+            if line.strip(' #'):  # Scip empty info lines
+                info_lines.append(line)  # Save info lines
         else:
             xy = line.split()
             x = float(xy[0].strip())
@@ -230,7 +209,7 @@ def load_specs_xy(filename):
 
         # Check which energy scale is used:
         if info_lines["Energy Axis"] == "Kinetic Energy":
-            info_lines["Energy Axis"] = "Kinetic" # To make it consistent with scienta
+            info_lines["Energy Axis"] = "Kinetic"  # To make it consistent with Scienta routine
         else:
             info_lines["Energy Axis"] = "Binding"
 
@@ -246,13 +225,15 @@ def load_specs_xy(filename):
                               Region.info_entries[7]: filename.rpartition('.')[0].rpartition('/')[2],
                               Region.info_entries[8]: info_lines["Acquisition Date"]}
 
+        region_conditions = {"Comments": info_lines["Comment"]}
         # Create a Region object for the current region
-        regions.append(Region(energy, counts, info=info_lines_revised))
+        regions.append(Region(energy, counts, info=info_lines_revised, conditions=region_conditions))
     return regions
 
 
 # TODO change the structure of file
 def save_csv(region, filename):
+    pass
     """Saves Region object in the csv file with given name. Flags and info are
     stored in the comment lines marked with '#' simbol at the beginning of
     the file.
@@ -279,6 +260,7 @@ def read_csv(filename):
     is retrieved from the comment lines marked with '#' simbol at the beginning
     of the file.
     """
+    pass
     # Reading the data part of the file
     df = pd.read_csv(filename, comment='#')
 
@@ -326,7 +308,7 @@ class Region:
         "Energy Step",          # 5
         "Dwell Time",           # 6
         "File Name",            # 7
-        "Date"                 # 8
+        "Date"                  # 8
     )
 
     region_flags = (
@@ -346,11 +328,11 @@ class Region:
         :param counts: goes for counts (Y) axis
         :param id_: ID of the region (usually the string "filename : regionname")
         :param fermi_flag: True if the region stores the measurement of the Fermi level
-        :param add_dimension_flag: True if the region stores two-dimensional data (in such case, the values in the
+        :param add_dimension_flag: True if the region stores two-dimensional data (in this case, the values in the
         'counts' and 'final' columns are obtained by integration over the second dimension. At the same time
         separate columns 'counts0', 'counts1'... and 'final0', 'final1'... are added
-        to the region object and contain information for separate sweeps)
-        :param add_dimension_data: list of lists containing separate data for sweeps in the second dimension
+        to the region object and contain information for time-distributed scans)
+        :param add_dimension_data: list of lists containing separate data for time-distributed scans
         :param info: Info about the region is stored as a dictionary {property: value} based on info_entries tuple
         :param conditions: Experimental conditions are stored as a dictionary {property: value}
         :param excitation_energy: Photon energy used in the experiment
@@ -358,7 +340,6 @@ class Region:
         """
         # The main attribute of the class is pandas dataframe
         self._data = pd.DataFrame(data={'energy': energy, 'counts': counts}, dtype=float)
-        self._add_dimension_scans_number = 1
         self._info = info
         self._id = id_
         # Experimental conditions
@@ -393,14 +374,20 @@ class Region:
             for i, data_set in enumerate(add_dimension_data):
                 self.add_column(f'counts{i}', data_set)
                 self.add_column(f'final{i}', data_set)
+        else:
+            self._add_dimension_scans_number = 1
 
-        # 'final' column is the main y-data column for plotting. At the beginning it is identical with the raw counts
+        # 'final' column is the main y-data column for plotting. At the beginning it is identical to the 'counts' values
         self.add_column('final', self._data["counts"])
 
         # A backup, which can be used to restore the initial state of the region object.
-        self._data_backup = self._data
-        self._info_backup = self._info
-        self._flags_backup = self._flags
+        # If the region is a dummy region that doesn't contain any data, the .copy() action is not available
+        try:
+            self._data_backup = self._data.copy()
+            self._info_backup = self._info.copy()
+            self._flags_backup = self._flags.copy()
+        except AttributeError:
+            datahandler_logger.info(f"A dummy region has been created", exc_info=True)
 
     def __str__(self):
         """Prints the info read from the data file. Possible to add keys of the Info dictionary to be printed
@@ -425,11 +412,34 @@ class Region:
         self._data[column_label] = array
 
     def correct_energy_shift(self, shift):
-        if not self._flags[Region.region_flags[0]]:
+        if not self._flags[Region.region_flags[0]]:  # If not already corrected
             self._data['energy'] += shift
             self._flags[Region.region_flags[0]] = True
         else:
             datahandler_logger.info(f"The region {self._id} has already been energy corrected.")
+
+    @staticmethod
+    def concat_regions(regions, truncate=False):
+        """
+        Takes two or more non-adddimension regions and combines them in a single region adding up sweeps and results.
+        NOTE: The method doesn't check for regions compatibility, i.e. conditions, photon energy, etc.
+        NOTE: Neither does the method accounts for previously made corrections. Therefore, should be used with
+        freshly loaded regions in order to avoid mistakes.
+        :param regions: iterable through a number of regions
+        :param truncate=False: if regions of different length are combined and truncate = True, the method
+        concatenates them only in the overlapping region and returns truncated regions as the result
+        :return: Region object
+        """
+        if not helpers.is_iterable(regions):
+            datahandler_logger.warning(f"Regions should be in an iterable object to be concatenated")
+            return None
+        region = copy.deepcopy(regions[0])
+        for i in range(1, len(regions)):
+            region._data['counts'] += regions[i].get_data('counts')
+            region._data['final'] += regions[i].get_data('final')
+            region._info[Region.info_entries[2]] = str(int(region.get_info(Region.info_entries[2])) +
+                                                       int(regions[i].get_info(Region.info_entries[2])))
+        return region
 
     def crop_region(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
@@ -438,6 +448,9 @@ class Region:
         If changesource flag is True, the original region is cropped, if False -
         the copy of original region is cropped and returned.
         """
+        if not start and not stop:
+            return
+
         x_values = self._data['energy']
         first_index = 0
         last_index = self._data.index.values[-1]
@@ -473,9 +486,12 @@ class Region:
         """Returns experimental conditions as a dictionary {"entry": value} or
         the value of the specified entry.
         """
-        if entry:
-            return self._conditions[entry]
-        return self._conditions
+        if self._conditions:
+            if entry:
+                return self._conditions[entry]
+            return self._conditions
+        else:
+            datahandler_logger.warning(f"The region {self._id} doesn't contain information about conditions.")
 
     def get_data(self, column=None):
         """Returns pandas DataFrame with data columns. If column name is
@@ -532,8 +548,7 @@ class Region:
 
     def invert_energy_scale(self):
         """Changes the energy scale of the region from the currently defined to
-        the alternative one. From kinetic to binding energy
-        or from binding to kinetic energy.
+        the alternative one. From kinetic to binding energy or from binding to kinetic energy.
         """
         self._data['energy'] = -1 * self._data['energy'] + self._excitation_energy
         self._flags[Region.region_flags[1]] = not self._flags[Region.region_flags[1]]
@@ -575,7 +590,7 @@ class Region:
 
     def make_final_column(self, parent_column, overwrite=False):
         """Populates the 'final' column with the values from the column "parent_column", which contains processed data.
-        Populates all'finalN' columns with values from 'parent_columnN' for add_dimension regions.
+        Populates all 'finalN' columns with values from 'parent_columnN' for add_dimension regions.
         """
         self.add_column('final', self._data[parent_column], overwrite)
         if self.is_add_dimension():
@@ -610,9 +625,12 @@ class Region:
         """Removes all the changes made to the Region and restores the initial
         "counts" and "energy" columns together with the _info, _flags
         """
-        self._data = self._data_backup
-        self._info = self._info_backup
-        self._flags = self._flags_backup
+        if self._data_backup and self._info_backup and self._flags_backup:
+            self._data = self._data_backup.copy()
+            self._info = self._info_backup.copy()
+            self._flags = self._flags_backup.copy()
+        else:
+            datahandler_logger.warning("Attempt to reset a dummy region. Option is not available for dummy regions.")
 
     def set_conditions(self, conditions, overwrite=False):
         """Set experimental conditions as a dictionary {"Property": Value}. If conditions with the same names
@@ -643,8 +661,14 @@ class Region:
 class RegionsCollection:
     """Keeps track of the list of regions being in work simultaneously in the GUI or the batch mode
     """
-    def __init__(self):
+    def __init__(self, regions=None):
+        """
+        :param regions: List of region objects (can be also single object in the list form, e.g. [obj,])
+        """
         self.regions = {}
+        if regions:
+            for region in regions:
+                self.regions[region.get_id()] = region
 
     def add_regions(self, new_regions):
         """Adds region objects. Checks for duplicates and rejects adding if already exists.
@@ -665,7 +689,6 @@ class RegionsCollection:
             datahandler_logger.warning(f"Regions are already loaded: {duplicate_ids}")
         if ids:
             return ids
-        return None
 
     def add_regions_from_file(self, file_path, file_type=DATA_FILE_TYPES[0]):
         """Adds region objects after extracting them from the file.
