@@ -165,11 +165,6 @@ class BrowserTreeView(ttk.Frame):
                 return
         self.check_all_box.select()
 
-    # def _configure_canvas(self, event):
-    #     if self.treeview.winfo_reqwidth() != self.scrollable_canvas.winfo_width():
-    #         # Update the inner frame's width to fill the canvas
-    #         self.scrollable_canvas.itemconfigure(self.interior_id, width=self.scrollable_canvas.winfo_width())
-
     def _configure_treeview(self, event):
         # Update the scrollbars to match the size of the inner frame
         self.scrollable_canvas.config(scrollregion=f"0 0 {self.treeview.winfo_reqwidth()} {self.treeview.winfo_reqheight()}")
@@ -254,12 +249,12 @@ class BrowserPanel(ttk.Frame):
         self.add_sp_file_button = ttk.Button(self.buttons_panel,
                                              text='Load SPECS', command=self._ask_load_specs_file)
         self.add_sp_file_button.pack(side=tk.TOP, fill=tk.X)
-        self.plot_checked_button = ttk.Button(self.buttons_panel,
-                                              text='Plot Checked', command=self._plot_checked)
-        self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
-        self.plot_add_dimension = ttk.Button(self.buttons_panel,
-                                             text='Plot Add Dimension', command=self._plot_add_dimension)
-        self.plot_add_dimension.pack(side=tk.TOP, fill=tk.X)
+        # self.plot_checked_button = ttk.Button(self.buttons_panel,
+        #                                       text='Plot Checked', command=self._plot_checked)
+        # self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
+        # self.plot_add_dimension = ttk.Button(self.buttons_panel,
+        #                                      text='Plot Add Dimension', command=self._plot_add_dimension)
+        # self.plot_add_dimension.pack(side=tk.TOP, fill=tk.X)
         self.blank_label = ttk.Label(self.buttons_panel,
                                      text="", anchor=tk.W)
         self.blank_label.pack(side=tk.TOP, fill=tk.X)
@@ -281,17 +276,17 @@ class BrowserPanel(ttk.Frame):
     def _quit(self):
         self.winfo_toplevel().quit()  # stops mainloop
 
-    def _plot_checked(self):
-        regions_for_plotting = self.spectra_tree_panel.get_checked_items()
-        if regions_for_plotting:
-            self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting,
-                                                                        add_dimension=False, legend=True)
+    # def _plot_checked(self):
+    #     regions_for_plotting = self.spectra_tree_panel.get_checked_items()
+    #     if regions_for_plotting:
+    #         self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting,
+    #                                                                     add_dimension=False, legend=True)
 
-    def _plot_add_dimension(self):
-        regions_for_plotting = self.spectra_tree_panel.get_checked_items()
-        if regions_for_plotting:
-            self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting,
-                                                                        add_dimension=True, legend=True)
+    # def _plot_add_dimension(self):
+    #     regions_for_plotting = self.spectra_tree_panel.get_checked_items()
+    #     if regions_for_plotting:
+    #         self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting,
+    #                                                                     add_dimension=True, legend=True)
 
 
 class CustomToolbar(NavigationToolbar2Tk):
@@ -339,26 +334,22 @@ class CustomToolbar(NavigationToolbar2Tk):
 
 
 class PlotPanel(ttk.Frame):
-    def __init__(self, parent, *args, **kwargs):
+    def __init__(self, parent, label=None, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
-        self.winfo_toplevel().gui_widgets["PlotPanel"] = self
-
-        self.start_page_img = mpimg.imread(logo_img_file)
-
         self.figure = plotter.SpecqpPlot(dpi=100)
         self.figure_axes = self.figure.add_subplot(111)
-        self.figure_axes.set_axis_off()
-        self.figure_axes.imshow(self.start_page_img)
+        if label and label == 'main':  # The main-window plot frame is being created
+            self.winfo_toplevel().gui_widgets["PlotPanel"] = self
+            self.start_page_img = mpimg.imread(logo_img_file)
+            self.figure_axes.set_axis_off()
+            self.figure_axes.imshow(self.start_page_img)
 
         self.canvas = FigureCanvasTkAgg(self.figure, master=self)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
         self.toolbar = CustomToolbar(self.canvas, self)  # NavigationToolbar2Tk(self.canvas, self)
         self.toolbar.update()
-        #self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self.toolbar.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
-
         self.canvas.mpl_connect("key_press_event", self._on_key_press)
         # self.canvas.mpl_connect("button_press_event", self._on_mouse_click)
 
@@ -371,15 +362,14 @@ class PlotPanel(ttk.Frame):
     #     key_press_handler(event, self.canvas, self.toolbar)
 
     def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False,
-                     y_offset=0.0, scatter=True, label=None, color=None, title=True, font_size=8, legend=True,
-                     legend_features=None, legend_pos='best', add_dimension=False):
+                     y_offset=0.0, scatter=False, label=None, color=None, title=True, font_size=8, legend=True,
+                     legend_features=("ID",), legend_pos='best', add_dimension=False):
         if regions:
             if not ax:
                 ax = self.figure_axes
             ax.clear()
-            for region_id in regions:
-                region = self.winfo_toplevel().loaded_regions.get_by_id(region_id)
-                if not add_dimension:
+            for region in regions:
+                if not add_dimension or not region.is_add_dimension():
                     plotter.plot_region(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
                                         y_offset=y_offset, scatter=scatter, label=label, color=color, title=title,
                                         font_size=font_size, legend=legend, legend_features=legend_features,
@@ -400,25 +390,74 @@ class CorrectionsPanel(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["CorrectionsPanel"] = self
-
-        # Quick corrections section
-
-
-        self.quick_label = ttk.Label(self, text="Quick Corrections", anchor=tk.W)
+        # Name label
+        self.quick_label = ttk.Label(self, text="Corrections", anchor=tk.W)
         self.quick_label.pack(side=tk.TOP, fill=tk.X)
-        # Correction buttons
-        self.normalize_by_sweeps = ttk.Button(self, text='Normalize by Sweeps', command=self._normalize_by_sweeps)
-        self.normalize_by_sweeps.pack(side=tk.TOP, fill=tk.X)
-        # self.excitation_e_button = ttk.Button(self, text='Correct shift', command=self._plot_checked)
-        # self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
-        # self.buttons_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # Settings
+        self.settings = ttk.Frame(self)
+        self.left_labels = ttk.Frame(self.settings)
+        self.right_entries = ttk.Frame(self.settings)
+        # photon energy
+        self.pe_label = ttk.Label(self.left_labels, text="PE", anchor=tk.W)
+        self.pe_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.photon_energy = tk.StringVar(self, value='Photon energy')
+        self.pe_entry = ttk.Entry(self.right_entries, textvariable=self.photon_energy)
+        self.pe_entry.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # fermi level
+        self.fermi_label = ttk.Label(self.left_labels, text="Fermi", anchor=tk.W)
+        self.fermi_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.fermi_shift = tk.StringVar(self, value='Fermi shift')
+        self.fermi_entry = ttk.Entry(self.right_entries, textvariable=self.fermi_shift)
+        self.fermi_entry.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # Pack setting
+        self.left_labels.pack(side=tk.LEFT, fill=tk.X, expand=False)
+        self.right_entries.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.settings.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # Blank label
+        self.blank_label = ttk.Label(self, text="", anchor=tk.W)
+        self.blank_label.pack(side=tk.TOP, fill=tk.X)
+        # Plot in new window checkbox
+        self.plot_separate_var = tk.StringVar(value="")
+        self.plot_separate_box = tk.Checkbutton(self, var=self.plot_separate_var, text="Plot in new window",
+                                                onvalue="Plot in new window", offvalue="",
+                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                )
+        self.plot_separate_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Plot add-dimension if possible checkbox
+        self.plot_add_dim_var = tk.StringVar(value="")
+        self.plot_add_dim_box = tk.Checkbutton(self, var=self.plot_add_dim_var, text="Plot add-dimension",
+                                               onvalue="Plot add-dimension", offvalue="",
+                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                               )
+        self.plot_add_dim_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Plot buttons
+        self.plot_raw = ttk.Button(self, text='Plot raw', command=self._plot_raw)
+        self.plot_raw.pack(side=tk.TOP, fill=tk.X)
+        self.plot_corrected = ttk.Button(self, text='Plot corrected', command=self._plot_corrected)
+        self.plot_corrected.pack(side=tk.TOP, fill=tk.X)
+        self.plot_both = ttk.Button(self, text='Plot both', command=self._plot_both)
+        self.plot_both.pack(side=tk.TOP, fill=tk.X)
 
-        # Advanced corrections section
+    def _plot_raw(self):
+        reg_ids_for_plotting = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
+        regions = self.winfo_toplevel().loaded_regions.get_by_id(reg_ids_for_plotting)
+        if regions:
+            plot_add_dim = bool(self.plot_add_dim_var.get())
+            if self.plot_separate_var.get():
+                new_plot_window = tk.Toplevel(self.winfo_toplevel())
+                new_plot_window.wm_title("Raw data")
+                new_plot_panel = PlotPanel(new_plot_window, label=None)
+                new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+                new_plot_panel.plot_regions(regions, add_dimension=plot_add_dim, legend=True)
+            else:
+                self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions,
+                                                                            add_dimension=plot_add_dim, legend=True)
 
-        # TODO: add tree view of corrections
-        # Corrections tree panel
-#       self.corrections_tree_panel = BrowserTreeView(self, borderwidth=1, relief="groove")
-#       self.corrections_tree_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
+    def _plot_corrected(self):
+        print(self.photon_energy.get())
+
+    def _plot_both(self):
+        print(self.photon_energy.get())
 
     def _normalize_by_sweeps(self):
         regions_to_normalize = self.winfo_toplevel().gui_widgets["BrowserTreeView"].get_checked_items()
@@ -437,7 +476,7 @@ class MainWindow(ttk.PanedWindow):
         self.add(self.browser_panel)
         self.corrections_panel = CorrectionsPanel(self, borderwidth=1, relief="groove")
         self.add(self.corrections_panel)
-        self.plot_panel = PlotPanel(self, borderwidth=1, relief="groove")
+        self.plot_panel = PlotPanel(self, label='main', borderwidth=1, relief="groove")
         self.add(self.plot_panel)
 
 
@@ -467,7 +506,9 @@ class Root(tk.Tk):
         # File menu
         self.file_menu.add_command(label="Load SCIENTA File", command=self.load_file)
         self.file_menu.add_command(label="Load SPECS File", command=self.load_specs_file)
+        self.file_menu.add_command(label="Load pressure calibration", command=self.load_pressure_calibration)
         self.file_menu.add_command(label="Open File as Text", command=self.open_file_as_text)
+
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Quit", command=self.quit)
         self.main_menu_bar.add_cascade(label="File", menu=self.file_menu)
@@ -482,12 +523,17 @@ class Root(tk.Tk):
 
         self.config(menu=self.main_menu_bar)
 
+    def load_pressure_calibration(self):
+        """Load and show pressure calibration file with a button allowing to plot certain column vs another column
+        """
+        pass
+
     def open_file_as_text(self):
         """Open the read-only view of a text file in a Toplevel widget
         """
         file_path = filedialog.askopenfilename(parent=self, initialdir=service.service_vars["DEFAULT_DATA_FOLDER"])
         if file_path:
-            # If the user open a file, remember the file folder to use it next time when the open request is received
+            # If the user opens a file, remember the file folder to use it next time when the open request is received
             service.set_default_data_folder(os.path.dirname(file_path))
 
             text_view = tk.Toplevel(self)
@@ -495,7 +541,7 @@ class Root(tk.Tk):
             text_panel = FileViewerWindow(text_view, file_path)
             text_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         else:
-            gui_logger.debug(f"Couldn't get the file path from the open_file_as_text dialog in Root class")
+            gui_logger.warning(f"Couldn't get the file path from the open_file_as_text dialog in Root class")
 
     def load_specs_file(self):
         self.load_file(file_type=datahandler.DATA_FILE_TYPES[1])

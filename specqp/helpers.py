@@ -55,7 +55,7 @@ def fit_fermi_edge(region, initial_params, column="final", add_column=True, over
     return [popt, np.sqrt(np.diag(pcov))]
 
 
-def calculate_linear_background(region, y_data='final', manual_bg=None, by_min=False, add_column=True, overwrite=True):
+def subtract_linear_bg(region, y_data='final', manual_bg=None, by_min=False, add_column=True, overwrite=True):
     """Calculates the linear background using left and right ends of the region
     or using the minimum on Y-axis and the end that is furthest from the minimum
     on the X-axis. Manual background can be provided by passing approximate intervals
@@ -143,12 +143,12 @@ def calculate_linear_background(region, y_data='final', manual_bg=None, by_min=F
             background = np.linspace(counts[0], counts[-1], len(energy))
 
     if add_column:
-        region.add_column("linearBG", counts - background, overwrite=overwrite)
+        region.add_column("no_lin_bg", counts - background, overwrite=overwrite)
 
     return background
 
 
-def calculate_shirley(region, y_data='final', tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
+def subtract_shirley(region, y_data='final', tolerance=1e-5, maxiter=50, add_column=True, overwrite=True):
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
@@ -195,7 +195,7 @@ def calculate_shirley(region, y_data='final', tolerance=1e-5, maxiter=50, add_co
         corrected = counts - output
         if np.amin(corrected) < 0:
             corrected += np.absolute(np.amin(corrected))
-        region.add_column("shirleyBG", corrected, overwrite=overwrite)
+        region.add_column("no_shirley", corrected, overwrite=overwrite)
 
     return output
 
@@ -213,15 +213,15 @@ def calculate_linear_and_shirley(region, y_data='counts', shirleyfirst=True, by_
         counts = region.get_data(column='counts')
 
     if shirleyfirst:
-        shirley_bg = calculate_shirley(region, tolerance=tolerance, maxiter=maxiter, add_column=add_column)
-        linear_bg = calculate_linear_background(region, y_data='shirleyBG', by_min=by_min, add_column=add_column)
+        shirley_bg = subtract_shirley(region, tolerance=tolerance, maxiter=maxiter, add_column=add_column)
+        linear_bg = subtract_linear_bg(region, y_data='no_shirley', by_min=by_min, add_column=add_column)
     else:
-        linear_bg = calculate_linear_background(region, by_min=by_min, add_column=add_column)
-        shirley_bg = calculate_shirley(region, y_data="linearBG", tolerance=tolerance, maxiter=maxiter,
-                                       add_column=add_column)
+        linear_bg = subtract_linear_bg(region, by_min=by_min, add_column=add_column)
+        shirley_bg = subtract_shirley(region, y_data="no_lin_bg", tolerance=tolerance, maxiter=maxiter,
+                                      add_column=add_column)
     background = linear_bg + shirley_bg
     if add_column:
-        region.add_column("linear+shirleyBG", counts - background, overwrite=overwrite)
+        region.add_column("no_lin_no_shirley", counts - background, overwrite=overwrite)
 
     return background
 
@@ -250,33 +250,63 @@ def normalize(region, y_data='final', const=None, add_column=True):
     corresponding constants is provided. In case single constant is provided, add_dimension columns 'final0', 'final1'
     etc. are not normalized.
     """
-    # If we want to use other column than "counts" for calculations
-    y = region.get_data(column=y_data)
-    if const:
-        output = y / float(const)
+    # If we want to use other column than "final" for calculations
+    if not region.is_add_dimension():
+        if is_iterable(const):
+            return False
+        else:
+            y = region.get_data(column=y_data)
+            if const:
+                output = y / float(const)
+            else:
+                output = y / float(max(y))
+            if add_column:
+                region.add_column("normalized", output, overwrite=True)
+                return True
+            else:
+                return output
     else:
-        output = y / float(max(y))
-    if add_column:
-        region.add_column("normalized", output, overwrite=True)
-
-    if region.is_add_dimension() and add_column:
         if not const:
             for i in range(region.get_add_dimension_counter()):
                 if f'{y_data}{i}' in list(region.get_data()):
                     y = region.get_data(column=f'{y_data}{i}')
                     region.add_column(f"normalized{i}", y / float(np.amax(y)), overwrite=True)
+                    y = region.get_data(column=f'{y_data}')
+                    region.add_column(f"normalized", y / float(np.amax(y)), overwrite=True)
         # If const is provided it should be iterable containing values for every corresponding add-dimension column
         # elif isinstance(const, Iterable):
-        elif is_iterable(const):
-            if len(const) == region.get_add_dimension_counter():
-                for i, constant in enumerate(const):
-                    res = region.get_data(column=f'{y_data}{i}') / float(constant)
-                    region.add_column(f"normalized{i}", res, overwrite=True)
+        else:
+            output = []
+            if is_iterable(const):
+                if len(const) == region.get_add_dimension_counter():
+                    main_res = region.get_data(column=y_data) / float(np.mean(const))
+                    for i, constant in enumerate(const):
+                        res = region.get_data(column=f'{y_data}{i}') / float(constant)
+                        if add_column:
+                            region.add_column("normalized", main_res, overwrite=True)
+                            region.add_column(f"normalized{i}", res, overwrite=True)
+                        else:
+                            output.append(res)
+                    if add_column:
+                        return True
+                    else:
+                        return main_res, output
+                else:
+                    helpers_logger.warning(f"Add-dimension data in region {region.get_id()} was not normalized.")
+                    return False
             else:
-                helpers_logger.warning(f"Add-dimension data in region {region.get_id()} was not normalized.")
-                return
-
-    return output
+                main_res = region.get_data(column=y_data) / float(const)
+                for i in range(region.get_add_dimension_counter()):
+                    res = region.get_data(column=f'{y_data}{i}') / float(const)
+                    if add_column:
+                        region.add_column("normalized", main_res, overwrite=True)
+                        region.add_column(f"normalized{i}", res, overwrite=True)
+                    else:
+                        output.append(res)
+                if add_column:
+                    return True
+                else:
+                    return main_res, output
 
 
 def normalize_by_background(region, start, stop, y_data='counts', add_column=True):
@@ -315,6 +345,8 @@ def normalize_group(regionscollection, y_data: str = 'final',
         if is_iterable(const) and len(const) == len(regions):
             for i, region in enumerate(regions):
                 output = normalize(region, y_data=y_data, const=const[i], add_column=False)
+                if region.is_add_dimension():
+                    output = output[0]
                 if add_column:
                     region.add_column("groupnormalized", output, overwrite=True)
             return True
@@ -325,6 +357,8 @@ def normalize_group(regionscollection, y_data: str = 'final',
         elif not is_iterable(const):
             for region in regions:
                 output = normalize(region, y_data=y_data, const=const, add_column=False)
+                if region.is_add_dimension():
+                    output = output[0]
                 if add_column:
                     region.add_column("groupnormalized", output, overwrite=True)
             return True
@@ -333,6 +367,8 @@ def normalize_group(regionscollection, y_data: str = 'final',
     allmax = max([np.max(region.get_data(column=y_data)) for region in regions if len(region.get_data(column=y_data)) > 0])
     for region in regions:
         output = normalize(region, y_data=y_data, const=allmax, add_column=False)
+        if region.is_add_dimension():
+            output = output[0]
         if add_column:
             region.add_column("groupnormalized", output, overwrite=True)
     return True

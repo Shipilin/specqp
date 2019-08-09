@@ -7,7 +7,8 @@ service_logger = logging.getLogger("specqp.service")  # Configuring child logger
 service_vars = {
     "DEFAULT_DATA_FOLDER": "../",
     "LOG_FILE_NAME": "../data/log/app.log",
-    "INIT_FILE_NAME": "../data/specqp.init"
+    "INIT_FILE_NAME": "../data/specqp.init",
+    "DEFAULT_OUTPUT_FOLDER": "",
 }
 
 
@@ -19,6 +20,8 @@ def prepare_startup():
         with open(service_vars["INIT_FILE_NAME"], 'w') as init_file:
             service_vars["DEFAULT_DATA_FOLDER"] = os.getcwd()
             init_file.write(f"DEFAULT_DATA_FOLDER={service_vars['DEFAULT_DATA_FOLDER']}")
+
+    service_vars["DEFAULT_OUTPUT_FOLDER"] = service_vars["DEFAULT_DATA_FOLDER"] + "/output"
 
 
 def read_default_data_folder_from_file():
@@ -38,6 +41,7 @@ def set_default_data_folder(new_dir):
     if new_dir == service_vars["DEFAULT_DATA_FOLDER"]:
         return
     service_vars["DEFAULT_DATA_FOLDER"] = new_dir
+    service_vars["DEFAULT_OUTPUT_FOLDER"] = service_vars["DEFAULT_DATA_FOLDER"] + "/output"
     new_line = f"DEFAULT_DATA_FOLDER={new_dir}"
     try:
         with open(service_vars["INIT_FILE_NAME"], 'r') as init_file:

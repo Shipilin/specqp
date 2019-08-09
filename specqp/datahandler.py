@@ -6,7 +6,9 @@ import os
 import ntpath
 import logging
 import copy
+import csv
 import pandas as pd
+import numpy as np
 
 from specqp import helpers
 
@@ -231,29 +233,6 @@ def load_specs_xy(filename):
     return regions
 
 
-# TODO change the structure of file
-def save_csv(region, filename):
-    pass
-    """Saves Region object in the csv file with given name. Flags and info are
-    stored in the comment lines marked with '#' simbol at the beginning of
-    the file.
-    """
-    # If the file exists, saving data to the file with alternative name
-    if os.path.isfile(filename):
-        name_and_extension = filename.split(".")
-        for i in range(1, 100):
-            filename = ".".join(["".join([name_and_extension[0], f"_{i}"]), name_and_extension[1]])
-            if not os.path.isfile(filename):
-                break
-
-    with open(filename, mode='a+') as file:
-        for key, value in self._Flags.items():
-            file.write(f"#F {key}={value}\n")
-        for key, value in self._Info.items():
-            file.write(f"# {key}: {value}\n")
-        region.get_data().to_csv(file, index=False)
-
-
 # TODO rewrite
 def read_csv(filename):
     """Reads csv file and returns Region object. Values of flags and info
@@ -340,12 +319,15 @@ class Region:
         """
         # The main attribute of the class is pandas dataframe
         self._data = pd.DataFrame(data={'energy': energy, 'counts': counts}, dtype=float)
+        self._applied_corrections = []
         self._info = info
         self._id = id_
         # Experimental conditions
         self._conditions = conditions
         # Excitation energy
         self._excitation_energy = excitation_energy
+        if excitation_energy:
+            self._info[Region.info_entries[3]] = str(excitation_energy)
         if flags and (len(flags) == len(Region.region_flags)):
             self._flags = flags
         else:
@@ -411,35 +393,64 @@ class Region:
             return
         self._data[column_label] = array
 
-    def correct_energy_shift(self, shift):
-        if not self._flags[Region.region_flags[0]]:  # If not already corrected
-            self._data['energy'] += shift
-            self._flags[Region.region_flags[0]] = True
-        else:
-            datahandler_logger.info(f"The region {self._id} has already been energy corrected.")
+    def add_correction(self, correction: str):
+        self._applied_corrections.append(correction)
 
     @staticmethod
-    def concat_regions(regions, truncate=False):
+    def addup_regions(regions, truncate=True):
         """
         Takes two or more non-adddimension regions and combines them in a single region adding up sweeps and results.
+        The method checks for regions' energy spans and truncates to the overlapping interval if truncate=True. Skips
+        non-matching regions if truncate=False
         NOTE: The method doesn't check for regions compatibility, i.e. conditions, photon energy, etc.
         NOTE: Neither does the method accounts for previously made corrections. Therefore, should be used with
         freshly loaded regions in order to avoid mistakes.
         :param regions: iterable through a number of regions
-        :param truncate=False: if regions of different length are combined and truncate = True, the method
-        concatenates them only in the overlapping region and returns truncated regions as the result
+        :param truncate=True: if regions of different length are combined and truncate == True, the method
+        adds them up only in the overlapping region and returns truncated regions as the result
         :return: Region object
         """
+
+        def _find_overlap(a, b):
+            ab_intersect = np.in1d(a, b).nonzero()[0]
+            ba_intersect = np.in1d(b, a).nonzero()[0]
+            if len(ab_intersect) == 0 or len(ba_intersect) == 0:
+                return None, None
+            return [ab_intersect[0], ab_intersect[-1]], [ba_intersect[0], ba_intersect[-1]]
+
         if not helpers.is_iterable(regions):
             datahandler_logger.warning(f"Regions should be in an iterable object to be concatenated")
             return None
         region = copy.deepcopy(regions[0])
         for i in range(1, len(regions)):
-            region._data['counts'] += regions[i].get_data('counts')
-            region._data['final'] += regions[i].get_data('final')
+            energy1 = region.get_data('energy')
+            energy2 = regions[i].get_data('energy')
+            # Check that the regions can be concatenated, i.e. if they have full/partial overlap
+            indxs1, indxs2 = _find_overlap(energy1, energy2)
+            if (not indxs1) or (not indxs2):
+                continue
+            if indxs1 == indxs2 and len(energy1) == len(energy2):  # If regions fully overlap
+                region._data['counts'] += regions[i].get_data('counts')
+                region._data['final'] += regions[i].get_data('final')
+            elif indxs1 != indxs2 and truncate:
+                if not (indxs1[0] == 0 and indxs1[1] == len(energy1) + 1):
+                    region.crop_region(start=energy1[indxs1[0]], stop=energy1[indxs1[1]], changesource=True)
+                region._data['counts'] += regions[i].get_data('counts')[indxs2[0]:indxs2[1]]
+                region._data['final'] += regions[i].get_data('final')[indxs2[0]:indxs2[1]]
+            else:
+                datahandler_logger.warning(f"Regions {region.getid()} and {regions[i].get_id()} have different length")
+                continue
             region._info[Region.info_entries[2]] = str(int(region.get_info(Region.info_entries[2])) +
                                                        int(regions[i].get_info(Region.info_entries[2])))
         return region
+
+    def correct_energy_shift(self, shift):
+        if not self._flags[Region.region_flags[0]]:  # If not already corrected
+            self._data['energy'] += shift
+            self._flags[Region.region_flags[0]] = True
+            self._applied_corrections.append("Energy shift corrected")
+        else:
+            datahandler_logger.info(f"The region {self._id} has already been energy corrected.")
 
     def crop_region(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
@@ -493,6 +504,23 @@ class Region:
         else:
             datahandler_logger.warning(f"The region {self._id} doesn't contain information about conditions.")
 
+    def get_corrections(self, as_string=False):
+        """Returns either the list or the string (if as_string=True) of corrections that has been applied to the region
+        """
+        if not as_string:
+            return self._applied_corrections
+        else:
+            if not self._applied_corrections:
+                return "Not corrected"
+            else:
+                output = ""
+                for cor in self._applied_corrections:
+                    if not output:
+                        output = "".join([output, cor])
+                    else:
+                        output = "; ".join([output, cor])
+                return output
+
     def get_data(self, column=None):
         """Returns pandas DataFrame with data columns. If column name is
         provided, returns 1D numpy.ndarray of specified column.
@@ -500,6 +528,15 @@ class Region:
         if column:
             return self._data[column].to_numpy()
         return self._data
+
+    def get_data_columns(self, add_dimension=True) -> list:
+        # If we want to get all add_dimension columns or the region is not add_dimension, return all columns
+        if add_dimension or not self._flags[self.region_flags[4]]:
+            return self._data.columns.to_list()
+        else:
+            # Return only main columns, the ones that don't contain digits
+            cols = [col for col in self._data.columns if not any([char.isdigit() for char in col])]
+            return cols
 
     def get_excitation_energy(self):
         return self._excitation_energy
@@ -629,8 +666,79 @@ class Region:
             self._data = self._data_backup.copy()
             self._info = self._info_backup.copy()
             self._flags = self._flags_backup.copy()
+            self._applied_corrections = []
         else:
             datahandler_logger.warning("Attempt to reset a dummy region. Option is not available for dummy regions.")
+
+    def save_xy(self, file, cols='final', add_dimension=True, headers=True):
+        """Saves Region object as csv file with 'energy' and other specified columns. If add_dimension region
+        is provided and 'add_dimension' variable is True, saves 'energy' column and specified columns for all sweeps.
+        :param cols: Sequence, String, 'all'. Which columns of the Region dataframe to save along with the energy column
+        :param add_dimension: Saves all relevant columns for all sweeps of add_dimension region
+        :param file: File handle
+        :param headers: Include the columns headers in the file
+        :return: True if successful, False otherwise
+        """
+        if cols == 'all':
+            cols = self.get_data_columns(add_dimension)
+        else:
+            if not (type(cols) != str and helpers.is_iterable(cols)):
+                cols = [cols]
+            else:
+                cols = list(cols)  # Convert possible sequences to list
+            # Check if columns exist in self._data and report the missing columns
+            missing_cols = cols.copy()
+            cols = [c for c in cols if c in self._data.columns]
+            missing_cols = list(set(missing_cols) - set(cols))
+            for mc in missing_cols:
+                datahandler_logger.warning(f"Can't save column '{mc}' in region {self._id}.")
+            # If the region is add-dimension and we want to save it as add_dimension -> save all relevant columns
+            if self._flags[self.region_flags[4]] and add_dimension:
+                add_dimension_cols = []
+                for col in cols:
+                    add_dimension_cols += [c for c in self._data.columns if col in c]
+                cols = add_dimension_cols
+            if 'energy' not in cols:
+                cols = ['energy'] + cols
+
+        try:
+            self._data[cols].to_csv(file, header=headers, index=False, sep='\t')
+        except (OSError, IOError):
+            datahandler_logger.error(f"Can't write the file {file.name}", exc_info=True)
+            return False
+        print(f"File {file.name} has been successfully created.")
+        return True
+
+    def save_as_file(self, file, cols='all', add_dimension=True, details=True, headers=True):
+        """Saves Region object as csv file with all columns. If details==True, saves also info, conditions and
+        :param details: Bool
+        :param file: File handle
+        :param cols: Which columns to write to file
+        :param add_dimension: If True, saves data for all sweeps, if False, saves only main columns
+        :param headers: Include the columns headers in the file
+        :return: True if successful, False otherwise
+        """
+        if not details:
+            if not self.save_xy(file, cols=cols, add_dimension=add_dimension, headers=headers):
+                return False
+        else:
+            try:
+                file.write(f"#ID {self._id}\n\n")
+                for key, value in self._flags.items():
+                    file.write(f"#F {key}={value}\n")
+                file.write(f"\n")
+                for key, value in self._info.items():
+                    file.write(f"#I {key}: {value}\n")
+                file.write(f"\n")
+                for key, value in self._conditions.items():
+                    file.write(f"#C {key}: {value}\n")
+                file.write(f"\n#Applied corrections: {self.get_corrections(as_string=True)}\n\n")
+            except (OSError, IOError):
+                datahandler_logger.error(f"Can't write the file {file.name}", exc_info=True, sep='\t')
+                return False
+            if not self.save_xy(file, cols=cols, add_dimension=add_dimension, headers=headers):
+                return False
+        return True
 
     def set_conditions(self, conditions, overwrite=False):
         """Set experimental conditions as a dictionary {"Property": Value}. If conditions with the same names
@@ -724,8 +832,11 @@ class RegionsCollection:
         return list(self.regions.keys())
 
     def get_by_id(self, region_id):
-        if region_id in self.regions:
-            return self.regions[region_id]
+        if not type(region_id) == str and helpers.is_iterable(region_id):  # Return multiple regions
+            return [self.regions[reg_id] for reg_id in region_id if reg_id in self.regions]
+        else:
+            if region_id in self.regions:
+                return self.regions[region_id]
 
     def get_regions(self):
         return self.regions.values()

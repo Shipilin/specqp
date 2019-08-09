@@ -26,12 +26,18 @@ def _get_arrays(region, x_data='energy', y_data='final'):
 
 
 def _make_label(region, legend_features=None):
-    label = f"{region.get_id()}"
+    if 'ID' in legend_features:
+        label = f"{region.get_id()}"
+    else:
+        label = ""
     features = region.get_conditions()
     if legend_features and features:
         for legend_feature in legend_features:
             if legend_feature in features:
-                label = " : ".join([label, features[legend_feature]])
+                if not label:  # If label is empty
+                    label = "".join([label, features[legend_feature]])
+                else:
+                    label = " : ".join([label, features[legend_feature]])
     elif legend_features and not features:
         plotter_logger.info(f"Conditions for region {region.get_id()} are not known.")
     return label
