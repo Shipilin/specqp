@@ -233,48 +233,6 @@ def load_specs_xy(filename):
     return regions
 
 
-# TODO rewrite
-def read_csv(filename):
-    """Reads csv file and returns Region object. Values of flags and info
-    is retrieved from the comment lines marked with '#' simbol at the beginning
-    of the file.
-    """
-    pass
-    # Reading the data part of the file
-    df = pd.read_csv(filename, comment='#')
-
-    info = {}
-    with open(filename, mode='r') as file:
-        lines = file.readlines()
-
-    # Reading info part of the file (lines starting with '#')
-    info_lines = []
-    flags = {}
-    for line in lines:
-        # Reading the flags
-        if line.strip().startswith('#F'):
-            for flag in Region.region_flags:
-                if flag in line:
-                    flags[flag] = line.lstrip('#F').strip().split("=")[1]
-            continue
-
-        if line.strip().startswith('#'):
-            info_lines.append(line.strip('\n')) # Save info lines
-
-    info = {}
-    for line in info_lines:
-        line = line.strip().lstrip('#').strip()
-        line_content = line.split(':', 1)
-        info[line_content[0].strip()] = line_content[1].strip()
-
-    region = Region(df['energy'].values, df['counts'].values,
-                    energy_shift_corrected=flags[Region.region_flags[0]],
-                    binding_energy_flag=flags[Region.region_flags[1]],
-                    info=info)
-
-    return region
-
-
 class Region:
     """Class Region contains the data and info for one measured region, e.g. C1s
     """
@@ -325,9 +283,11 @@ class Region:
         # Experimental conditions
         self._conditions = conditions
         # Excitation energy
-        self._excitation_energy = excitation_energy
         if excitation_energy:
-            self._info[Region.info_entries[3]] = str(excitation_energy)
+            self._excitation_energy = float(excitation_energy)
+            self._info[Region.info_entries[3]] = str(float(excitation_energy))
+        else:
+            self._excitation_energy = None
         if flags and (len(flags) == len(Region.region_flags)):
             self._flags = flags
         else:
@@ -658,6 +618,56 @@ class Region:
                 return True
         return False
 
+    @staticmethod
+    def read_csv(filename):
+        """Reads csv file and returns Region object. Values of flags and info
+        is retrieved from the comment lines marked with '#' simbol at the beginning
+        of the file.
+        """
+        try:
+            with open(filename, 'r') as region_file:
+                data_start = False
+                flags = {}
+                info = {}
+                conditions = {}
+                _id = None
+                _scans_cnt = 1
+                applied_c = []
+                while not data_start:
+                    line = region_file.readline()
+                    if line.strip() == "[DATA]":
+                        data_start = True
+                        continue
+                    elif '#ID' in line:
+                        _id = line.replace("#ID", "").strip()
+                    elif '#AD' in line:
+                        _scans_cnt = int(line.replace("#AD", "").strip())
+                    elif '#F' in line:
+                        key, _, val = line.replace("#F", "").strip().partition("=")
+                        flags[key] = val
+                    elif '#I' in line:
+                        key, _, val = line.replace("#I", "").strip().partition("=")
+                        info[key] = val
+                    elif '#C' in line:
+                        key, _, val = line.replace("#C", "").strip().partition("=")
+                        conditions[key] = val
+                    elif "#AC":
+                        applied_c = line.replace("#AC", "").strip().split(';')
+                        applied_c = [ac.strip() for ac in applied_c]
+                data = pd.read_csv(region_file, sep='\t')
+
+                region = Region([], [], info=info, excitation_energy=float(info[Region.info_entries[3]]), conditions=conditions, id_=_id, flags=flags)
+                region._data = data
+                region._add_dimension_scans_number = _scans_cnt
+                region._applied_corrections = applied_c
+                region._data_backup = data.copy()
+                region._info_backup = info.copy()
+                region._flags_backup = flags.copy()
+                return region
+        except (IOError, OSError):
+            datahandler_logger.warning(f"Can't access the file {filename}", exc_info=True)
+            return False
+
     def reset_region(self):
         """Removes all the changes made to the Region and restores the initial
         "counts" and "energy" columns together with the _info, _flags
@@ -706,7 +716,7 @@ class Region:
         except (OSError, IOError):
             datahandler_logger.error(f"Can't write the file {file.name}", exc_info=True)
             return False
-        print(f"File {file.name} has been successfully created.")
+        print(f"Created: {file.name}")
         return True
 
     def save_as_file(self, file, cols='all', add_dimension=True, details=True, headers=True):
@@ -723,16 +733,17 @@ class Region:
                 return False
         else:
             try:
-                file.write(f"#ID {self._id}\n\n")
+                file.write(f"#ID {self._id}\n")
+                if self.is_add_dimension():
+                    file.write(f"#AD {self._add_dimension_scans_number}\n")
                 for key, value in self._flags.items():
                     file.write(f"#F {key}={value}\n")
-                file.write(f"\n")
                 for key, value in self._info.items():
-                    file.write(f"#I {key}: {value}\n")
-                file.write(f"\n")
+                    file.write(f"#I {key}={value}\n")
                 for key, value in self._conditions.items():
-                    file.write(f"#C {key}: {value}\n")
-                file.write(f"\n#Applied corrections: {self.get_corrections(as_string=True)}\n\n")
+                    file.write(f"#C {key}={value}\n")
+                file.write(f"#AC {self.get_corrections(as_string=True)}\n")
+                file.write("[DATA]\n")
             except (OSError, IOError):
                 datahandler_logger.error(f"Can't write the file {file.name}", exc_info=True, sep='\t')
                 return False
@@ -756,8 +767,8 @@ class Region:
     def set_excitation_energy(self, excitation_energy):
         """Set regions's excitation energy.
         """
-        self._excitation_energy = excitation_energy
-        self._info[Region.info_entries[3]] = str(excitation_energy)
+        self._excitation_energy = float(excitation_energy)
+        self._info[Region.info_entries[3]] = str(float(excitation_energy))
 
     def set_id(self, region_id):
         self._id = region_id

@@ -1,4 +1,5 @@
 import os
+import copy
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
@@ -28,6 +29,8 @@ logo_img_file = "assets/specqp_icon.png"
 tool_bar_images = {
     "invert_x": "assets/invert_x.png"
 }
+# Global background color hardcoded due to problems with MACOS color representation in tk
+BG = "#ececec"
 
 
 class CustomText(tk.Text):
@@ -390,25 +393,36 @@ class CorrectionsPanel(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["CorrectionsPanel"] = self
-        # Name label
-        self.quick_label = ttk.Label(self, text="Corrections", anchor=tk.W)
-        self.quick_label.pack(side=tk.TOP, fill=tk.X)
+        self.regions_in_work = None
+        # Corrections name label
+        self.plot_label = ttk.Label(self, text="Settings", anchor=tk.W)
+        self.plot_label.pack(side=tk.TOP, fill=tk.X)
         # Settings
         self.settings = ttk.Frame(self)
         self.left_labels = ttk.Frame(self.settings)
         self.right_entries = ttk.Frame(self.settings)
         # photon energy
-        self.pe_label = ttk.Label(self.left_labels, text="PE", anchor=tk.W)
+        self.pe_label = ttk.Label(self.left_labels, text="Photon Energy (eV)", anchor=tk.W)
         self.pe_label.pack(side=tk.TOP, fill=tk.X, expand=False)
-        self.photon_energy = tk.StringVar(self, value='Photon energy')
+        # Read photon energy from init file if available
+        self.photon_energy = tk.StringVar(self, value=service.get_service_parameter("PHOTON_ENERGY"))
         self.pe_entry = ttk.Entry(self.right_entries, textvariable=self.photon_energy)
         self.pe_entry.pack(side=tk.TOP, fill=tk.X, expand=False)
-        # fermi level
-        self.fermi_label = ttk.Label(self.left_labels, text="Fermi", anchor=tk.W)
-        self.fermi_label.pack(side=tk.TOP, fill=tk.X, expand=False)
-        self.fermi_shift = tk.StringVar(self, value='Fermi shift')
-        self.fermi_entry = ttk.Entry(self.right_entries, textvariable=self.fermi_shift)
-        self.fermi_entry.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # Energy shift
+        self.eshift_label = ttk.Label(self.left_labels, text="Energy Shift (eV)", anchor=tk.W)
+        self.eshift_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.energy_shift = tk.StringVar(self, value=service.get_service_parameter("ENERGY_SHIFT"))
+        self.eshift_entry = ttk.Entry(self.right_entries, textvariable=self.energy_shift)
+        self.eshift_entry.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # Normalize by sweeps
+        self.normalize_sweeps_label = ttk.Label(self.left_labels, text="Normalize by sweeps", anchor=tk.W)
+        self.normalize_sweeps_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.normalize_sweeps_var = tk.StringVar(value="True")
+        self.normalize_sweeps_box = tk.Checkbutton(self.right_entries, var=self.normalize_sweeps_var,
+                                                   onvalue="True", offvalue="", background=BG,
+                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                   )
+        self.normalize_sweeps_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Pack setting
         self.left_labels.pack(side=tk.LEFT, fill=tk.X, expand=False)
         self.right_entries.pack(side=tk.RIGHT, fill=tk.X, expand=True)
@@ -416,56 +430,121 @@ class CorrectionsPanel(ttk.Frame):
         # Blank label
         self.blank_label = ttk.Label(self, text="", anchor=tk.W)
         self.blank_label.pack(side=tk.TOP, fill=tk.X)
+        # Plot name label
+        self.plot_label = ttk.Label(self, text="Plotting", anchor=tk.W)
+        self.plot_label.pack(side=tk.TOP, fill=tk.X)
         # Plot in new window checkbox
         self.plot_separate_var = tk.StringVar(value="")
         self.plot_separate_box = tk.Checkbutton(self, var=self.plot_separate_var, text="Plot in new window",
-                                                onvalue="Plot in new window", offvalue="",
+                                                onvalue="True", offvalue="", background=BG,
                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                 )
         self.plot_separate_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Plot add-dimension if possible checkbox
         self.plot_add_dim_var = tk.StringVar(value="")
         self.plot_add_dim_box = tk.Checkbutton(self, var=self.plot_add_dim_var, text="Plot add-dimension",
-                                               onvalue="Plot add-dimension", offvalue="",
+                                               onvalue="True", offvalue="", background=BG,
                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                )
         self.plot_add_dim_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
-        # Plot buttons
-        self.plot_raw = ttk.Button(self, text='Plot raw', command=self._plot_raw)
-        self.plot_raw.pack(side=tk.TOP, fill=tk.X)
-        self.plot_corrected = ttk.Button(self, text='Plot corrected', command=self._plot_corrected)
-        self.plot_corrected.pack(side=tk.TOP, fill=tk.X)
-        self.plot_both = ttk.Button(self, text='Plot both', command=self._plot_both)
-        self.plot_both.pack(side=tk.TOP, fill=tk.X)
+        # Use settings
+        self.plot_use_settings_var = tk.StringVar(value="True")
+        self.plot_use_settings_box = tk.Checkbutton(self, var=self.plot_use_settings_var, text="Use settings",
+                                                    onvalue="True", offvalue="", background=BG,
+                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                    )
+        self.plot_use_settings_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Binding energy axis
+        self.plot_binding_var = tk.StringVar(value="True")
+        self.plot_binding_box = tk.Checkbutton(self, var=self.plot_binding_var, text="Binding energy axis",
+                                                    onvalue="True", offvalue="", background=BG,
+                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                    )
+        self.plot_binding_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Plot button
+        self.plot = ttk.Button(self, text='Plot', command=self._plot)
+        self.plot.pack(side=tk.TOP, fill=tk.X)
+        # Save buttons
+        self.save = ttk.Button(self, text='Save', command=self._save)
+        self.save.pack(side=tk.TOP, fill=tk.X)
+        self.saveas = ttk.Button(self, text='Save as...', command=self._saveas)
+        self.saveas.pack(side=tk.TOP, fill=tk.X)
 
-    def _plot_raw(self):
-        reg_ids_for_plotting = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
-        regions = self.winfo_toplevel().loaded_regions.get_by_id(reg_ids_for_plotting)
-        if regions:
+    def _plot(self):
+        reg_ids = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
+        # We will work with copies of regions, so that the temporary changes are not stored
+        self.regions_in_work = copy.deepcopy(self.winfo_toplevel().loaded_regions.get_by_id(reg_ids))
+        if self.regions_in_work:
+            pe = self.photon_energy.get()
+            es = self.energy_shift.get()
+            if pe:
+                try:
+                    pe = float(pe)
+                except ValueError:
+                    gui_logger.warning("Check 'Photon Energy' value.")
+                    return
+            if es:
+                try:
+                    es = float(es)
+                except ValueError:
+                    gui_logger.warning("Check 'Energy Shift' value.")
+                    return
+            if self.plot_use_settings_var.get():
+                service.set_init_parameters(["PHOTON_ENERGY", "ENERGY_SHIFT"], [pe, es])
+                for region in self.regions_in_work:
+                    if pe:
+                        region.set_excitation_energy(pe)
+                    if es:
+                        region.correct_energy_shift(es)
+                    if self.plot_binding_var.get():
+                        region.invert_to_binding()
+                    if self.normalize_sweeps_var.get():
+                        region.normalize_by_sweeps()
+                        region.make_final_column("sweepsNormalized", overwrite=True)
+
             plot_add_dim = bool(self.plot_add_dim_var.get())
             if self.plot_separate_var.get():
                 new_plot_window = tk.Toplevel(self.winfo_toplevel())
                 new_plot_window.wm_title("Raw data")
                 new_plot_panel = PlotPanel(new_plot_window, label=None)
                 new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-                new_plot_panel.plot_regions(regions, add_dimension=plot_add_dim, legend=True)
+                new_plot_panel.plot_regions(self.regions_in_work, add_dimension=plot_add_dim, legend=True)
             else:
-                self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions,
+                self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(self.regions_in_work,
                                                                             add_dimension=plot_add_dim, legend=True)
 
-    def _plot_corrected(self):
-        print(self.photon_energy.get())
+    def _save(self):
+        if self.regions_in_work:
+            output_dir = filedialog.askdirectory(title="Choose directory for saving",
+                                                 initialdir=service.get_service_parameter("DEFAULT_OUTPUT_FOLDER"))
+            if output_dir:
+                service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
+                for region in self.regions_in_work:
+                    name = output_dir + "/" + region.get_info("File Name") + ".dat"
+                    try:
+                        with open(name, 'w') as f:
+                            save_add_dimension = self.plot_use_settings_var.get() and bool(self.plot_add_dim_var.get())
+                            region.save_xy(f, add_dimension=save_add_dimension, headers=False)
+                    except (IOError, OSError):
+                        gui_logger.error(f"Couldn't save file {name}", exc_info=True)
 
-    def _plot_both(self):
-        print(self.photon_energy.get())
-
-    def _normalize_by_sweeps(self):
-        regions_to_normalize = self.winfo_toplevel().gui_widgets["BrowserTreeView"].get_checked_items()
-        if regions_to_normalize:
-            for region_id in regions_to_normalize:
-                region = self.winfo_toplevel().loaded_regions.get_by_id(region_id)
-                region.normalize_by_sweeps()
-                region.make_final_column("sweepsNormalized", overwrite=True)
+    def _saveas(self):
+        if self.regions_in_work:
+            output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
+            for region in self.regions_in_work:
+                file_path = filedialog.asksaveasfilename(initialdir=output_dir,
+                                                         initialfile=region.get_info("File Name") + ".dat",
+                                                         title="Save as...",
+                                                         filetypes=(("dat files", "*.dat"), ("all files", "*.*")))
+                if file_path:
+                    try:
+                        with open(file_path, 'w') as f:
+                            save_add_dimension = self.plot_use_settings_var.get() and bool(self.plot_add_dim_var.get())
+                            region.save_xy(f, add_dimension=save_add_dimension, headers=False)
+                    except (IOError, OSError):
+                        gui_logger.error(f"Couldn't save file {file_path}", exc_info=True)
+                output_dir = os.path.dirname(file_path)
+            service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
 
 
 class MainWindow(ttk.PanedWindow):
@@ -504,9 +583,9 @@ class Root(tk.Tk):
         """Configuring the app menu
         """
         # File menu
-        self.file_menu.add_command(label="Load SCIENTA File", command=self.load_file)
-        self.file_menu.add_command(label="Load SPECS File", command=self.load_specs_file)
-        self.file_menu.add_command(label="Load pressure calibration", command=self.load_pressure_calibration)
+        self.file_menu.add_command(label="Load SCIENTA Files", command=self.load_file)
+        self.file_menu.add_command(label="Load SPECS Files", command=self.load_specs_file)
+        self.file_menu.add_command(label="Open pressure calibration", command=self.load_pressure_calibration)
         self.file_menu.add_command(label="Open File as Text", command=self.open_file_as_text)
 
         self.file_menu.add_separator()
@@ -531,10 +610,10 @@ class Root(tk.Tk):
     def open_file_as_text(self):
         """Open the read-only view of a text file in a Toplevel widget
         """
-        file_path = filedialog.askopenfilename(parent=self, initialdir=service.service_vars["DEFAULT_DATA_FOLDER"])
+        file_path = filedialog.askopenfilename(parent=self, initialdir=service.get_service_parameter("DEFAULT_DATA_FOLDER"))
         if file_path:
             # If the user opens a file, remember the file folder to use it next time when the open request is received
-            service.set_default_data_folder(os.path.dirname(file_path))
+            service.set_init_parameters("DEFAULT_DATA_FOLDER", os.path.dirname(file_path))
 
             text_view = tk.Toplevel(self)
             text_view.wm_title(ntpath.basename(file_path))
@@ -550,12 +629,12 @@ class Root(tk.Tk):
         file_names = filedialog.askopenfilenames(filetypes=[("XPS text", ".txt .TXT .xy .XY"), ("All files", ".*")],
                                                  parent=self,
                                                  title="Choose data files to load",
-                                                 initialdir=service.service_vars["DEFAULT_DATA_FOLDER"],
+                                                 initialdir=service.get_service_parameter("DEFAULT_DATA_FOLDER"),
                                                  multiple=True)
         if file_names:
             loaded_ids = {}
             # If the user opens a file, remember the file folder to use it next time when the open request is received
-            service.set_default_data_folder(os.path.dirname(file_names[0]))
+            service.set_init_parameters("DEFAULT_DATA_FOLDER", os.path.dirname(file_names[0]))
             for file_name in file_names:
                 loaded_ids[file_name] = self.loaded_regions.add_regions_from_file(file_name, file_type)
         else:
@@ -569,10 +648,12 @@ class Root(tk.Tk):
                 if val:
                     self.gui_widgets["BrowserPanel"].spectra_tree_panel.add_items_to_check_list(os.path.basename(key), val)
                 else:
-                    gui_logger.warning(f"No regions loaded from {key}")
+                    if key in self.loaded_regions.get_ids():
+                        gui_logger.warning(f"No regions loaded from {key}")
 
     def export_log(self):
         pass
+
 
     def show_about(self):
         pass
