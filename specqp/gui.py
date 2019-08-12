@@ -14,6 +14,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.backend_bases import key_press_handler
 import matplotlib.image as mpimg
 
+import numpy as np
+
 from specqp import service
 from specqp import datahandler
 from specqp import plotter
@@ -383,20 +385,31 @@ class PlotPanel(ttk.Frame):
                 cmap = cm.get_cmap(colormap)
                 ax.set_prop_cycle('color', [cmap(1. * i / num_colors) for i in range(num_colors)])
 
+            offset = y_offset
             for region in regions:
                 if not add_dimension or not region.is_add_dimension():
                     plotter.plot_region(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
-                                        y_offset=y_offset, scatter=scatter, label=label, color=color, title=title,
+                                        y_offset=offset, scatter=scatter, label=label, color=color, title=title,
                                         font_size=font_size, legend=legend, legend_features=legend_features,
                                         legend_pos=legend_pos)
+                    offset += y_offset
                 else:
                     plotter.plot_add_dimension(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
-                                               y_offset=1000, scatter=scatter, label=label, color=color, title=title,
-                                               font_size=font_size, legend=legend, legend_features=legend_features,
-                                               legend_pos=legend_pos)
+                                               y_offset=y_offset, global_y_offset=offset, scatter=scatter, label=label,
+                                               color=color, title=title, font_size=font_size, legend=legend,
+                                               legend_features=legend_features, legend_pos=legend_pos)
+                    offset += y_offset
             if len(regions) > 1:
                 ax.set_title(None)
             ax.set_aspect('auto')
+            ax.set_facecolor('None')
+            ax.grid(which='both', axis='both', color='grey', linestyle=':')
+            ax.spines['bottom'].set_color('black')
+            ax.spines['left'].set_color('black')
+            ax.tick_params(axis='x', colors='black')
+            ax.tick_params(axis='y', colors='black')
+            ax.yaxis.label.set_color('black')
+            ax.xaxis.label.set_color('black')
             self.canvas.draw()
             self.toolbar.update()
 
@@ -406,91 +419,17 @@ class CorrectionsPanel(ttk.Frame):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["CorrectionsPanel"] = self
         self.regions_in_work = None
-        # Corrections name label
-        self.plot_label = ttk.Label(self, text="Settings", anchor=tk.W)
-        self.plot_label.pack(side=tk.TOP, fill=tk.X)
-        # Settings
-        self.settings = ttk.Frame(self)
-        self.left_labels = ttk.Frame(self.settings)
-        self.right_entries = ttk.Frame(self.settings)
-        # photon energy
-        self.pe_label = ttk.Label(self.left_labels, text="Photon Energy (eV)", anchor=tk.W)
-        self.pe_label.pack(side=tk.TOP, fill=tk.X, expand=False)
-        # Read photon energy from init file if available
-        self.photon_energy = tk.StringVar(self, value=service.get_service_parameter("PHOTON_ENERGY"))
-        self.pe_entry = ttk.Entry(self.right_entries, textvariable=self.photon_energy)
-        self.pe_entry.pack(side=tk.TOP, fill=tk.X, expand=False)
-        # Energy shift
-        self.eshift_label = ttk.Label(self.left_labels, text="Energy Shift (eV)", anchor=tk.W)
-        self.eshift_label.pack(side=tk.TOP, fill=tk.X, expand=False)
-        self.energy_shift = tk.StringVar(self, value=service.get_service_parameter("ENERGY_SHIFT"))
-        self.eshift_entry = ttk.Entry(self.right_entries, textvariable=self.energy_shift)
-        self.eshift_entry.pack(side=tk.TOP, fill=tk.X, expand=False)
-        # Normalize by sweeps
-        self.normalize_sweeps_label = ttk.Label(self.left_labels, text="Normalize by sweeps", anchor=tk.W)
-        self.normalize_sweeps_label.pack(side=tk.TOP, fill=tk.X, expand=False)
-        self.normalize_sweeps_var = tk.StringVar(value="True")
-        self.normalize_sweeps_box = tk.Checkbutton(self.right_entries, var=self.normalize_sweeps_var,
-                                                   onvalue="True", offvalue="", background=BG,
-                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-                                                   )
-        self.normalize_sweeps_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
-        # Subtract linear background
-        self.subtract_const_label = ttk.Label(self.left_labels, text="Subtract constant bg", anchor=tk.W)
-        self.subtract_const_label.pack(side=tk.TOP, fill=tk.X, expand=False)
-        self.subtract_const_var = tk.StringVar(value="True")
-        self.subtract_const_box = tk.Checkbutton(self.right_entries, var=self.subtract_const_var,
-                                                   onvalue="True", offvalue="", background=BG,
-                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-                                                   )
-        self.subtract_const_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
-        # Pack setting
-        self.left_labels.pack(side=tk.LEFT, fill=tk.X, expand=False)
-        self.right_entries.pack(side=tk.RIGHT, fill=tk.X, expand=True)
-        self.settings.pack(side=tk.TOP, fill=tk.X, expand=False)
+
+        # Adding widgets to settings two-columns section
+        self._make_settings_subframe()
         # Blank label
-        self.blank_label = ttk.Label(self, text="", anchor=tk.W)
-        self.blank_label.pack(side=tk.TOP, fill=tk.X)
-        # Plot name label
-        self.plot_label = ttk.Label(self, text="Plotting", anchor=tk.W)
-        self.plot_label.pack(side=tk.TOP, fill=tk.X)
-        # Plot in new window checkbox
-        self.plot_separate_var = tk.StringVar(value="")
-        self.plot_separate_box = tk.Checkbutton(self, var=self.plot_separate_var, text="Plot in new window",
-                                                onvalue="True", offvalue="", background=BG,
-                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-                                                )
-        self.plot_separate_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
-        # Plot add-dimension if possible checkbox
-        self.plot_add_dim_var = tk.StringVar(value="")
-        self.plot_add_dim_box = tk.Checkbutton(self, var=self.plot_add_dim_var, text="Plot add-dimension",
-                                               onvalue="True", offvalue="", background=BG,
-                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-                                               )
-        self.plot_add_dim_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
-        # Use settings
-        self.plot_use_settings_var = tk.StringVar(value="True")
-        self.plot_use_settings_box = tk.Checkbutton(self, var=self.plot_use_settings_var, text="Use settings",
-                                                    onvalue="True", offvalue="", background=BG,
-                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-                                                    )
-        self.plot_use_settings_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
-        # Binding energy axis
-        self.plot_binding_var = tk.StringVar(value="True")
-        self.plot_binding_box = tk.Checkbutton(self, var=self.plot_binding_var, text="Binding energy axis",
-                                                    onvalue="True", offvalue="", background=BG,
-                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-                                                    )
-        self.plot_binding_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
-        # Choose color style for plotting
-        self.select_colormap = tk.StringVar()
-        self.select_colormap.set("Default colormap")
-        # Some colormaps suitable for plotting
-        options = ['Default colormap', 'jet', 'brg', 'viridis', 'plasma', 'inferno', 'magma', 'cividis', 'spring',
-                   'summer', 'autumn', 'winter', 'cool', 'Wistia', 'copper', 'twilight', 'twilight_shifted',
-                   'hsv', 'gnuplot', 'gist_rainbow', 'rainbow']
-        self.opmenu_colormap = tk.OptionMenu(self, self.select_colormap, *options)
-        self.opmenu_colormap.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        blank_label = ttk.Label(self, text="", anchor=tk.W)
+        blank_label.pack(side=tk.TOP, fill=tk.X)
+        # Adding widgets to plotting settings two-columns section
+        self._make_plotting_settings_subframe()
+        # Blank label
+        blank_label = ttk.Label(self, text="", anchor=tk.W)
+        blank_label.pack(side=tk.TOP, fill=tk.X)
         # Plot button
         self.plot = ttk.Button(self, text='Plot', command=self._plot)
         self.plot.pack(side=tk.TOP, fill=tk.X)
@@ -499,6 +438,131 @@ class CorrectionsPanel(ttk.Frame):
         self.save.pack(side=tk.TOP, fill=tk.X)
         self.saveas = ttk.Button(self, text='Save as...', command=self._saveas)
         self.saveas.pack(side=tk.TOP, fill=tk.X)
+
+    def _make_plotting_settings_subframe(self):
+        # Plot name label
+        self.plotting_label = ttk.Label(self, text="Plotting", anchor=tk.W)
+        self.plotting_label.pack(side=tk.TOP, fill=tk.X)
+        # Initializing two-columns section
+        self.plotting_two_columns = ttk.Frame(self)
+        self.plotting_left_column = ttk.Frame(self.plotting_two_columns, width=self.settings_left_column.winfo_width())
+        self.plotting_right_column = ttk.Frame(self.plotting_two_columns, width=self.settings_right_column.winfo_width())
+        # Plot in new window checkbox
+        self.plot_separate_label = ttk.Label(self.plotting_left_column, text="Plot in new window", anchor=tk.W)
+        self.plot_separate_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.plot_separate_var = tk.StringVar(value="")
+        self.plot_separate_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_separate_var,
+                                                onvalue="True", offvalue="", background=BG,
+                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                )
+        self.plot_separate_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Plot add-dimension if possible checkbox
+        self.plot_add_dim_label = ttk.Label(self.plotting_left_column, text="Plot add-dimension", anchor=tk.W)
+        self.plot_add_dim_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.plot_add_dim_var = tk.StringVar(value="")
+        self.plot_add_dim_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_add_dim_var,
+                                               onvalue="True", offvalue="", background=BG,
+                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                               )
+        self.plot_add_dim_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Use settings
+        self.plot_use_settings_label = ttk.Label(self.plotting_left_column, text="Use settings", anchor=tk.W)
+        self.plot_use_settings_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.plot_use_settings_var = tk.StringVar(value="True")
+        self.plot_use_settings_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_use_settings_var,
+                                                    onvalue="True", offvalue="", background=BG,
+                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                    )
+        self.plot_use_settings_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Binding energy axis
+        self.plot_binding_label = ttk.Label(self.plotting_left_column, text="Binding energy axis", anchor=tk.W)
+        self.plot_binding_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.plot_binding_var = tk.StringVar(value="True")
+        self.plot_binding_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_binding_var,
+                                               onvalue="True", offvalue="", background=BG,
+                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                               )
+        self.plot_binding_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Offset
+        self.offset_label = ttk.Label(self.plotting_left_column, text="Offset (% of max)", anchor=tk.W)
+        self.offset_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.offset_slider = ttk.Scale(self.plotting_right_column, from_=0, to=100, orient=tk.HORIZONTAL)
+        self.offset_slider.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Legend
+        self.plot_legend_label = ttk.Label(self.plotting_left_column, text="Add legend", anchor=tk.W)
+        self.plot_legend_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.plot_legend_var = tk.StringVar(value="True")
+        self.plot_legend_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_legend_var,
+                                              onvalue="True", offvalue="", background=BG,
+                                              anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                              )
+        self.plot_legend_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Title
+        self.plot_title_label = ttk.Label(self.plotting_left_column, text="Add title", anchor=tk.W)
+        self.plot_title_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.plot_title_var = tk.StringVar(value="True")
+        self.plot_title_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_title_var,
+                                             onvalue="True", offvalue="", background=BG,
+                                             anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                             )
+        self.plot_title_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        #Pack plotting setting
+        self.plotting_left_column.pack(side=tk.LEFT, fill=tk.X, expand=False)
+        self.plotting_right_column.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.plotting_two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # Choose color style for plotting
+        self.select_colormap = tk.StringVar()
+        self.select_colormap.set("Default colormap")
+        # Some colormaps suitable for plotting
+        options = ['Default colormap', 'jet', 'brg', 'viridis', 'plasma', 'inferno', 'magma', 'cividis', 'spring',
+                   'summer', 'autumn', 'winter', 'cool', 'Wistia', 'copper', 'twilight', 'twilight_shifted',
+                   'hsv', 'gnuplot', 'gist_rainbow', 'rainbow']
+        self.opmenu_colormap = ttk.OptionMenu(self, self.select_colormap, *options)
+        self.opmenu_colormap.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+
+    def _make_settings_subframe(self):
+        # Settings name label
+        self.settings_label = ttk.Label(self, text="Settings", anchor=tk.W)
+        self.settings_label.pack(side=tk.TOP, fill=tk.X)
+        # Initializing two-columns section
+        self.settings_two_columns = ttk.Frame(self)
+        self.settings_left_column = ttk.Frame(self.settings_two_columns)
+        self.settings_right_column = ttk.Frame(self.settings_two_columns)
+        # photon energy
+        self.pe_label = ttk.Label(self.settings_left_column, text="Photon Energy (eV)", anchor=tk.W)
+        self.pe_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        # Read photon energy from init file if available
+        self.photon_energy = tk.StringVar(self, value=service.get_service_parameter("PHOTON_ENERGY"))
+        self.pe_entry = ttk.Entry(self.settings_right_column, textvariable=self.photon_energy)
+        self.pe_entry.pack(side=tk.TOP, fill=tk.X, expand=True)
+        # Energy shift
+        self.eshift_label = ttk.Label(self.settings_left_column, text="Energy Shift (eV)", anchor=tk.W)
+        self.eshift_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.energy_shift = tk.StringVar(self, value=service.get_service_parameter("ENERGY_SHIFT"))
+        self.eshift_entry = ttk.Entry(self.settings_right_column, textvariable=self.energy_shift)
+        self.eshift_entry.pack(side=tk.TOP, fill=tk.X, expand=True)
+        # Normalize by sweeps
+        self.normalize_sweeps_label = ttk.Label(self.settings_left_column, text="Normalize by sweeps", anchor=tk.W)
+        self.normalize_sweeps_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.normalize_sweeps_var = tk.StringVar(value="True")
+        self.normalize_sweeps_box = tk.Checkbutton(self.settings_right_column, var=self.normalize_sweeps_var,
+                                                   onvalue="True", offvalue="", background=BG,
+                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                   )
+        self.normalize_sweeps_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Subtract linear background
+        self.subtract_const_label = ttk.Label(self.settings_left_column, text="Subtract constant bg", anchor=tk.W)
+        self.subtract_const_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.subtract_const_var = tk.StringVar(value="True")
+        self.subtract_const_box = tk.Checkbutton(self.settings_right_column, var=self.subtract_const_var,
+                                                 onvalue="True", offvalue="", background=BG,
+                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                 )
+        self.subtract_const_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Pack two-columns section
+        self.settings_left_column.pack(side=tk.LEFT, fill=tk.X, expand=False)
+        self.settings_right_column.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.settings_two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
 
     def _plot(self):
         reg_ids = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
@@ -539,19 +603,26 @@ class CorrectionsPanel(ttk.Frame):
                         region.make_final_column("bgshifted", overwrite=True)
                         region.add_correction("Constant background subtracted")
 
-            plot_add_dim = bool(self.plot_add_dim_var.get())
+            offset = (self.offset_slider.get() / 100) * max([np.max(region.get_data(column='final'))
+                                                             for region in self.regions_in_work if
+                                                             len(region.get_data(column='final')) > 0])
             cmap = None if self.select_colormap.get() == "Default colormap" else self.select_colormap.get()
-            if self.plot_separate_var.get():
+            if bool(self.plot_separate_var.get()):
                 new_plot_window = tk.Toplevel(self.winfo_toplevel())
                 new_plot_window.wm_title("Raw data")
                 new_plot_panel = PlotPanel(new_plot_window, label=None)
                 new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-                new_plot_panel.plot_regions(self.regions_in_work, add_dimension=plot_add_dim, legend=True,
-                                            colormap=cmap)
+                new_plot_panel.plot_regions(self.regions_in_work,
+                                            add_dimension=bool(self.plot_add_dim_var.get()),
+                                            legend=bool(self.plot_legend_var.get()),
+                                            title=bool(self.plot_title_var.get()),
+                                            y_offset=offset, colormap=cmap)
             else:
                 self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(self.regions_in_work,
-                                                                            add_dimension=plot_add_dim, legend=True,
-                                                                            colormap=cmap)
+                                                                            add_dimension=bool(self.plot_add_dim_var.get()),
+                                                                            legend=bool(self.plot_legend_var.get()),
+                                                                            title=bool(self.plot_title_var.get()),
+                                                                            y_offset=offset, colormap=cmap)
 
     def _save(self):
         if self.regions_in_work:

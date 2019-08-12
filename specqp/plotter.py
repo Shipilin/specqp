@@ -43,8 +43,8 @@ def _make_label(region, legend_features=None):
     return label
 
 
-def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0.1,
-                       scatter=False, label=None, color=None, title=False, font_size=8,
+def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0.0,
+                       global_y_offset=0.0, scatter=False, label=None, color=None, title=False, font_size=8,
                        legend=True, legend_features=None, legend_pos='best'):
     """
 
@@ -55,6 +55,7 @@ def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=Tr
     :param invert_x: True/False for the X-axis (Binding/Kinetic energy representation)
     :param log_scale: True/False for the Y-axis
     :param y_offset: offset for each next curve along the Y-axis
+    :param global_y_offset: common offset for all curves along the Y-axis
     :param scatter: scatter or solid line-shape
     :param label: label of curves. Can be list of labels for all add-dimension curves.
     :param color: color of curves. Can be list of colors for all add-dimension curves.
@@ -88,6 +89,8 @@ def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=Tr
 
     for i in range(n_curves):
         x, y = _get_arrays(region, x_data=f'{x_data}{i}', y_data=f'{y_data}{i}')
+        if global_y_offset:
+            y += global_y_offset
         _plot_curve(x, y, region, axs, invert_x=invert_x, log_scale=log_scale, y_offset=i*y_offset,
                     scatter=scatter, label=label[i], color=color[i], title=title, font_size=font_size,
                     legend=legend, legend_features=legend_features, legend_pos=legend_pos)
