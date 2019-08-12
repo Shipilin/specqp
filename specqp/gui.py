@@ -7,6 +7,7 @@ import ntpath
 import logging
 
 import matplotlib
+from matplotlib import cm
 from matplotlib import style
 from matplotlib.backend_tools import ToolBase
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
@@ -16,6 +17,7 @@ import matplotlib.image as mpimg
 from specqp import service
 from specqp import datahandler
 from specqp import plotter
+from specqp import helpers
 from specqp.tools import Ruler
 
 # Default font for the GUI
@@ -366,11 +368,21 @@ class PlotPanel(ttk.Frame):
 
     def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False,
                      y_offset=0.0, scatter=False, label=None, color=None, title=True, font_size=8, legend=True,
-                     legend_features=("ID",), legend_pos='best', add_dimension=False):
+                     legend_features=("ID",), legend_pos='best', add_dimension=False, colormap=None):
         if regions:
             if not ax:
                 ax = self.figure_axes
             ax.clear()
+            if colormap:  # Calculate number of colors needed to plot all curves
+                num_colors = 0
+                for region in regions:
+                    if add_dimension and region.is_add_dimension():
+                        num_colors += region.get_add_dimension_counter()
+                    else:
+                        num_colors += 1
+                cmap = cm.get_cmap(colormap)
+                ax.set_prop_cycle('color', [cmap(1. * i / num_colors) for i in range(num_colors)])
+
             for region in regions:
                 if not add_dimension or not region.is_add_dimension():
                     plotter.plot_region(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
@@ -423,6 +435,15 @@ class CorrectionsPanel(ttk.Frame):
                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                    )
         self.normalize_sweeps_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Subtract linear background
+        self.subtract_const_label = ttk.Label(self.left_labels, text="Subtract constant bg", anchor=tk.W)
+        self.subtract_const_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.subtract_const_var = tk.StringVar(value="True")
+        self.subtract_const_box = tk.Checkbutton(self.right_entries, var=self.subtract_const_var,
+                                                   onvalue="True", offvalue="", background=BG,
+                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                   )
+        self.subtract_const_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Pack setting
         self.left_labels.pack(side=tk.LEFT, fill=tk.X, expand=False)
         self.right_entries.pack(side=tk.RIGHT, fill=tk.X, expand=True)
@@ -461,6 +482,15 @@ class CorrectionsPanel(ttk.Frame):
                                                     anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                     )
         self.plot_binding_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Choose color style for plotting
+        self.select_colormap = tk.StringVar()
+        self.select_colormap.set("Default colormap")
+        # Some colormaps suitable for plotting
+        options = ['Default colormap', 'jet', 'brg', 'viridis', 'plasma', 'inferno', 'magma', 'cividis', 'spring',
+                   'summer', 'autumn', 'winter', 'cool', 'Wistia', 'copper', 'twilight', 'twilight_shifted',
+                   'hsv', 'gnuplot', 'gist_rainbow', 'rainbow']
+        self.opmenu_colormap = tk.OptionMenu(self, self.select_colormap, *options)
+        self.opmenu_colormap.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Plot button
         self.plot = ttk.Button(self, text='Plot', command=self._plot)
         self.plot.pack(side=tk.TOP, fill=tk.X)
@@ -496,22 +526,32 @@ class CorrectionsPanel(ttk.Frame):
                         region.set_excitation_energy(pe)
                     if es:
                         region.correct_energy_shift(es)
+                        region.add_correction("Energy shift corrected")
                     if self.plot_binding_var.get():
                         region.invert_to_binding()
                     if self.normalize_sweeps_var.get():
                         region.normalize_by_sweeps()
                         region.make_final_column("sweepsNormalized", overwrite=True)
+                        region.add_correction("Normalized by sweeps")
+                    if self.subtract_const_var.get():
+                        e = region.get_data('energy')
+                        helpers.shift_by_background(region, [e[-10], e[-1]])
+                        region.make_final_column("bgshifted", overwrite=True)
+                        region.add_correction("Constant background subtracted")
 
             plot_add_dim = bool(self.plot_add_dim_var.get())
+            cmap = None if self.select_colormap.get() == "Default colormap" else self.select_colormap.get()
             if self.plot_separate_var.get():
                 new_plot_window = tk.Toplevel(self.winfo_toplevel())
                 new_plot_window.wm_title("Raw data")
                 new_plot_panel = PlotPanel(new_plot_window, label=None)
                 new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-                new_plot_panel.plot_regions(self.regions_in_work, add_dimension=plot_add_dim, legend=True)
+                new_plot_panel.plot_regions(self.regions_in_work, add_dimension=plot_add_dim, legend=True,
+                                            colormap=cmap)
             else:
                 self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(self.regions_in_work,
-                                                                            add_dimension=plot_add_dim, legend=True)
+                                                                            add_dimension=plot_add_dim, legend=True,
+                                                                            colormap=cmap)
 
     def _save(self):
         if self.regions_in_work:
@@ -520,30 +560,43 @@ class CorrectionsPanel(ttk.Frame):
             if output_dir:
                 service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
                 for region in self.regions_in_work:
-                    name = output_dir + "/" + region.get_info("File Name") + ".dat"
+                    name_dat = output_dir + "/" + region.get_info("File Name") + ".dat"
+                    name_sqr = output_dir + "/" + region.get_info("File Name") + ".sqr"
+                    save_add_dimension = self.plot_use_settings_var.get() and bool(self.plot_add_dim_var.get())
                     try:
-                        with open(name, 'w') as f:
-                            save_add_dimension = self.plot_use_settings_var.get() and bool(self.plot_add_dim_var.get())
+                        with open(name_dat, 'w') as f:
                             region.save_xy(f, add_dimension=save_add_dimension, headers=False)
                     except (IOError, OSError):
-                        gui_logger.error(f"Couldn't save file {name}", exc_info=True)
+                        gui_logger.error(f"Couldn't save file {name_dat}", exc_info=True)
+                    try:
+                        with open(name_sqr, 'w') as f:
+                            region.save_as_file(f, details=True, add_dimension=save_add_dimension, headers=True)
+                    except (IOError, OSError):
+                        gui_logger.error(f"Couldn't save file {name_sqr}", exc_info=True)
 
     def _saveas(self):
         if self.regions_in_work:
             output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
             for region in self.regions_in_work:
-                file_path = filedialog.asksaveasfilename(initialdir=output_dir,
-                                                         initialfile=region.get_info("File Name") + ".dat",
-                                                         title="Save as...",
-                                                         filetypes=(("dat files", "*.dat"), ("all files", "*.*")))
-                if file_path:
+                dat_file_path = filedialog.asksaveasfilename(initialdir=output_dir,
+                                                             initialfile=region.get_info("File Name") + ".dat",
+                                                             title="Save as...",
+                                                             filetypes=(("dat files", "*.dat"), ("all files", "*.*")))
+                if dat_file_path:
+                    save_add_dimension = self.plot_use_settings_var.get() and bool(self.plot_add_dim_var.get())
                     try:
-                        with open(file_path, 'w') as f:
-                            save_add_dimension = self.plot_use_settings_var.get() and bool(self.plot_add_dim_var.get())
+                        with open(dat_file_path, 'w') as f:
                             region.save_xy(f, add_dimension=save_add_dimension, headers=False)
                     except (IOError, OSError):
-                        gui_logger.error(f"Couldn't save file {file_path}", exc_info=True)
-                output_dir = os.path.dirname(file_path)
+                        gui_logger.error(f"Couldn't save file {dat_file_path}", exc_info=True)
+                    sqr_file_path = dat_file_path.rpartition('.')[0] + '.sqr'
+                    try:
+                        with open(sqr_file_path, 'w') as f:
+                            region.save_as_file(f, details=True, add_dimension=save_add_dimension, headers=True)
+                    except (IOError, OSError):
+                        gui_logger.error(f"Couldn't save file {sqr_file_path}", exc_info=True)
+
+                output_dir = os.path.dirname(dat_file_path)
             service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
 
 

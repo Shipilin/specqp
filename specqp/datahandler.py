@@ -712,7 +712,7 @@ class Region:
                 cols = ['energy'] + cols
 
         try:
-            self._data[cols].to_csv(file, header=headers, index=False, sep='\t')
+            self._data[cols].round(2).to_csv(file, header=headers, index=False, sep='\t')
         except (OSError, IOError):
             datahandler_logger.error(f"Can't write the file {file.name}", exc_info=True)
             return False

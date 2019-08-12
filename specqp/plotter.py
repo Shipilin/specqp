@@ -77,7 +77,7 @@ def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=Tr
     if label and not helpers.is_iterable(label):
         label = [f'{label} : sweep {i}' for i in range(1, n_curves + 1)]
     elif (label and len(label) != n_curves) or not label:
-        plotter_logger.info(f"Labels for region {region.get_id()} plotting were set to defaults.")
+        #plotter_logger.info(f"Labels for region {region.get_id()} plotting were set to defaults.")
         label = _make_label(region, legend_features=legend_features)
         label = [f'{label} : sweep {i}' for i in range(1, n_curves + 1)]
 
