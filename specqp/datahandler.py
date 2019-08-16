@@ -233,6 +233,27 @@ def load_specs_xy(filename):
     return regions
 
 
+def load_calibration_curves(filenames):
+    """Reads file or files using provided name(s). Checks for file existance etc.
+    :param filenames: str or sequence: filepath(s)
+    :return:
+    """
+    calibration_data = {}
+    if not type(filenames) == str and not helpers.is_iterable(filenames):
+        filenames = [filenames]
+    for filename in filenames:
+        if os.path.isfile(filename):
+            try:
+                with open(filename, 'r') as f:
+                    df = pd.read_csv(f, sep='\t')
+                    calibration_data[os.path.basename(filename).rpartition(',')[2]] = \
+                        (df['Press_03_value'].to_numpy(), df['Press_05_value'].to_numpy())
+            except (IOError, OSError):
+                datahandler_logger.error(f"Couldn't access the file: {filename}", exc_info=True)
+                continue
+    return calibration_data
+
+
 class Region:
     """Class Region contains the data and info for one measured region, e.g. C1s
     """

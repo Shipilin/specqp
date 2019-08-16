@@ -31,7 +31,7 @@ class Peak:
             try:
               self._FittingErrors.append(np.absolute(self._Pcov[i][i])**0.5)
             except:
-              self._FittingErrors.append( 0.00 )
+              self._FittingErrors.append(0.00)
 
     def __str__(self):
         output = f"Type: {self._PeakType}"
@@ -299,10 +299,13 @@ class Fitter:
         cnt = 0
         while cnt < len(initial_params):
             peak_y = self._multi_voigt(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
-            self._Peaks.append(Peak(self._X_data, peak_y,
-                                    [popt[cnt], popt[cnt+1], popt[cnt+2]],
-                                    [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
-                                    "voigt"))
+            if type(peak_y) == int:
+                self._Peaks.append(None)
+            else:
+                self._Peaks.append(Peak(self._X_data, peak_y,
+                                        [popt[cnt], popt[cnt+1], popt[cnt+2]],
+                                        [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
+                                        "voigt"))
             cnt += 3
         self._make_fit()
 
@@ -312,7 +315,8 @@ class Fitter:
         """
         # Calculate fit line
         for peak in self._Peaks:
-            self._FitLine += peak.get_data()[1]
+            if peak:
+                self._FitLine += peak.get_data()[1]
         # Calculate residuals
         self._Residuals = self._Y_data - self._FitLine
         # Calculate R-squared

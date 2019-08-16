@@ -391,11 +391,22 @@ def shift_by_background(region, interval, y_data='final', add_column=True):
             if (energy[i - 1] <= interval[1] <= energy[i]) or (energy[i - 1] >= interval[1] >= energy[i]):
                 last_index = i
 
-    output = counts - float(np.mean(counts[first_index:last_index]))
-
+    main_output = counts - float(np.mean(counts[first_index:last_index]))
+    add_dimension_outputs = []
     if add_column:
-        region.add_column("bgshifted", output, overwrite=True)
-    return output
+        region.add_column("bgshifted", main_output, overwrite=True)
+    if region.is_add_dimension():
+        for i in range(region.get_add_dimension_counter()):
+            if f'{y_data}{i}' in region.get_data().columns:
+                counts = region.get_data(column=f'{y_data}{i}')
+                output = counts - float(np.mean(counts[first_index:last_index]))
+                add_dimension_outputs.append(output)
+                if add_column:
+                    region.add_column(f"bgshifted{i}", output, overwrite=True)
+    if add_dimension_outputs:
+        return main_output, add_dimension_outputs
+    else:
+        return main_output
 
 
 def ask_path(folder_flag=True, multiple_files_flag=False):

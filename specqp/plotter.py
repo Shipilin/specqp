@@ -44,7 +44,7 @@ def _make_label(region, legend_features=None):
 
 
 def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0.0,
-                       global_y_offset=0.0, scatter=False, label=None, color=None, title=False, font_size=8,
+                       global_y_offset=0.0, scatter=False, label=None, color=None, title=False, font_size=12,
                        legend=True, legend_features=None, legend_pos='best'):
     """
 
@@ -97,7 +97,7 @@ def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=Tr
 
 
 def plot_region(region, axs, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0,
-                scatter=False, label=None, color=None, title=True, font_size=8,
+                scatter=False, label=None, color=None, title=True, font_size=12,
                 legend=True, legend_features=None, legend_pos='best'):
     """Plotting spectrum with matplotlib using given axes and a number of optional arguments. legend_features parameter
     allows for adding distinguishing features to each plotted curve taking their values from Region._conditions.
@@ -110,7 +110,7 @@ def plot_region(region, axs, x_data='energy', y_data='final', invert_x=True, log
 
 
 def _plot_curve(x, y, region, axs, invert_x=True, log_scale=False, y_offset=0.0,
-                scatter=False, label=None, color=None, title=True, font_size=8,
+                scatter=False, label=None, color=None, title=True, font_size=12,
                 legend=True, legend_features=None, legend_pos='best'):
 
     if not label:
@@ -158,8 +158,10 @@ def _plot_curve(x, y, region, axs, invert_x=True, log_scale=False, y_offset=0.0,
     if log_scale:
         axs.set_yscale('log')
 
+    axs.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
 
-def plot_peak(peak, axs, y_offset=0.0, label=None, color=None, fill=True, legend=True, legend_pos='best', font_size=8):
+
+def plot_peak(peak, axs, y_offset=0.0, label=None, color=None, fill=True, legend=True, legend_pos='best', font_size=12):
     """
     Plotting one peak from Fitter object
     :param peak: Peak object
@@ -188,7 +190,7 @@ def plot_peak(peak, axs, y_offset=0.0, label=None, color=None, fill=True, legend
 
 
 def plot_fit(fitter, axs, y_offset=0, label=None, color='black', legend=True, legend_pos='best',
-             addresiduals=True, font_size=8):
+             addresiduals=True, font_size=12):
     """Plotting fit line with pyplot using given plt.figure and a number of optional arguments
     """
     if not label:

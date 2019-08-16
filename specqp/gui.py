@@ -3,6 +3,7 @@ import copy
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
+from tkinter import Widget
 import ntpath
 import logging
 
@@ -243,7 +244,6 @@ class BrowserPanel(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["BrowserPanel"] = self
-
         # Action buttons panel
         self.buttons_panel = ttk.Frame(self, borderwidth=1, relief="groove")
         # Action buttons
@@ -256,12 +256,6 @@ class BrowserPanel(ttk.Frame):
         self.add_sp_file_button = ttk.Button(self.buttons_panel,
                                              text='Load SPECS', command=self._ask_load_specs_file)
         self.add_sp_file_button.pack(side=tk.TOP, fill=tk.X)
-        # self.plot_checked_button = ttk.Button(self.buttons_panel,
-        #                                       text='Plot Checked', command=self._plot_checked)
-        # self.plot_checked_button.pack(side=tk.TOP, fill=tk.X)
-        # self.plot_add_dimension = ttk.Button(self.buttons_panel,
-        #                                      text='Plot Add Dimension', command=self._plot_add_dimension)
-        # self.plot_add_dimension.pack(side=tk.TOP, fill=tk.X)
         self.blank_label = ttk.Label(self.buttons_panel,
                                      text="", anchor=tk.W)
         self.blank_label.pack(side=tk.TOP, fill=tk.X)
@@ -269,7 +263,6 @@ class BrowserPanel(ttk.Frame):
                                           text='Quit', command=self._quit)
         self.app_quit_button.pack(side=tk.TOP, fill=tk.X)
         self.buttons_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
-
         # Files tree panel
         self.spectra_tree_panel = BrowserTreeView(self, borderwidth=1, relief="groove")
         self.spectra_tree_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
@@ -282,18 +275,6 @@ class BrowserPanel(ttk.Frame):
 
     def _quit(self):
         self.winfo_toplevel().quit()  # stops mainloop
-
-    # def _plot_checked(self):
-    #     regions_for_plotting = self.spectra_tree_panel.get_checked_items()
-    #     if regions_for_plotting:
-    #         self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting,
-    #                                                                     add_dimension=False, legend=True)
-
-    # def _plot_add_dimension(self):
-    #     regions_for_plotting = self.spectra_tree_panel.get_checked_items()
-    #     if regions_for_plotting:
-    #         self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(regions_for_plotting,
-    #                                                                     add_dimension=True, legend=True)
 
 
 class CustomToolbar(NavigationToolbar2Tk):
@@ -369,9 +350,11 @@ class PlotPanel(ttk.Frame):
     #     key_press_handler(event, self.canvas, self.toolbar)
 
     def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False,
-                     y_offset=0.0, scatter=False, label=None, color=None, title=True, font_size=8, legend=True,
+                     y_offset=0.0, scatter=False, label=None, color=None, title=True, font_size=12, legend=True,
                      legend_features=("ID",), legend_pos='best', add_dimension=False, colormap=None):
         if regions:
+            if not helpers.is_iterable(regions):
+                regions = [regions]
             if not ax:
                 ax = self.figure_axes
             ax.clear()
@@ -385,7 +368,7 @@ class PlotPanel(ttk.Frame):
                 cmap = cm.get_cmap(colormap)
                 ax.set_prop_cycle('color', [cmap(1. * i / num_colors) for i in range(num_colors)])
 
-            offset = y_offset
+            offset = 0
             for region in regions:
                 if not add_dimension or not region.is_add_dimension():
                     plotter.plot_region(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
@@ -398,7 +381,7 @@ class PlotPanel(ttk.Frame):
                                                y_offset=y_offset, global_y_offset=offset, scatter=scatter, label=label,
                                                color=color, title=title, font_size=font_size, legend=legend,
                                                legend_features=legend_features, legend_pos=legend_pos)
-                    offset += y_offset
+                    offset += y_offset * region.get_add_dimension_counter()
             if len(regions) > 1:
                 ax.set_title(None)
             ax.set_aspect('auto')
@@ -438,6 +421,69 @@ class CorrectionsPanel(ttk.Frame):
         self.save.pack(side=tk.TOP, fill=tk.X)
         self.saveas = ttk.Button(self, text='Save as...', command=self._saveas)
         self.saveas.pack(side=tk.TOP, fill=tk.X)
+        # Blank label
+        blank_label = ttk.Label(self, text="", anchor=tk.W)
+        blank_label.pack(side=tk.TOP, fill=tk.X)
+        # Fit
+        self.fit_subframe = ttk.Frame(self)
+        self.fit = ttk.Button(self.fit_subframe, text='Do Fit', command=self._fit)
+        self.fit.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.select_fit_type = tk.StringVar()
+        self.select_fit_type.set("Voigt")
+        options = ['Voigt', 'Gauss', 'Lorentz', 'Error func']
+        self.opmenu_fit_type = ttk.OptionMenu(self.fit_subframe, self.select_fit_type, self.select_fit_type.get(), *options)
+        self.opmenu_fit_type.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.fit_subframe.pack(side=tk.TOP, fill=tk.X, expand=False)
+
+    def _fit(self):
+        fit_type = self.select_fit_type.get()
+        regions_in_work = self._get_regions_in_work()
+        for region in regions_in_work:
+            if fit_type == 'Error func':
+                region.set_fermi_flag()
+            fit_window = FitWindow(self.winfo_toplevel(), region, fit_type)
+
+    def _get_regions_in_work(self):
+        reg_ids = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
+        # We will work with copies of regions, so that the temporary changes are not stored
+        regions_in_work = copy.deepcopy(self.winfo_toplevel().loaded_regions.get_by_id(reg_ids))
+        if regions_in_work:
+            pe = self.photon_energy.get()
+            es = self.energy_shift.get()
+            if pe:
+                try:
+                    pe = float(pe)
+                except ValueError:
+                    gui_logger.warning("Check 'Photon Energy' value.")
+                    return
+            if es:
+                try:
+                    es = float(es)
+                except ValueError:
+                    gui_logger.warning("Check 'Energy Shift' value.")
+                    return
+            if self.plot_use_settings_var.get():
+                service.set_init_parameters(["PHOTON_ENERGY", "ENERGY_SHIFT"], [pe, es])
+                for region in regions_in_work:
+                    # if self.is_fermi_var.get():
+                    #     region.set_fermi_flag()
+                    if pe:
+                        region.set_excitation_energy(pe)
+                    if es and not region.get_flags()["fermi_flag"]:
+                        region.correct_energy_shift(es)
+                        region.add_correction("Energy shift corrected")
+                    if self.plot_binding_var.get():
+                        region.invert_to_binding()
+                    if self.normalize_sweeps_var.get():
+                        region.normalize_by_sweeps()
+                        region.make_final_column("sweepsNormalized", overwrite=True)
+                        region.add_correction("Normalized by sweeps")
+                    if self.subtract_const_var.get():
+                        e = region.get_data('energy')
+                        helpers.shift_by_background(region, [e[-10], e[-1]])
+                        region.make_final_column("bgshifted", overwrite=True)
+                        region.add_correction("Constant background subtracted")
+        return regions_in_work
 
     def _make_plotting_settings_subframe(self):
         # Plot name label
@@ -471,8 +517,8 @@ class CorrectionsPanel(ttk.Frame):
         self.plot_use_settings_var = tk.StringVar(value="True")
         self.plot_use_settings_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_use_settings_var,
                                                     onvalue="True", offvalue="", background=BG,
-                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-                                                    )
+                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                                    command=self._toggle_settings)
         self.plot_use_settings_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Binding energy axis
         self.plot_binding_label = ttk.Label(self.plotting_left_column, text="Binding energy axis", anchor=tk.W)
@@ -486,8 +532,15 @@ class CorrectionsPanel(ttk.Frame):
         # Offset
         self.offset_label = ttk.Label(self.plotting_left_column, text="Offset (% of max)", anchor=tk.W)
         self.offset_label.pack(side=tk.TOP, fill=tk.X, expand=True)
-        self.offset_slider = ttk.Scale(self.plotting_right_column, from_=0, to=100, orient=tk.HORIZONTAL)
-        self.offset_slider.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.offset_subframe = ttk.Frame(self.plotting_right_column)
+        self.offset_value_var = tk.IntVar(self, value=0)
+        self.offset_value_entry = ttk.Entry(self.offset_subframe, textvariable=self.offset_value_var,
+                                            width=3, state=tk.DISABLED, style='default.TEntry')
+        self.offset_slider = ttk.Scale(self.offset_subframe, from_=0, to=100, orient=tk.HORIZONTAL,
+                                       command=lambda x: self.offset_value_var.set(int(float(x))))
+        self.offset_slider.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.offset_value_entry.pack(side=tk.RIGHT, expand=False)
+        self.offset_subframe.pack(side=tk.TOP, fill=tk.X, expand=True)
         # Legend
         self.plot_legend_label = ttk.Label(self.plotting_left_column, text="Add legend", anchor=tk.W)
         self.plot_legend_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -528,7 +581,16 @@ class CorrectionsPanel(ttk.Frame):
         self.settings_two_columns = ttk.Frame(self)
         self.settings_left_column = ttk.Frame(self.settings_two_columns)
         self.settings_right_column = ttk.Frame(self.settings_two_columns)
-        # photon energy
+        # # Fermi level
+        # self.is_fermi_label = ttk.Label(self.settings_left_column, text="Is Fermi Level", anchor=tk.W)
+        # self.is_fermi_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        # self.is_fermi_var = tk.StringVar(value="")
+        # self.is_fermi_box = tk.Checkbutton(self.settings_right_column, var=self.is_fermi_var,
+        #                                    onvalue="True", offvalue="", background=BG,
+        #                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+        #                                    )
+        # self.is_fermi_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Photon energy
         self.pe_label = ttk.Label(self.settings_left_column, text="Photon Energy (eV)", anchor=tk.W)
         self.pe_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         # Read photon energy from init file if available
@@ -565,64 +627,27 @@ class CorrectionsPanel(ttk.Frame):
         self.settings_two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
 
     def _plot(self):
-        reg_ids = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
-        # We will work with copies of regions, so that the temporary changes are not stored
-        self.regions_in_work = copy.deepcopy(self.winfo_toplevel().loaded_regions.get_by_id(reg_ids))
-        if self.regions_in_work:
-            pe = self.photon_energy.get()
-            es = self.energy_shift.get()
-            if pe:
-                try:
-                    pe = float(pe)
-                except ValueError:
-                    gui_logger.warning("Check 'Photon Energy' value.")
-                    return
-            if es:
-                try:
-                    es = float(es)
-                except ValueError:
-                    gui_logger.warning("Check 'Energy Shift' value.")
-                    return
-            if self.plot_use_settings_var.get():
-                service.set_init_parameters(["PHOTON_ENERGY", "ENERGY_SHIFT"], [pe, es])
-                for region in self.regions_in_work:
-                    if pe:
-                        region.set_excitation_energy(pe)
-                    if es:
-                        region.correct_energy_shift(es)
-                        region.add_correction("Energy shift corrected")
-                    if self.plot_binding_var.get():
-                        region.invert_to_binding()
-                    if self.normalize_sweeps_var.get():
-                        region.normalize_by_sweeps()
-                        region.make_final_column("sweepsNormalized", overwrite=True)
-                        region.add_correction("Normalized by sweeps")
-                    if self.subtract_const_var.get():
-                        e = region.get_data('energy')
-                        helpers.shift_by_background(region, [e[-10], e[-1]])
-                        region.make_final_column("bgshifted", overwrite=True)
-                        region.add_correction("Constant background subtracted")
-
-            offset = (self.offset_slider.get() / 100) * max([np.max(region.get_data(column='final'))
-                                                             for region in self.regions_in_work if
-                                                             len(region.get_data(column='final')) > 0])
-            cmap = None if self.select_colormap.get() == "Default colormap" else self.select_colormap.get()
-            if bool(self.plot_separate_var.get()):
-                new_plot_window = tk.Toplevel(self.winfo_toplevel())
-                new_plot_window.wm_title("Raw data")
-                new_plot_panel = PlotPanel(new_plot_window, label=None)
-                new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-                new_plot_panel.plot_regions(self.regions_in_work,
-                                            add_dimension=bool(self.plot_add_dim_var.get()),
-                                            legend=bool(self.plot_legend_var.get()),
-                                            title=bool(self.plot_title_var.get()),
-                                            y_offset=offset, colormap=cmap)
-            else:
-                self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(self.regions_in_work,
-                                                                            add_dimension=bool(self.plot_add_dim_var.get()),
-                                                                            legend=bool(self.plot_legend_var.get()),
-                                                                            title=bool(self.plot_title_var.get()),
-                                                                            y_offset=offset, colormap=cmap)
+        self.regions_in_work = self._get_regions_in_work()
+        offset = (self.offset_slider.get() / 100) * max([np.max(region.get_data(column='final'))
+                                                         for region in self.regions_in_work if
+                                                         len(region.get_data(column='final')) > 0])
+        cmap = None if self.select_colormap.get() == "Default colormap" else self.select_colormap.get()
+        if bool(self.plot_separate_var.get()):
+            new_plot_window = tk.Toplevel(self.winfo_toplevel())
+            new_plot_window.wm_title("Raw data")
+            new_plot_panel = PlotPanel(new_plot_window, label=None, borderwidth=1, relief="groove")
+            new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+            new_plot_panel.plot_regions(self.regions_in_work,
+                                        add_dimension=bool(self.plot_add_dim_var.get()),
+                                        legend=bool(self.plot_legend_var.get()),
+                                        title=bool(self.plot_title_var.get()),
+                                        y_offset=offset, colormap=cmap)
+        else:
+            self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(self.regions_in_work,
+                                                                        add_dimension=bool(self.plot_add_dim_var.get()),
+                                                                        legend=bool(self.plot_legend_var.get()),
+                                                                        title=bool(self.plot_title_var.get()),
+                                                                        y_offset=offset, colormap=cmap)
 
     def _save(self):
         if self.regions_in_work:
@@ -633,7 +658,7 @@ class CorrectionsPanel(ttk.Frame):
                 for region in self.regions_in_work:
                     name_dat = output_dir + "/" + region.get_info("File Name") + ".dat"
                     name_sqr = output_dir + "/" + region.get_info("File Name") + ".sqr"
-                    save_add_dimension = self.plot_use_settings_var.get() and bool(self.plot_add_dim_var.get())
+                    save_add_dimension = bool(self.plot_add_dim_var.get())
                     try:
                         with open(name_dat, 'w') as f:
                             region.save_xy(f, add_dimension=save_add_dimension, headers=False)
@@ -654,7 +679,7 @@ class CorrectionsPanel(ttk.Frame):
                                                              title="Save as...",
                                                              filetypes=(("dat files", "*.dat"), ("all files", "*.*")))
                 if dat_file_path:
-                    save_add_dimension = self.plot_use_settings_var.get() and bool(self.plot_add_dim_var.get())
+                    save_add_dimension = bool(self.plot_add_dim_var.get())
                     try:
                         with open(dat_file_path, 'w') as f:
                             region.save_xy(f, add_dimension=save_add_dimension, headers=False)
@@ -669,6 +694,82 @@ class CorrectionsPanel(ttk.Frame):
 
                 output_dir = os.path.dirname(dat_file_path)
             service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
+
+    def _toggle_settings(self):
+        if self.plot_use_settings_var.get():
+            self.subtract_const_var.set("True")
+            self.subtract_const_box.config(state=tk.NORMAL)
+            self.normalize_sweeps_var.set("True")
+            self.normalize_sweeps_box.config(state=tk.NORMAL)
+            self.plot_binding_var.set("True")
+            self.plot_binding_box.config(state=tk.NORMAL)
+            self.photon_energy.set(service.get_service_parameter("PHOTON_ENERGY"))
+            self.pe_entry.config(state='enabled')
+            self.energy_shift.set(service.get_service_parameter("ENERGY_SHIFT"))
+            self.eshift_entry.config(state='enabled')
+
+        else:
+            self.subtract_const_var.set("")
+            self.subtract_const_box.config(state=tk.DISABLED)
+            self.normalize_sweeps_var.set("")
+            self.normalize_sweeps_box.config(state=tk.DISABLED)
+            self.plot_binding_var.set("")
+            self.plot_binding_box.config(state=tk.DISABLED)
+            self.photon_energy.set("")
+            self.pe_entry.config(state='disabled')
+            self.energy_shift.set("")
+            self.eshift_entry.config(state='disabled')
+
+
+class PeakLine(ttk.Frame):
+    def __init__(self, parent, label, remove_func, add_func, id_, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self._id = id_
+        self.remove_peak_button = ttk.Button(self, text='-', command=lambda: remove_func(self._id), width=1)
+        self.remove_peak_button.pack(side=tk.RIGHT, expand=False)
+        self.add_peak_button = ttk.Button(self, text='+', command=lambda: add_func(), width=1)
+        self.add_peak_button.pack(side=tk.RIGHT, expand=False)
+        self.peak_label = ttk.Label(self, text=label, anchor=tk.W)
+        self.peak_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.parameters = tk.StringVar(self, value="")
+        self.parameters_entry = ttk.Entry(self, textvariable=self.parameters)
+        self.parameters_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+
+class FitWindow(tk.Toplevel):
+    def __init__(self, parent, region, fit_type, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.wm_title(f"Fitting {fit_type} to {region.get_id()}")
+        self.fittype = fit_type
+        self.peak_lines = {}
+        self.plot_panel = PlotPanel(self, label=None, borderwidth=1, relief="groove")
+        self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        self.plot_panel.plot_regions(region)
+        self.fit_panel = ttk.Frame(self, borderwidth=1, relief="groove")
+        self._add_peak_line()
+        self.fit_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+
+    def _add_peak_line(self):
+        peak_num = len(self.peak_lines.keys())
+        self.peak_lines[peak_num] = PeakLine(self.fit_panel, self.fittype, self._remove_peak_line,
+                                             self._add_peak_line, peak_num)
+        self.peak_lines[peak_num].pack(side=tk.TOP, fill=tk.X, expand=False)
+        line_ids = self._get_peak_lines_ids()
+        if len(line_ids) == 1:
+            self.peak_lines[line_ids[0]].remove_peak_button.config(state=tk.DISABLED)
+        else:
+            for i, line_id in enumerate(line_ids):
+                if i < len(line_ids) - 1:
+                    self.peak_lines[line_id].add_peak_button.config(state=tk.DISABLED)
+                self.peak_lines[line_id].remove_peak_button.config(state=tk.NORMAL)
+
+    def _get_peak_lines_ids(self):
+        return [k for k, v in self.peak_lines.items() if v]
+
+    def _remove_peak_line(self, peak_id):
+        self.peak_lines[peak_id].pack_forget()
+        self.peak_lines[peak_id].destroy()
+        self.peak_lines[peak_id] = None
 
 
 class MainWindow(ttk.PanedWindow):
@@ -688,6 +789,7 @@ class Root(tk.Tk):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._configure_style()
         # Dictionary of all widgets of the main window
         self.gui_widgets = {}
         # Attribute keeping track of all regions loaded in the current GUI session
@@ -701,6 +803,12 @@ class Root(tk.Tk):
         tk.Tk.wm_title(self, "SpecQP")
         self.main_window = MainWindow(self, orient=tk.HORIZONTAL)
         self.main_window.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    def _configure_style(self):
+        # Setting GUI color style
+        self.style = ttk.Style()
+        self.style.configure('default.TEntry', bg=BG, fg=BG, disabledforeground=BG, disabledbackground=BG)
+        self.style.configure('default.TCheckbutton', background=BG)
 
     # TODO: write the functionality for the menu, add new menus if needed.
     def generate_main_menu(self):
@@ -729,7 +837,34 @@ class Root(tk.Tk):
     def load_pressure_calibration(self):
         """Load and show pressure calibration file with a button allowing to plot certain column vs another column
         """
-        pass
+        file_names = filedialog.askopenfilenames(filetypes=[("calibration", ".dat .DAT .txt .TXT"), ("All files", ".*")],
+                                                 parent=self,
+                                                 title="Choose calibration data files to load",
+                                                 initialdir=service.get_service_parameter("DEFAULT_DATA_FOLDER"),
+                                                 multiple=True)
+        if file_names:
+            service.set_init_parameters("DEFAULT_DATA_FOLDER", os.path.dirname(file_names[0]))
+            calibration_data = datahandler.load_calibration_curves(file_names)
+            new_plot_window = tk.Toplevel(self.winfo_toplevel())
+            new_plot_window.wm_title("Calibration data")
+            new_plot_panel = PlotPanel(new_plot_window, label=None)
+            new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+            for key, val in calibration_data.items():
+                new_plot_panel.figure_axes.scatter(val[0], val[1], label=key, s=6)
+            new_plot_panel.figure_axes.legend(fancybox=True, framealpha=0, loc='best')
+            new_plot_panel.figure_axes.ticklabel_format(axis='both', style='sci', scilimits=(0, 0))
+            new_plot_panel.figure_axes.set_aspect('auto')
+            new_plot_panel.figure_axes.set_facecolor('None')
+            new_plot_panel.figure_axes.grid(which='both', axis='both', color='grey', linestyle=':')
+            new_plot_panel.figure_axes.spines['bottom'].set_color('black')
+            new_plot_panel.figure_axes.spines['left'].set_color('black')
+            new_plot_panel.figure_axes.tick_params(axis='x', colors='black')
+            new_plot_panel.figure_axes.tick_params(axis='y', colors='black')
+            new_plot_panel.figure_axes.yaxis.label.set_color('black')
+            new_plot_panel.figure_axes.xaxis.label.set_color('black')
+            new_plot_panel.figure_axes.set_xlim(left=0)
+        else:
+            gui_logger.warning("Couldn't get calibration data files from askopenfiles dialog.")
 
     def open_file_as_text(self):
         """Open the read-only view of a text file in a Toplevel widget
@@ -777,7 +912,6 @@ class Root(tk.Tk):
 
     def export_log(self):
         pass
-
 
     def show_about(self):
         pass
