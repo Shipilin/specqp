@@ -402,7 +402,6 @@ class CorrectionsPanel(ttk.Frame):
         super().__init__(parent, *args, **kwargs)
         self.winfo_toplevel().gui_widgets["CorrectionsPanel"] = self
         self.regions_in_work = None
-
         # Adding widgets to settings two-columns section
         self._make_settings_subframe()
         # Blank label
@@ -426,24 +425,27 @@ class CorrectionsPanel(ttk.Frame):
         blank_label.pack(side=tk.TOP, fill=tk.X)
         # Fit
         self.fit_subframe = ttk.Frame(self)
-        self.fit = ttk.Button(self.fit_subframe, text='Do Fit', command=self._fit)
+        self.fit = ttk.Button(self.fit_subframe, text='Fit', command=self._fit)
         self.fit.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.select_fit_type = tk.StringVar()
-        self.select_fit_type.set("Voigt")
-        options = ['Voigt', 'Gauss', 'Lorentz', 'Error func']
+        self.select_fit_type.set("Pseudo Voigt")
+        options = ['Pseudo Voigt', 'Gauss', 'Lorentz', 'Error Func']
         self.opmenu_fit_type = ttk.OptionMenu(self.fit_subframe, self.select_fit_type, self.select_fit_type.get(), *options)
         self.opmenu_fit_type.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         self.fit_subframe.pack(side=tk.TOP, fill=tk.X, expand=False)
 
     def _fit(self):
         fit_type = self.select_fit_type.get()
-        regions_in_work = self._get_regions_in_work()
+        if fit_type == 'Error Func':
+            regions_in_work = self._get_regions_in_work(fermi=True)
+        else:
+            regions_in_work = self._get_regions_in_work(fermi=False)
         for region in regions_in_work:
-            if fit_type == 'Error func':
+            if fit_type == 'Error Func':
                 region.set_fermi_flag()
             fit_window = FitWindow(self.winfo_toplevel(), region, fit_type)
 
-    def _get_regions_in_work(self):
+    def _get_regions_in_work(self, fermi=False):
         reg_ids = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
         # We will work with copies of regions, so that the temporary changes are not stored
         regions_in_work = copy.deepcopy(self.winfo_toplevel().loaded_regions.get_by_id(reg_ids))
@@ -469,7 +471,7 @@ class CorrectionsPanel(ttk.Frame):
                     #     region.set_fermi_flag()
                     if pe:
                         region.set_excitation_energy(pe)
-                    if es and not region.get_flags()["fermi_flag"]:
+                    if es and not region.get_flags()["fermi_flag"] and not fermi:
                         region.correct_energy_shift(es)
                         region.add_correction("Energy shift corrected")
                     if self.plot_binding_var.get():
@@ -483,6 +485,10 @@ class CorrectionsPanel(ttk.Frame):
                         helpers.shift_by_background(region, [e[-10], e[-1]])
                         region.make_final_column("bgshifted", overwrite=True)
                         region.add_correction("Constant background subtracted")
+                    if self.subtract_shirley_var.get():
+                        helpers.subtract_shirley(region)
+                        region.make_final_column("no_shirley", overwrite=True)
+                        region.add_correction("Shirley background subtracted")
         return regions_in_work
 
     def _make_plotting_settings_subframe(self):
@@ -567,7 +573,7 @@ class CorrectionsPanel(ttk.Frame):
         self.select_colormap = tk.StringVar()
         self.select_colormap.set("Default colormap")
         # Some colormaps suitable for plotting
-        options = ['Default colormap', 'jet', 'brg', 'viridis', 'plasma', 'inferno', 'magma', 'cividis', 'spring',
+        options = ['Default colormap', 'Default colormap', 'jet', 'brg', 'viridis', 'plasma', 'inferno', 'magma', 'cividis', 'spring',
                    'summer', 'autumn', 'winter', 'cool', 'Wistia', 'copper', 'twilight', 'twilight_shifted',
                    'hsv', 'gnuplot', 'gist_rainbow', 'rainbow']
         self.opmenu_colormap = ttk.OptionMenu(self, self.select_colormap, *options)
@@ -581,15 +587,6 @@ class CorrectionsPanel(ttk.Frame):
         self.settings_two_columns = ttk.Frame(self)
         self.settings_left_column = ttk.Frame(self.settings_two_columns)
         self.settings_right_column = ttk.Frame(self.settings_two_columns)
-        # # Fermi level
-        # self.is_fermi_label = ttk.Label(self.settings_left_column, text="Is Fermi Level", anchor=tk.W)
-        # self.is_fermi_label.pack(side=tk.TOP, fill=tk.X, expand=True)
-        # self.is_fermi_var = tk.StringVar(value="")
-        # self.is_fermi_box = tk.Checkbutton(self.settings_right_column, var=self.is_fermi_var,
-        #                                    onvalue="True", offvalue="", background=BG,
-        #                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-        #                                    )
-        # self.is_fermi_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Photon energy
         self.pe_label = ttk.Label(self.settings_left_column, text="Photon Energy (eV)", anchor=tk.W)
         self.pe_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -621,6 +618,15 @@ class CorrectionsPanel(ttk.Frame):
                                                  anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                  )
         self.subtract_const_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        # Subtract Shirley background
+        self.subtract_shirley_label = ttk.Label(self.settings_left_column, text="Subtract Shirley bg", anchor=tk.W)
+        self.subtract_shirley_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.subtract_shirley_var = tk.StringVar(value="")
+        self.subtract_shirley_box = tk.Checkbutton(self.settings_right_column, var=self.subtract_shirley_var,
+                                                 onvalue="True", offvalue="", background=BG,
+                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                 )
+        self.subtract_shirley_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Pack two-columns section
         self.settings_left_column.pack(side=tk.LEFT, fill=tk.X, expand=False)
         self.settings_right_column.pack(side=tk.RIGHT, fill=tk.X, expand=True)
@@ -699,6 +705,8 @@ class CorrectionsPanel(ttk.Frame):
         if self.plot_use_settings_var.get():
             self.subtract_const_var.set("True")
             self.subtract_const_box.config(state=tk.NORMAL)
+            self.subtract_shirley_var.set("")
+            self.subtract_shirley_box.config(state=tk.NORMAL)
             self.normalize_sweeps_var.set("True")
             self.normalize_sweeps_box.config(state=tk.NORMAL)
             self.plot_binding_var.set("True")
@@ -711,6 +719,8 @@ class CorrectionsPanel(ttk.Frame):
         else:
             self.subtract_const_var.set("")
             self.subtract_const_box.config(state=tk.DISABLED)
+            self.subtract_shirley_var.set("")
+            self.subtract_shirley_box.config(state=tk.DISABLED)
             self.normalize_sweeps_var.set("")
             self.normalize_sweeps_box.config(state=tk.DISABLED)
             self.plot_binding_var.set("")
@@ -722,18 +732,27 @@ class CorrectionsPanel(ttk.Frame):
 
 
 class PeakLine(ttk.Frame):
-    def __init__(self, parent, label, remove_func, add_func, id_, *args, **kwargs):
+    def __init__(self, parent, fit_type, remove_func, add_func, id_, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self._id = id_
+        self.fit_type = fit_type
         self.remove_peak_button = ttk.Button(self, text='-', command=lambda: remove_func(self._id), width=1)
         self.remove_peak_button.pack(side=tk.RIGHT, expand=False)
         self.add_peak_button = ttk.Button(self, text='+', command=lambda: add_func(), width=1)
         self.add_peak_button.pack(side=tk.RIGHT, expand=False)
-        self.peak_label = ttk.Label(self, text=label, anchor=tk.W)
+        self.id_var = tk.StringVar(value=f"{fit_type} {id_}:")
+        self.peak_label = ttk.Label(self, textvariable=self.id_var, anchor=tk.W)
         self.peak_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.parameters = tk.StringVar(self, value="")
         self.parameters_entry = ttk.Entry(self, textvariable=self.parameters)
         self.parameters_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    def get_id(self):
+        return self._id
+
+    def set_id(self, new_id):
+        self._id = new_id
+        self.id_var.set(f"{self.fit_type} {new_id}:")
 
 
 class FitWindow(tk.Toplevel):
@@ -741,36 +760,147 @@ class FitWindow(tk.Toplevel):
         super().__init__(parent, *args, **kwargs)
         self.wm_title(f"Fitting {fit_type} to {region.get_id()}")
         self.fittype = fit_type
+        self.region = region
         self.peak_lines = {}
         self.plot_panel = PlotPanel(self, label=None, borderwidth=1, relief="groove")
         self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.plot_panel.plot_regions(region)
         self.fit_panel = ttk.Frame(self, borderwidth=1, relief="groove")
-        self._add_peak_line()
+        if fit_type == 'Error Func':
+            self._add_error_func_section()
+        else:
+            self._add_peak_line()
         self.fit_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+
+    def _add_error_func_section(self):
+        def _make_parameter_line(parent_obj, par_name, value, input=True):
+            if input:
+                label = ttk.Label(parent_obj.input_left_column, text=par_name, anchor=tk.E)
+                label.pack(side=tk.TOP, fill=tk.X, expand=True)
+                parent_obj.error_func_pars_input.append(tk.StringVar(parent_obj, value=value))
+                entry = ttk.Entry(parent_obj.input_right_column, textvariable=parent_obj.error_func_pars_input[-1])
+            else:
+                label = ttk.Label(parent_obj.output_left_column, text=par_name, anchor=tk.E)
+                label.pack(side=tk.TOP, fill=tk.X, expand=True)
+                parent_obj.error_func_pars_output.append(tk.StringVar(parent_obj, value=value))
+                entry = ttk.Entry(parent_obj.output_right_column,
+                                  textvariable=parent_obj.error_func_pars_output[-1],
+                                  state='disabled')
+            entry.pack(side=tk.TOP, fill=tk.X, expand=True)
+
+        self.error_func_pars_input = []
+        self.error_func_pars_output = []
+        self.shift = tk.StringVar(self, value="")
+        self.gauss_fwhm = tk.StringVar(self, value="")
+        error_func_label = ttk.Label(self.fit_panel, text="Error function", anchor=tk.W)
+        error_func_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+        blank_label = ttk.Label(self.fit_panel, text="", anchor=tk.W)
+        blank_label.pack(side=tk.TOP, fill=tk.X)
+        parameters_label = ttk.Label(self.fit_panel, text="Parameters:", anchor=tk.W)
+        parameters_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.input_two_columns = ttk.Frame(self.fit_panel)
+        self.input_left_column = ttk.Frame(self.input_two_columns)
+        self.input_right_column = ttk.Frame(self.input_two_columns)
+        # Read default parameters from init.file
+        par_str = service.get_service_parameter("FERMI_FIT_PARAMETERS")
+        par_vals = [float(v) for v in par_str.split(';')]
+        if len(par_vals) != 4:
+            par_vals = [1.00, 0.00, 0.10, 0.00]
+        for i, par_name in enumerate(("top", "center", "width", "bottom")):
+            _make_parameter_line(self, par_name, par_vals[i])
+        # Pack two-columns section
+        self.input_left_column.pack(side=tk.LEFT, fill=tk.X, expand=False)
+        self.input_right_column.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.input_two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
+        blank_label = ttk.Label(self.fit_panel, text="", anchor=tk.W)
+        blank_label.pack(side=tk.TOP, fill=tk.X)
+        fit_button = ttk.Button(self.fit_panel, text='Do Fit', command=self._do_fit_error_func)
+        fit_button.pack(side=tk.TOP, fill=tk.X)
+        blank_label = ttk.Label(self.fit_panel, text="", anchor=tk.W)
+        blank_label.pack(side=tk.TOP, fill=tk.X)
+        results_label = ttk.Label(self.fit_panel, text="Fit results:", anchor=tk.W)
+        results_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.output_two_columns = ttk.Frame(self.fit_panel)
+        self.output_left_column = ttk.Frame(self.output_two_columns)
+        self.output_right_column = ttk.Frame(self.output_two_columns)
+        for i, par_name in enumerate(("top", "center", "width", "bottom")):
+            _make_parameter_line(self, par_name, par_vals[i], input=False)
+        self.output_left_column.pack(side=tk.LEFT, fill=tk.X, expand=False)
+        self.output_right_column.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.output_two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
+        blank_label = ttk.Label(self.fit_panel, text="", anchor=tk.W)
+        blank_label.pack(side=tk.TOP, fill=tk.X)
+        shift_label = ttk.Label(self.fit_panel, textvariable=self.shift, anchor=tk.W)
+        shift_label.pack(side=tk.TOP, fill=tk.X)
+        gauss_fwhm_label = ttk.Label(self.fit_panel, textvariable=self.gauss_fwhm, anchor=tk.W)
+        gauss_fwhm_label.pack(side=tk.TOP, fill=tk.X)
 
     def _add_peak_line(self):
         peak_num = len(self.peak_lines.keys())
         self.peak_lines[peak_num] = PeakLine(self.fit_panel, self.fittype, self._remove_peak_line,
                                              self._add_peak_line, peak_num)
         self.peak_lines[peak_num].pack(side=tk.TOP, fill=tk.X, expand=False)
-        line_ids = self._get_peak_lines_ids()
-        if len(line_ids) == 1:
-            self.peak_lines[line_ids[0]].remove_peak_button.config(state=tk.DISABLED)
-        else:
-            for i, line_id in enumerate(line_ids):
-                if i < len(line_ids) - 1:
-                    self.peak_lines[line_id].add_peak_button.config(state=tk.DISABLED)
-                self.peak_lines[line_id].remove_peak_button.config(state=tk.NORMAL)
+        self._redraw_add_remove_buttons()
+
+    def _do_fit_error_func(self):
+        fit_parameters = [float(par_str_var.get()) for par_str_var in self.error_func_pars_input]
+        fit_res = helpers.fit_fermi_edge(self.region, fit_parameters)
+        fit_res_str = ""
+        for i, fr in enumerate(fit_res[0]):
+            self.error_func_pars_output[i].set(f"{round(fr, 2)} +/- {round(fit_res[1][i], 2)}")
+            if i == 0:
+                fit_res_str += str(round(fr, 2))
+            else:
+                fit_res_str = ';'.join([fit_res_str, str(round(fr, 2))])
+        service.set_init_parameters("FERMI_FIT_PARAMETERS", fit_res_str)
+        shift = [fit_res[0][1], fit_res[1][1]]  # Energy shifts for Fermi edge
+        self.shift.set(f"Energy shift: {round(shift[0], 2)} +/- {round(shift[1], 2)}")
+        # a2 parameter of the complementary error function is related to the
+        # sigma parameter of the gaussian that can be constructed to describe
+        # the widening of ideal step function.
+        # FWHM_gauss = 2*sqrt(ln2)*a2
+        # FWHM_gauss = 2*sqrt(2ln2)*sigma
+        gauss_fwhm = [2 * (np.log(2.0)) ** (.5) * np.absolute(fit_res[0][2]), fit_res[1][2]]
+        self.gauss_fwhm.set(f"Gauss contribution: {round(gauss_fwhm[0], 2)} +/- {round(gauss_fwhm[1], 2)}")
+        self._plot_error_func_fit(f"fit: {round(shift[0], 2)} +/- {round(shift[1], 2)}")
 
     def _get_peak_lines_ids(self):
         return [k for k, v in self.peak_lines.items() if v]
+
+    def _plot_error_func_fit(self, fit_label):
+        ax = self.plot_panel.figure_axes
+        ax.clear()
+        plotter.plot_region(self.region, ax, y_data="final", scatter=True, title=False, legend_features=('ID',))
+        plotter.plot_region(self.region, ax, y_data="fitFermi", title=False, label=fit_label)
+        ax.grid(which='both', axis='x', color='grey', linestyle=':')
+        self.plot_panel.canvas.draw()
+        self.plot_panel.toolbar.update()
 
     def _remove_peak_line(self, peak_id):
         self.peak_lines[peak_id].pack_forget()
         self.peak_lines[peak_id].destroy()
         self.peak_lines[peak_id] = None
+        # If we remove a peak_line we need to renumber the remaining
+        peak_line_copy = {}
+        cnt = 0
+        for val in self.peak_lines.values():
+            if val:
+                val.set_id(cnt)
+                peak_line_copy[cnt] = val
+                cnt += 1
+        self.peak_lines = peak_line_copy
+        self._redraw_add_remove_buttons()
 
+    def _redraw_add_remove_buttons(self):
+        line_ids = self._get_peak_lines_ids()
+        if len(line_ids) == 1:
+            self.peak_lines[line_ids[0]].remove_peak_button.config(state=tk.DISABLED)
+            self.peak_lines[line_ids[0]].add_peak_button.config(state=tk.NORMAL)
+        else:
+            for i, line_id in enumerate(line_ids):
+                if i < len(line_ids) - 1:
+                    self.peak_lines[line_id].add_peak_button.config(state=tk.DISABLED)
+                self.peak_lines[line_id].remove_peak_button.config(state=tk.NORMAL)
 
 class MainWindow(ttk.PanedWindow):
     def __init__(self, parent, *args, **kwargs):

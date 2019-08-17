@@ -152,52 +152,68 @@ def subtract_shirley(region, y_data='final', tolerance=1e-5, maxiter=50, add_col
     """Calculates shirley background. Adopted from https://github.com/schachmett/xpl
     Author Simon Fischer <sfischer@ifp.uni-bremen.de>"
     """
-    counts = region.get_data(column=y_data)
-    energy = region.get_data(column="energy")
-
-    if energy[0] < energy[-1]:
-        is_reversed = True
-        energy = energy[::-1]
-        counts = counts[::-1]
-    else:
-        is_reversed = False
-
-    background = np.ones(energy.shape) * counts[-1]
-    integral = np.zeros(energy.shape)
-    spacing = (energy[-1] - energy[0]) / (len(energy) - 1)
-
-    subtracted = counts - background
-    ysum = subtracted.sum() - np.cumsum(subtracted)
-    for i in range(len(energy)):
-        integral[i] = spacing * (ysum[i] - 0.5
-                                 * (subtracted[i] + subtracted[-1]))
-
-    iteration = 0
-    while iteration < maxiter:
-        subtracted = counts - background
-        integral = spacing * (subtracted.sum() - np.cumsum(subtracted))
-        bnew = ((counts[0] - counts[-1])
-                * integral / integral[0] + counts[-1])
-        if np.linalg.norm((bnew - background) / counts[0]) < tolerance:
-            background = bnew.copy()
-            break
+    def get_shirley_bg(energy, counts, tolerance=1e-5, maxiter=50):
+        if energy[0] < energy[-1]:
+            is_reversed = True
+            energy = energy[::-1]
+            counts = counts[::-1]
         else:
-            background = bnew.copy()
-        iteration += 1
-    if iteration >= maxiter:
-        helpers_logger.warning(f"{region.get_id()} - Background calculation failed due to excessive iterations")
+            is_reversed = False
+        background = np.ones(energy.shape) * counts[-1]
+        integral = np.zeros(energy.shape)
+        spacing = (energy[-1] - energy[0]) / (len(energy) - 1)
+        subtracted = counts - background
+        ysum = subtracted.sum() - np.cumsum(subtracted)
+        for i in range(len(energy)):
+            integral[i] = spacing * (ysum[i] - 0.5 * (subtracted[i] + subtracted[-1]))
+        iteration = 0
+        while iteration < maxiter:
+            subtracted = counts - background
+            integral = spacing * (subtracted.sum() - np.cumsum(subtracted))
+            bnew = ((counts[0] - counts[-1]) * integral / integral[0] + counts[-1])
+            if np.linalg.norm((bnew - background) / counts[0]) < tolerance:
+                background = bnew.copy()
+                break
+            else:
+                background = bnew.copy()
+            iteration += 1
+        if iteration >= maxiter:
+            return None
+        output = background
+        if is_reversed:
+            output = background[::-1]
+        return output
 
-    output = background
-    if is_reversed:
-        output = background[::-1]
-
+    energy = region.get_data(column="energy")
+    counts = region.get_data(column=y_data)
+    bg = get_shirley_bg(energy, counts, tolerance, maxiter)
+    if bg is None:
+        helpers_logger.warning(f"{region.get_id()} - Shirley background calculation failed due to excessive iterations")
+        bg = counts * 0
     if add_column:
-        corrected = counts - output
+        corrected = counts - bg
         if np.amin(corrected) < 0:
             corrected += np.absolute(np.amin(corrected))
         region.add_column("no_shirley", corrected, overwrite=overwrite)
-
-    return output
+    if region.is_add_dimension():
+        main_output = bg
+        add_dimension_output = []
+        for i in range(region.get_add_dimension_counter()):
+            if f'{y_data}{i}' in region.get_data().columns:
+                counts = region.get_data(column=f'{y_data}{i}')
+                bg = get_shirley_bg(energy, counts, tolerance, maxiter)
+                if bg is None:
+                    helpers_logger.warning(f"{region.get_id()} : Add-dimension line {i} - "
+                                           f"Shirley background calculation failed due to excessive iterations")
+                    bg = counts * 0
+                add_dimension_output.append(bg)
+                if add_column:
+                    corrected = counts - bg
+                    if np.amin(corrected) < 0:
+                        corrected += np.absolute(np.amin(corrected))
+                    region.add_column(f"no_shirley{i}", corrected, overwrite=True)
+        return main_output, add_dimension_output
+    return bg
 
 
 def calculate_linear_and_shirley(region, y_data='counts', shirleyfirst=True, by_min=False, tolerance=1e-5, maxiter=50,

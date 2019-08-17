@@ -11,7 +11,8 @@ service_vars = {
     "INIT_FILE_NAME": "../data/specqp.init",
     "DEFAULT_OUTPUT_FOLDER": os.path.expanduser("~") + "/Documents/specqp_output",
     "PHOTON_ENERGY": "",
-    "ENERGY_SHIFT": ""
+    "ENERGY_SHIFT": "",
+    "FERMI_FIT_PARAMETERS": "1.00;0.00;0.10;0.00"
 }
 
 
