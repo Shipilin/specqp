@@ -440,18 +440,22 @@ class Region:
         If changesource flag is True, the original region is cropped, if False -
         the copy of original region is cropped and returned.
         """
-        if not start and not stop:
+        if start is None and stop is None:
             return
 
         x_values = self._data['energy']
+        if start is not None and stop is not None:
+            if (x_values.iloc[0] > x_values.iloc[-1] and start < stop) or (x_values.iloc[-0] < x_values.iloc[-1] and start > stop):
+                start, stop = stop, start
+
         first_index = 0
         last_index = self._data.index.values[-1]
-        if start:
+        if start is not None:
             for i in x_values.index:
                 if i > 0:
                     if (x_values[i - 1] <= start <= x_values[i]) or (x_values[i - 1] >= start >= x_values[i]):
                         first_index = i
-        if stop:
+        if stop is not None:
             for i in x_values.index:
                 if i > 0:
                     if (x_values[i - 1] <= stop <= x_values[i]) or (x_values[i - 1] >= stop >= x_values[i]):

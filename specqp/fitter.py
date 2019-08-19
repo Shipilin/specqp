@@ -11,10 +11,10 @@ class Peak:
     """Contains information about one peak fitted to a region.
     """
     peak_types = {
-        "gaussian": ["amplitude", "center", "fwhm"],
-        "lorentzian": ["amplitude", "center", "fwhm"],
-        "voigt": ["amplitude", "center", "g_fwhm", "l_fwhm"],
-        "doniach-sunjic": ["amplitude", "center", "g_fwhm", "l_fwhm"]
+        "Gauss": ["amplitude", "center", "fwhm"],
+        "Lorentz": ["amplitude", "center", "fwhm"],
+        "Pseudo Voigt": ["amplitude", "center", "g_fwhm", "l_fwhm"],
+        "Doniach-Sunjic": ["amplitude", "center", "g_fwhm", "l_fwhm"]
     }
 
     def __init__(self, x_data, y_data, popt, pcov, peak_id, peak_type):
@@ -303,7 +303,7 @@ class Fitter:
                 self._Peaks.append(Peak(self._X_data, peak_y,
                                         [popt[cnt], popt[cnt+1], popt[cnt+2]],
                                         [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
-                                        peak_id=cnt//3, peak_type="gaussian"))
+                                        peak_id=cnt//3, peak_type=Peak.peak_types.keys()[0]))
             cnt += 3
 
         self._make_fit()
@@ -351,7 +351,7 @@ class Fitter:
                 self._Peaks.append(Peak(self._X_data, peak_y,
                                         [popt[cnt], popt[cnt+1], popt[cnt+2]],
                                         [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
-                                        peak_id=cnt//3, peak_type="lorentzian"))
+                                        peak_id=cnt//3, peak_type=Peak.peak_types.keys()[1]))
             cnt += 3
         self._make_fit()
 
@@ -400,7 +400,7 @@ class Fitter:
                 self._Peaks.append(Peak(self._X_data, peak_y,
                                         [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
                                         [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
-                                        peak_id=cnt//4, peak_type="voigt"))
+                                        peak_id=cnt//4, peak_type=Peak.peak_types.keys()[2]))
             cnt += 4
         self._make_fit()
 
@@ -448,7 +448,7 @@ class Fitter:
                 self._Peaks.append(Peak(self._X_data, peak_y,
                                         [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
                                         [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
-                                        peak_id=cnt//4, peak_type="doniach-sunjic"))
+                                        peak_id=cnt//4, peak_type=Peak.peak_types.keys()[3]))
             cnt += 4
         self._make_fit()
 

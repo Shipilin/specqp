@@ -21,6 +21,7 @@ from specqp import service
 from specqp import datahandler
 from specqp import plotter
 from specqp import helpers
+from specqp import fitter
 from specqp.tools import Ruler
 
 # Default font for the GUI
@@ -124,19 +125,20 @@ class FileViewerWindow(ttk.Frame):
 
 
 class BrowserTreeView(ttk.Frame):
-    def __init__(self, parent, default_items=None, *args, **kwargs):
+    def __init__(self, parent, default_items=None, label='main', *args, **kwargs):
         """Creates a check list with loaded file names as sections and corresponding regions IDs as checkable items
         :param default_items: dictionary {"file_name1": ("ID1, ID2,..."), "file_name2": ("ID1", "ID2", ...)}
         :param args:
         :param kwargs:
         """
         super().__init__(parent, *args, **kwargs)
-        self.winfo_toplevel().gui_widgets["BrowserTreeView"] = self
+        if label and label == 'main':
+            self.winfo_toplevel().gui_widgets["BrowserTreeView"] = self
 
-        self.check_all_frame = ttk.Frame(self)
-        self.check_all_frame.pack(side=tk.TOP, fill=tk.X, expand=False)
+            self.check_all_frame = ttk.Frame(self)
+            self.check_all_frame.pack(side=tk.TOP, fill=tk.X, expand=False)
 
-        self.scrollable_canvas = tk.Canvas(self)
+        self.scrollable_canvas = tk.Canvas(self, bg=BG, highlightthickness=0)
         self.scrollable_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.vsb = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.scrollable_canvas.yview)
         self.vsb.pack(side=tk.RIGHT, fill=tk.Y)
@@ -154,14 +156,15 @@ class BrowserTreeView(ttk.Frame):
         self.vsb.bind('<Enter>', self._bound_to_mousewheel)
         self.vsb.bind('<Leave>', self._unbound_to_mousewheel)
 
-        # When the check list items will be created, the "Check all" item should appear and rule them all.
-        self.check_all_item = None
-        self.check_all_box = None
-        self.check_list_items = []
-        self.check_boxes = []
-        if default_items:
-            for key, val in default_items.items():
-                self.add_items_to_check_list(key, val)
+        if label and label == 'main':
+            # When the check list items will be created, the "Check all" item should appear and rule them all.
+            self.check_all_item = None
+            self.check_all_box = None
+            self.check_list_items = []
+            self.check_boxes = []
+            if default_items:
+                for key, val in default_items.items():
+                    self.add_items_to_check_list(key, val)
 
     def _bound_to_mousewheel(self, event):
         self.scrollable_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
@@ -210,7 +213,7 @@ class BrowserTreeView(ttk.Frame):
             if items:
                 self.check_all_item = tk.StringVar(value="Check all")
                 self.check_all_box = tk.Checkbutton(self.check_all_frame, var=self.check_all_item, text="Check all",
-                                                    onvalue="Check all", offvalue="",
+                                                    onvalue="Check all", offvalue="", background=BG,
                                                     anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
                                                     command=self._toggle_all
                                                     )
@@ -218,13 +221,13 @@ class BrowserTreeView(ttk.Frame):
                 sep = ttk.Separator(self.check_all_frame, orient=tk.HORIZONTAL)
                 sep.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
 
-        file_name_label = tk.Label(self.treeview, text=section_name, anchor=tk.W)
+        file_name_label = ttk.Label(self.treeview, text=section_name, anchor=tk.W)
         file_name_label.pack(side=tk.TOP, fill=tk.X)
         for item in items:
             var = tk.StringVar(value=item)
             self.check_list_items.append(var)
             cb = tk.Checkbutton(self.treeview, var=var, text=item,
-                                onvalue=item, offvalue="",
+                                onvalue=item, offvalue="", background=BG,
                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
                                 command=self._change_check_all
                                 )
@@ -264,7 +267,7 @@ class BrowserPanel(ttk.Frame):
         self.app_quit_button.pack(side=tk.TOP, fill=tk.X)
         self.buttons_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
         # Files tree panel
-        self.spectra_tree_panel = BrowserTreeView(self, borderwidth=1, relief="groove")
+        self.spectra_tree_panel = BrowserTreeView(self, label='main', borderwidth=1, relief="groove")
         self.spectra_tree_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
 
     def _ask_load_scienta_file(self):
@@ -429,23 +432,33 @@ class CorrectionsPanel(ttk.Frame):
         self.fit.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.select_fit_type = tk.StringVar()
         self.select_fit_type.set("Pseudo Voigt")
-        options = ['Pseudo Voigt', 'Gauss', 'Lorentz', 'Error Func']
+        options = list(fitter.Peak.peak_types.keys()) + ['Error Func']
         self.opmenu_fit_type = ttk.OptionMenu(self.fit_subframe, self.select_fit_type, self.select_fit_type.get(), *options)
         self.opmenu_fit_type.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         self.fit_subframe.pack(side=tk.TOP, fill=tk.X, expand=False)
 
     def _fit(self):
         fit_type = self.select_fit_type.get()
-        if fit_type == 'Error Func':
-            regions_in_work = self._get_regions_in_work(fermi=True)
-        else:
-            regions_in_work = self._get_regions_in_work(fermi=False)
+        regions_in_work = self._get_regions_in_work()
         for region in regions_in_work:
             if fit_type == 'Error Func':
                 region.set_fermi_flag()
-            fit_window = FitWindow(self.winfo_toplevel(), region, fit_type)
+                # Special case: we didn't know that the region was Fermi before and might have corrected by the specified
+                # energy shift. Here we can correct it back. Ambiguous result otherwise
+                if region.is_energy_corrected():
+                    region._flags["energy_shift_corrected"] = False
+                    try:
+                        region.correct_energy_shift(float(self.energy_shift.get()))
+                    except ValueError:
+                        gui_logger.warning("Check 'Energy Shift' parameter value. Must be a number.")
+                        return
+                    region._flags["energy_shift_corrected"] = False
+            fit_window = FitWindow(self.winfo_toplevel(), region, fit_type, label='fit')
+            self.winfo_toplevel().update()  # Update to be able to request fit_window parameters
+            fit_window.wm_minsize(width=fit_window.winfo_width(), height=fit_window.winfo_height())
+            self.winfo_toplevel().fit_windows.append(fit_window)
 
-    def _get_regions_in_work(self, fermi=False):
+    def _get_regions_in_work(self):
         reg_ids = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
         # We will work with copies of regions, so that the temporary changes are not stored
         regions_in_work = copy.deepcopy(self.winfo_toplevel().loaded_regions.get_by_id(reg_ids))
@@ -456,13 +469,13 @@ class CorrectionsPanel(ttk.Frame):
                 try:
                     pe = float(pe)
                 except ValueError:
-                    gui_logger.warning("Check 'Photon Energy' value.")
+                    gui_logger.warning("Check 'Photon Energy' value. Must be a number.")
                     return
             if es:
                 try:
                     es = float(es)
                 except ValueError:
-                    gui_logger.warning("Check 'Energy Shift' value.")
+                    gui_logger.warning("Check 'Energy Shift' value. Must be a number.")
                     return
             if self.plot_use_settings_var.get():
                 service.set_init_parameters(["PHOTON_ENERGY", "ENERGY_SHIFT"], [pe, es])
@@ -471,7 +484,7 @@ class CorrectionsPanel(ttk.Frame):
                     #     region.set_fermi_flag()
                     if pe:
                         region.set_excitation_energy(pe)
-                    if es and not region.get_flags()["fermi_flag"] and not fermi:
+                    if es and not region.get_flags()["fermi_flag"]:
                         region.correct_energy_shift(es)
                         region.add_correction("Energy shift corrected")
                     if self.plot_binding_var.get():
@@ -480,6 +493,14 @@ class CorrectionsPanel(ttk.Frame):
                         region.normalize_by_sweeps()
                         region.make_final_column("sweepsNormalized", overwrite=True)
                         region.add_correction("Normalized by sweeps")
+                    if self.do_crop_var.get():
+                        crop_left, crop_right = self.crop_left_var.get(), self.crop_right_var.get()
+                        if crop_left and crop_right:
+                            try:
+                                region.crop_region(start=float(crop_left), stop=float(crop_right), changesource=True)
+                                service.set_init_parameters("CROP", ';'.join([crop_left, crop_right]))
+                            except ValueError:
+                                gui_logger.warning("Check Crop values. Must be numbers.")
                     if self.subtract_const_var.get():
                         e = region.get_data('energy')
                         helpers.shift_by_background(region, [e[-10], e[-1]])
@@ -529,7 +550,10 @@ class CorrectionsPanel(ttk.Frame):
         # Binding energy axis
         self.plot_binding_label = ttk.Label(self.plotting_left_column, text="Binding energy axis", anchor=tk.W)
         self.plot_binding_label.pack(side=tk.TOP, fill=tk.X, expand=True)
-        self.plot_binding_var = tk.StringVar(value="True")
+        if self.photon_energy.get():
+            self.plot_binding_var = tk.StringVar(value="True")
+        else:
+            self.plot_binding_var = tk.StringVar(value="")
         self.plot_binding_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_binding_var,
                                                onvalue="True", offvalue="", background=BG,
                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
@@ -566,8 +590,8 @@ class CorrectionsPanel(ttk.Frame):
                                              )
         self.plot_title_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         #Pack plotting setting
-        self.plotting_left_column.pack(side=tk.LEFT, fill=tk.X, expand=False)
-        self.plotting_right_column.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.plotting_left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        self.plotting_right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.plotting_two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
         # Choose color style for plotting
         self.select_colormap = tk.StringVar()
@@ -592,14 +616,14 @@ class CorrectionsPanel(ttk.Frame):
         self.pe_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         # Read photon energy from init file if available
         self.photon_energy = tk.StringVar(self, value=service.get_service_parameter("PHOTON_ENERGY"))
-        self.pe_entry = ttk.Entry(self.settings_right_column, textvariable=self.photon_energy)
-        self.pe_entry.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.pe_entry = ttk.Entry(self.settings_right_column, textvariable=self.photon_energy, width=8)
+        self.pe_entry.pack(side=tk.TOP, anchor=tk.W, expand=False)
         # Energy shift
         self.eshift_label = ttk.Label(self.settings_left_column, text="Energy Shift (eV)", anchor=tk.W)
         self.eshift_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         self.energy_shift = tk.StringVar(self, value=service.get_service_parameter("ENERGY_SHIFT"))
-        self.eshift_entry = ttk.Entry(self.settings_right_column, textvariable=self.energy_shift)
-        self.eshift_entry.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.eshift_entry = ttk.Entry(self.settings_right_column, textvariable=self.energy_shift, width=8)
+        self.eshift_entry.pack(side=tk.TOP, anchor=tk.W, expand=False)
         # Normalize by sweeps
         self.normalize_sweeps_label = ttk.Label(self.settings_left_column, text="Normalize by sweeps", anchor=tk.W)
         self.normalize_sweeps_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -608,7 +632,25 @@ class CorrectionsPanel(ttk.Frame):
                                                    onvalue="True", offvalue="", background=BG,
                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                    )
-        self.normalize_sweeps_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.normalize_sweeps_box.pack(side=tk.TOP, anchor=tk.W)
+        # Crop
+        self.crop_label = ttk.Label(self.settings_left_column, text="Crop from:to (eV)", anchor=tk.W)
+        self.crop_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        crop_entries_frame = ttk.Frame(self.settings_right_column)
+        self.do_crop_var = tk.StringVar(value="")
+        self.do_crop_box = tk.Checkbutton(crop_entries_frame, var=self.do_crop_var,
+                                          onvalue="True", offvalue="", background=BG,
+                                          anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                          command=self._read_crop_values
+                                          )
+        self.do_crop_box.pack(side=tk.LEFT)
+        self.crop_left_var = tk.StringVar(self, value="")
+        self.crop_right_var = tk.StringVar(self, value="")
+        self.crop_left_entry = ttk.Entry(crop_entries_frame, textvariable=self.crop_left_var, width=8)
+        self.crop_left_entry.pack(side=tk.LEFT, expand=False)
+        self.crop_right_entry = ttk.Entry(crop_entries_frame, textvariable=self.crop_right_var, width=8)
+        self.crop_right_entry.pack(side=tk.RIGHT, expand=False)
+        crop_entries_frame.pack(side=tk.TOP, expand=False)
         # Subtract linear background
         self.subtract_const_label = ttk.Label(self.settings_left_column, text="Subtract constant bg", anchor=tk.W)
         self.subtract_const_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -617,19 +659,19 @@ class CorrectionsPanel(ttk.Frame):
                                                  onvalue="True", offvalue="", background=BG,
                                                  anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                  )
-        self.subtract_const_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.subtract_const_box.pack(side=tk.TOP, anchor=tk.W)
         # Subtract Shirley background
         self.subtract_shirley_label = ttk.Label(self.settings_left_column, text="Subtract Shirley bg", anchor=tk.W)
         self.subtract_shirley_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         self.subtract_shirley_var = tk.StringVar(value="")
         self.subtract_shirley_box = tk.Checkbutton(self.settings_right_column, var=self.subtract_shirley_var,
-                                                 onvalue="True", offvalue="", background=BG,
-                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0
-                                                 )
-        self.subtract_shirley_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+                                                   onvalue="True", offvalue="", background=BG,
+                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                   )
+        self.subtract_shirley_box.pack(side=tk.TOP, anchor=tk.W)
         # Pack two-columns section
-        self.settings_left_column.pack(side=tk.LEFT, fill=tk.X, expand=False)
-        self.settings_right_column.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.settings_left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.settings_right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.settings_two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
 
     def _plot(self):
@@ -654,6 +696,14 @@ class CorrectionsPanel(ttk.Frame):
                                                                         legend=bool(self.plot_legend_var.get()),
                                                                         title=bool(self.plot_title_var.get()),
                                                                         y_offset=offset, colormap=cmap)
+
+    def _read_crop_values(self):
+        if self.crop_left_var.get() or self.crop_right_var.get():
+            return
+        if service.get_service_parameter("CROP"):
+            crop_vals = service.get_service_parameter("CROP").split(';')
+            self.crop_left_var.set(crop_vals[0])
+            self.crop_right_var.set(crop_vals[1])
 
     def _save(self):
         if self.regions_in_work:
@@ -703,32 +753,54 @@ class CorrectionsPanel(ttk.Frame):
 
     def _toggle_settings(self):
         if self.plot_use_settings_var.get():
-            self.subtract_const_var.set("True")
-            self.subtract_const_box.config(state=tk.NORMAL)
-            self.subtract_shirley_var.set("")
-            self.subtract_shirley_box.config(state=tk.NORMAL)
-            self.normalize_sweeps_var.set("True")
-            self.normalize_sweeps_box.config(state=tk.NORMAL)
-            self.plot_binding_var.set("True")
-            self.plot_binding_box.config(state=tk.NORMAL)
             self.photon_energy.set(service.get_service_parameter("PHOTON_ENERGY"))
-            self.pe_entry.config(state='enabled')
             self.energy_shift.set(service.get_service_parameter("ENERGY_SHIFT"))
-            self.eshift_entry.config(state='enabled')
-
-        else:
-            self.subtract_const_var.set("")
-            self.subtract_const_box.config(state=tk.DISABLED)
+            self.normalize_sweeps_var.set("True")
+            self.subtract_const_var.set("True")
+            self.plot_binding_var.set("True")
             self.subtract_shirley_var.set("")
-            self.subtract_shirley_box.config(state=tk.DISABLED)
-            self.normalize_sweeps_var.set("")
-            self.normalize_sweeps_box.config(state=tk.DISABLED)
-            self.plot_binding_var.set("")
-            self.plot_binding_box.config(state=tk.DISABLED)
-            self.photon_energy.set("")
-            self.pe_entry.config(state='disabled')
-            self.energy_shift.set("")
-            self.eshift_entry.config(state='disabled')
+            self.do_crop_var.set("")
+            try:
+                crop_vals = service.get_service_parameter("CROP").split(';')
+            except (IndexError, IOError):
+                crop_vals = ['','']
+            self.crop_left_var.set(crop_vals[0])
+            self.crop_right_var.set(crop_vals[1])
+            for obj in (self.subtract_const_box,
+                        self.subtract_shirley_box,
+                        self.do_crop_box,
+                        self.crop_left_entry,
+                        self.crop_right_entry,
+                        self.normalize_sweeps_box,
+                        self.plot_binding_box,
+                        self.pe_entry,
+                        self.eshift_entry):
+                obj.config(state=tk.NORMAL)
+        else:
+            # Setting vars to ""
+            for obj in (self.subtract_const_var,
+                        self.subtract_shirley_var,
+                        self.do_crop_var,
+                        self.crop_left_var,
+                        self.crop_right_var,
+                        self.normalize_sweeps_var,
+                        self.plot_binding_var,
+                        self.photon_energy,
+                        self.energy_shift
+                        ):
+                obj.set("")
+            # Setting boxes and entries to DISABLED
+            for obj in (self.subtract_const_box,
+                        self.subtract_shirley_box,
+                        self.do_crop_box,
+                        self.crop_left_entry,
+                        self.crop_right_entry,
+                        self.normalize_sweeps_box,
+                        self.plot_binding_box,
+                        self.pe_entry,
+                        self.eshift_entry
+                        ):
+                obj.config(state=tk.DISABLED)
 
 
 class PeakLine(ttk.Frame):
@@ -736,39 +808,163 @@ class PeakLine(ttk.Frame):
         super().__init__(parent, *args, **kwargs)
         self._id = id_
         self.fit_type = fit_type
-        self.remove_peak_button = ttk.Button(self, text='-', command=lambda: remove_func(self._id), width=1)
+        self.use_peak_vars = []
+        self.parameter_vals = {}
+        self.parameter_bounds = {}
+        self.parameter_fix_vals = {}
+        self.parameter_fix_boxes = {}
+
+        title_frame = ttk.Frame(self)
+        self.remove_peak_button = ttk.Button(title_frame, text='-', command=lambda: remove_func(self._id), width=1)
         self.remove_peak_button.pack(side=tk.RIGHT, expand=False)
-        self.add_peak_button = ttk.Button(self, text='+', command=lambda: add_func(), width=1)
+        self.add_peak_button = ttk.Button(title_frame, text='+', command=lambda: add_func(), width=1)
         self.add_peak_button.pack(side=tk.RIGHT, expand=False)
-        self.id_var = tk.StringVar(value=f"{fit_type} {id_}:")
-        self.peak_label = ttk.Label(self, textvariable=self.id_var, anchor=tk.W)
-        self.peak_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.parameters = tk.StringVar(self, value="")
-        self.parameters_entry = ttk.Entry(self, textvariable=self.parameters)
-        self.parameters_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.id_var = tk.StringVar(value=f"Peak {id_}:")
+        self.use_peak_vars.append(tk.StringVar(value="True"))
+        use_peak_box = tk.Checkbutton(title_frame, var=self.use_peak_vars[-1],
+                                      onvalue="True", offvalue="", background=BG,
+                                      anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                      )
+        use_peak_box.pack(side=tk.LEFT, anchor=tk.W)
+        self.peak_label = ttk.Label(title_frame, textvariable=self.id_var, anchor=tk.W)
+        self.peak_label.pack(side=tk.LEFT, expand=False)
+        title_frame.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self._add_parameter_fields(fit_type)
+
+    def _add_parameter_fields(self, fittype):
+        two_columns = ttk.Frame(self)
+        left_column = ttk.Frame(two_columns)
+        right_column = ttk.Frame(two_columns)
+        # Loop goes over the list of parameters of the current fit type
+        for par_name in fitter.Peak.peak_types[fittype]:
+            name_label = ttk.Label(left_column, text=f"{par_name} / bounds", anchor=tk.E)
+            name_label.pack(side=tk.TOP, expand=True)
+            parameter_entry_frame = ttk.Frame(right_column)
+            self.parameter_vals[par_name] = tk.StringVar(self, value="")
+            parameter_entry = ttk.Entry(parameter_entry_frame, textvariable=self.parameter_vals[par_name], width=8)
+            parameter_entry.pack(side=tk.LEFT, expand=False)
+            slash_label = ttk.Label(parameter_entry_frame, text="/")
+            slash_label.pack(side=tk.LEFT, expand=False)
+            self.parameter_bounds[par_name] = tk.StringVar(self, value="")
+            parameter_bounds_entry = ttk.Entry(parameter_entry_frame, textvariable=self.parameter_bounds[par_name], width=8)
+            parameter_bounds_entry.pack(side=tk.LEFT, expand=False)
+            fix_label = ttk.Label(parameter_entry_frame, text="fix", anchor=tk.W)
+            fix_label.pack(side=tk.LEFT, expand=False)
+            self.parameter_fix_vals[par_name] = tk.StringVar(value="")
+            self.parameter_fix_boxes[par_name] = tk.Checkbutton(parameter_entry_frame,
+                                                                var=self.parameter_fix_vals[par_name],
+                                                                onvalue="True", offvalue="", background=BG,
+                                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                                )
+            self.parameter_fix_boxes[par_name].pack(side=tk.LEFT, anchor=tk.W, expand=False)
+            parameter_entry_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
 
     def get_id(self):
         return self._id
 
+    def get_parameter(self, par_name: str, string_output=False):
+        """Returns parameter str value and bounds for the specified parameter
+        :param par_name: str
+        :param string_output: True if type string output required
+        :return: (float, list of floats) or (str, str) if string_output=True
+        """
+        if par_name in self.parameter_vals.keys():
+            if string_output:
+                return self.parameter_vals[par_name].get(), self.parameter_bounds[par_name].get()
+            else:
+                try:
+                    if self.parameter_vals[par_name].get():
+                        val = round(float(self.parameter_vals[par_name].get()), int(service.service_vars['ROUND_PRECISION']))
+                    else:
+                        val = None
+                    if self.parameter_bounds.get():
+                        bounds = [round(float(s.strip()), int(service.service_vars['ROUND_PRECISION']))
+                                  for s in self.parameter_bounds.get().split(';')]
+                    else:
+                        bounds = [None, None]
+                    return val, bounds
+                except ValueError:
+                    gui_logger.warning(f"Check parameter entries for Peak {self._id}. Must be numbers.")
+                    return None
+
+    def get_all_parameters(self, string_output=False):
+        """Returns parameter values and bounds for all parameters
+        :return: (list of str,
+                  list of floats,
+                  list of lists (of two floats))
+                  or
+                  (list of str,
+                  list of str,
+                  list of str) if string_output == True
+        """
+        if string_output:
+            vals = [self.parameter_vals[key].get() for key in self.parameter_vals.keys()]
+            bounds = [self.parameter_bounds[key].get() for key in self.parameter_vals.keys()]
+            return self.parameter_vals.keys(), vals, bounds
+        else:
+            vals, bounds = [], []
+            for key in self.parameter_vals.keys():
+                par = self.get_parameter(key, string_output=False)
+                if par is None:
+                    return
+                vals.append(par[0])
+                bounds.append(par[1])
+        return self.parameter_vals.keys(), vals, bounds
+
     def set_id(self, new_id):
         self._id = new_id
-        self.id_var.set(f"{self.fit_type} {new_id}:")
+        self.id_var.set(f"Peak {new_id}:")
+
+    def set_parameter(self, par_name, par_value, par_bounds):
+        """Sets parameter value and bounds for the specified parameter
+        :param par_name: str
+        :param par_value: float or str representing a float
+        :param par_bounds: list of two floats or string representing two floats separated with ';'
+        """
+        if type(par_value) == str and type(par_bounds) == str:
+            if par_name in self.parameter_vals.keys():
+                self.parameter_vals[par_name].set(par_value)
+                self.parameter_bounds[par_name].set(par_bounds)
+                return True
+        else:
+            assert len(par_bounds) == 2
+            if par_name in self.parameter_vals.keys():
+                self.parameter_vals[par_name].set(round(par_value, int(service.service_vars['ROUND_PRECISION'])))
+                self.parameter_bounds[par_name].set(f"{round(par_bounds[0], int(service.service_vars['ROUND_PRECISION']))};"
+                                                    f"{round(par_bounds[1], int(service.service_vars['ROUND_PRECISION']))}")
+                return True
+
+    def set_all_parameters(self, par_names: list, par_values: list, par_bounds: list):
+        """Sets parameter values and bounds for all parameters
+        :param par_names: list of str
+        :param par_values: list of str or list of floats
+        :param par_bounds: list of str or list of lists (of two floats)
+        """
+        assert len(par_values) == len(par_bounds) == len(par_names)
+        for i, pn in enumerate(par_names):
+            self.set_parameter(pn, par_values[i], par_bounds[i])
 
 
 class FitWindow(tk.Toplevel):
-    def __init__(self, parent, region, fit_type, *args, **kwargs):
+    def __init__(self, parent, region, fit_type, label='fit', *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.wm_title(f"Fitting {fit_type} to {region.get_id()}")
         self.fittype = fit_type
+        self.label = label
         self.region = region
         self.peak_lines = {}
         self.plot_panel = PlotPanel(self, label=None, borderwidth=1, relief="groove")
         self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.plot_panel.plot_regions(region)
-        self.fit_panel = ttk.Frame(self, borderwidth=1, relief="groove")
         if fit_type == 'Error Func':
+            self.fit_panel = ttk.Frame(self, borderwidth=1, relief="groove")
             self._add_error_func_section()
         else:
+            self.fit_panel = BrowserTreeView(self, label=None, borderwidth=1, relief="groove")
+            self.fit_tree = self.fit_panel.treeview
             self._add_peak_line()
         self.fit_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
 
@@ -778,15 +974,16 @@ class FitWindow(tk.Toplevel):
                 label = ttk.Label(parent_obj.input_left_column, text=par_name, anchor=tk.E)
                 label.pack(side=tk.TOP, fill=tk.X, expand=True)
                 parent_obj.error_func_pars_input.append(tk.StringVar(parent_obj, value=value))
-                entry = ttk.Entry(parent_obj.input_right_column, textvariable=parent_obj.error_func_pars_input[-1])
+                entry = ttk.Entry(parent_obj.input_right_column,
+                                  textvariable=parent_obj.error_func_pars_input[-1],
+                                  width=8)
             else:
                 label = ttk.Label(parent_obj.output_left_column, text=par_name, anchor=tk.E)
                 label.pack(side=tk.TOP, fill=tk.X, expand=True)
                 parent_obj.error_func_pars_output.append(tk.StringVar(parent_obj, value=value))
-                entry = ttk.Entry(parent_obj.output_right_column,
-                                  textvariable=parent_obj.error_func_pars_output[-1],
-                                  state='disabled')
-            entry.pack(side=tk.TOP, fill=tk.X, expand=True)
+                entry = ttk.Label(parent_obj.output_right_column,
+                                  textvariable=parent_obj.error_func_pars_output[-1])
+            entry.pack(side=tk.TOP, fill=tk.X, expand=False)
 
         self.error_func_pars_input = []
         self.error_func_pars_output = []
@@ -802,15 +999,18 @@ class FitWindow(tk.Toplevel):
         self.input_left_column = ttk.Frame(self.input_two_columns)
         self.input_right_column = ttk.Frame(self.input_two_columns)
         # Read default parameters from init.file
-        par_str = service.get_service_parameter("FERMI_FIT_PARAMETERS")
-        par_vals = [float(v) for v in par_str.split(';')]
+        try:
+            par_str = service.get_service_parameter("FERMI_FIT_PARAMETERS")
+            par_vals = [float(v) for v in par_str.split(';')]
+        except (IndexError, TypeError, ValueError, IOError):
+            par_vals = [1.00, 0.00, 0.10, 0.00]
         if len(par_vals) != 4:
             par_vals = [1.00, 0.00, 0.10, 0.00]
         for i, par_name in enumerate(("top", "center", "width", "bottom")):
             _make_parameter_line(self, par_name, par_vals[i])
         # Pack two-columns section
-        self.input_left_column.pack(side=tk.LEFT, fill=tk.X, expand=False)
-        self.input_right_column.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.input_left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        self.input_right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.input_two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
         blank_label = ttk.Label(self.fit_panel, text="", anchor=tk.W)
         blank_label.pack(side=tk.TOP, fill=tk.X)
@@ -837,32 +1037,42 @@ class FitWindow(tk.Toplevel):
 
     def _add_peak_line(self):
         peak_num = len(self.peak_lines.keys())
-        self.peak_lines[peak_num] = PeakLine(self.fit_panel, self.fittype, self._remove_peak_line,
+        self.peak_lines[peak_num] = PeakLine(self.fit_tree, self.fittype, self._remove_peak_line,
                                              self._add_peak_line, peak_num)
         self.peak_lines[peak_num].pack(side=tk.TOP, fill=tk.X, expand=False)
         self._redraw_add_remove_buttons()
+        if peak_num > 0:
+            self.peak_lines[peak_num].set_all_parameters(*self.peak_lines[peak_num - 1].get_all_parameters(string_output=True))
+            for par_name in fitter.Peak.peak_types[self.fittype]:
+                if self.peak_lines[peak_num - 1].parameter_fix_vals[par_name].get():
+                    self.peak_lines[peak_num].parameter_fix_vals[par_name].set("True")
+
 
     def _do_fit_error_func(self):
         fit_parameters = [float(par_str_var.get()) for par_str_var in self.error_func_pars_input]
         fit_res = helpers.fit_fermi_edge(self.region, fit_parameters)
         fit_res_str = ""
         for i, fr in enumerate(fit_res[0]):
-            self.error_func_pars_output[i].set(f"{round(fr, 2)} +/- {round(fit_res[1][i], 2)}")
+            self.error_func_pars_output[i].set(f"{round(fr, int(service.service_vars['ROUND_PRECISION']))} +/- "
+                                               f"{round(fit_res[1][i], int(service.service_vars['ROUND_PRECISION']))}")
             if i == 0:
-                fit_res_str += str(round(fr, 2))
+                fit_res_str += str(round(fr, int(service.service_vars['ROUND_PRECISION'])))
             else:
-                fit_res_str = ';'.join([fit_res_str, str(round(fr, 2))])
+                fit_res_str = ';'.join([fit_res_str, str(round(fr, int(service.service_vars['ROUND_PRECISION'])))])
         service.set_init_parameters("FERMI_FIT_PARAMETERS", fit_res_str)
         shift = [fit_res[0][1], fit_res[1][1]]  # Energy shifts for Fermi edge
-        self.shift.set(f"Energy shift: {round(shift[0], 2)} +/- {round(shift[1], 2)}")
+        self.shift.set(f"Energy shift: {round(shift[0], int(service.service_vars['ROUND_PRECISION']))} +/- "
+                       f"{round(shift[1], int(service.service_vars['ROUND_PRECISION']))}")
         # a2 parameter of the complementary error function is related to the
         # sigma parameter of the gaussian that can be constructed to describe
         # the widening of ideal step function.
         # FWHM_gauss = 2*sqrt(ln2)*a2
         # FWHM_gauss = 2*sqrt(2ln2)*sigma
         gauss_fwhm = [2 * (np.log(2.0)) ** (.5) * np.absolute(fit_res[0][2]), fit_res[1][2]]
-        self.gauss_fwhm.set(f"Gauss contribution: {round(gauss_fwhm[0], 2)} +/- {round(gauss_fwhm[1], 2)}")
-        self._plot_error_func_fit(f"fit: {round(shift[0], 2)} +/- {round(shift[1], 2)}")
+        self.gauss_fwhm.set(f"Gauss contribution: {round(gauss_fwhm[0], int(service.service_vars['ROUND_PRECISION']))} +/- "
+                            f"{round(gauss_fwhm[1], int(service.service_vars['ROUND_PRECISION']))}")
+        self._plot_error_func_fit(f"fit: {round(shift[0], int(service.service_vars['ROUND_PRECISION']))} +/- "
+                                  f"{round(shift[1], int(service.service_vars['ROUND_PRECISION']))}")
 
     def _get_peak_lines_ids(self):
         return [k for k, v in self.peak_lines.items() if v]
@@ -902,6 +1112,7 @@ class FitWindow(tk.Toplevel):
                     self.peak_lines[line_id].add_peak_button.config(state=tk.DISABLED)
                 self.peak_lines[line_id].remove_peak_button.config(state=tk.NORMAL)
 
+
 class MainWindow(ttk.PanedWindow):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -922,6 +1133,8 @@ class Root(tk.Tk):
         self._configure_style()
         # Dictionary of all widgets of the main window
         self.gui_widgets = {}
+        # List of all toplevel windows with fits of the app (MainWindow is not included)
+        self.fit_windows = []
         # Attribute keeping track of all regions loaded in the current GUI session
         self.loaded_regions = datahandler.RegionsCollection()
 
@@ -937,8 +1150,10 @@ class Root(tk.Tk):
     def _configure_style(self):
         # Setting GUI color style
         self.style = ttk.Style()
-        self.style.configure('default.TEntry', bg=BG, fg=BG, disabledforeground=BG, disabledbackground=BG)
-        self.style.configure('default.TCheckbutton', background=BG)
+        self.style.configure('.', font=LARGE_FONT, bg=BG, disabledbackground=BG, disabledforeground=BG)
+        # self.style.configure('.TEntry', bg=BG, fg=BG, disabledforeground=BG, disabledbackground=BG)
+        # self.style.configure('default.TCheckbutton', background=BG)
+        # self.style.configure('default.TFrame', background=BG)
 
     # TODO: write the functionality for the menu, add new menus if needed.
     def generate_main_menu(self):
@@ -948,7 +1163,7 @@ class Root(tk.Tk):
         self.file_menu.add_command(label="Load SCIENTA Files", command=self.load_file)
         self.file_menu.add_command(label="Load SPECS Files", command=self.load_specs_file)
         self.file_menu.add_command(label="Open pressure calibration", command=self.load_pressure_calibration)
-        self.file_menu.add_command(label="Open File as Text", command=self.open_file_as_text)
+        self.file_menu.add_command(label="Open File as Text", command=self._open_file_as_text)
 
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Quit", command=self.quit)
@@ -996,7 +1211,7 @@ class Root(tk.Tk):
         else:
             gui_logger.warning("Couldn't get calibration data files from askopenfiles dialog.")
 
-    def open_file_as_text(self):
+    def _open_file_as_text(self):
         """Open the read-only view of a text file in a Toplevel widget
         """
         file_path = filedialog.askopenfilename(parent=self, initialdir=service.get_service_parameter("DEFAULT_DATA_FOLDER"))
@@ -1009,7 +1224,7 @@ class Root(tk.Tk):
             text_panel = FileViewerWindow(text_view, file_path)
             text_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         else:
-            gui_logger.warning(f"Couldn't get the file path from the open_file_as_text dialog in Root class")
+            gui_logger.warning(f"Couldn't get the file path from the _open_file_as_text dialog in Root class")
 
     def load_specs_file(self):
         self.load_file(file_type=datahandler.DATA_FILE_TYPES[1])
