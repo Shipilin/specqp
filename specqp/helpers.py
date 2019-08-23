@@ -5,8 +5,6 @@ import logging
 import scipy as sp
 import numpy as np
 from scipy.optimize import curve_fit
-# from specqp.fitter import Peak
-# from matplotlib import pyplot as plt
 
 
 helpers_logger = logging.getLogger("specqp.helpers")  # Creating child logger

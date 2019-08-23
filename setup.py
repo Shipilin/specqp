@@ -10,5 +10,8 @@ setup(name='SpecQP',
       packages=find_packages(),
       include_package_data=True,
       unit_test='pytest',
-      install_requires=['numpy', 'scipy', 'pandas', 'matplotlib']
+      install_requires=['numpy', 'scipy', 'pandas', 'matplotlib'],
+      classifiers=["Programming Language :: Python :: 3",
+                   "License :: OSI Approved :: MIT License",
+                   "Operating System :: Mac OSX"]
       )

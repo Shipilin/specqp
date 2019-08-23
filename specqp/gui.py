@@ -25,7 +25,6 @@ from specqp import datahandler
 from specqp import plotter
 from specqp import helpers
 from specqp import fitter
-from specqp.tools import Ruler
 
 # Default font for the GUI
 LARGE_FONT = ("Verdana", "12")
