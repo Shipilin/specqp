@@ -340,7 +340,7 @@ class PlotPanel(ttk.Frame):
         self.canvas = FigureCanvasTkAgg(self.figure, master=self)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        self.toolbar = CustomToolbar(self.canvas, self)  # NavigationToolbar2Tk(self.canvas, self)
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self) #CustomToolbar(self.canvas, self)
         self.toolbar.update()
         self.toolbar.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
         self.canvas.mpl_connect("key_press_event", self._on_key_press)
