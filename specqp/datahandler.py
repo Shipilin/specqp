@@ -624,21 +624,26 @@ class Region:
         """
         Normalizes 'column' column by sweeps and stores the result in the new column 'sweepsNormalized'.
         For add_dimension regions normalizes all columns 'columnN' and creates new columns 'sweepsNormalizedN'
+        NOTE: The routine also takes into account the dwell time per point
         :return:
         """
         # If not yet normalized by sweeps
         if not self._flags[self.region_flags[3]]:
             if self._info and (Region.info_entries[2] in self._info):
                 if not self._flags[self.region_flags[4]]:
-                    self._data['sweepsNormalized'] = self._data[column] / float(self._info[Region.info_entries[2]])
+                    self._data['sweepsNormalized'] = self._data[column] / (float(self._info[Region.info_entries[2]]) *
+                                                                           float(self._info[Region.info_entries[6]]))
                 else:
                     # This many sweeps in each add_dimension measurement
                     sweeps_per_set = self._info[Region.info_entries[2]]
                     for i in range(self._add_dimension_scans_number):
                         if f'{column}{i}' in self._data.columns:
-                            self._data[f'sweepsNormalized{i}'] = self._data[f'{column}{i}'] / float(sweeps_per_set)
+                            self._data[f'sweepsNormalized{i}'] = (self._data[f'{column}{i}'] /
+                                                                  (float(sweeps_per_set) *
+                                                                   float(self._info[Region.info_entries[6]])))
                     self._data['sweepsNormalized'] = (self._data[column] /
-                                                      float(int(sweeps_per_set) * self._add_dimension_scans_number))
+                                                      (float(int(sweeps_per_set) * self._add_dimension_scans_number) *
+                                                       float(self._info[Region.info_entries[6]])))
                 self._flags[self.region_flags[3]] = True
                 return True
         return False

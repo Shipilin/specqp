@@ -1,5 +1,8 @@
 import os
 import copy
+import re
+import datetime
+import pandas as pd
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
@@ -352,6 +355,31 @@ class PlotPanel(ttk.Frame):
     #     gui_logger.debug(f"{event.button} pressed on plot canvas")
     #     key_press_handler(event, self.canvas, self.toolbar)
 
+    def plot_fit(self, reg, fobj, ax=None, legend_feature=("ID",), legend_pos='best', title=False):
+        """Plots region data with fit line, fitted peaks and residuals
+        :param reg: region object
+        :param fobj: fitter object
+        :return: None
+        """
+        if not ax:
+            ax = self.figure_axes
+        ax.clear()
+        plotter.plot_region(reg, ax, color='red', scatter=True,
+                            legend_features=legend_feature, legend_pos=legend_pos, title=title)
+        for i, peak in enumerate(fobj.get_peaks()):
+            if peak:
+                peak_data = peak.get_virtual_data()
+                plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos,
+                                     label=f"{peak.get_parameters('center'):.2f}")
+
+        fitline_x, fitline_y = fobj.get_virtual_fitline()
+        ax.plot(fitline_x, fitline_y, linestyle='--', color='black', label=None)
+        # Add residuals
+        ax.plot(fobj.get_data()[0], fobj.get_residuals(), linestyle=':', alpha=1, color='black', label=None)
+        PlotPanel._stylize_axes(ax)
+        self.canvas.draw()
+        self.toolbar.update()
+
     def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False,
                      y_offset=0.0, scatter=False, label=None, color=None, title=True, font_size=12, legend=True,
                      legend_features=("ID",), legend_pos='best', add_dimension=False, colormap=None):
@@ -387,17 +415,21 @@ class PlotPanel(ttk.Frame):
                     offset += y_offset * region.get_add_dimension_counter()
             if len(regions) > 1:
                 ax.set_title(None)
-            ax.set_aspect('auto')
-            ax.set_facecolor('None')
-            ax.grid(which='both', axis='both', color='grey', linestyle=':')
-            ax.spines['bottom'].set_color('black')
-            ax.spines['left'].set_color('black')
-            ax.tick_params(axis='x', colors='black')
-            ax.tick_params(axis='y', colors='black')
-            ax.yaxis.label.set_color('black')
-            ax.xaxis.label.set_color('black')
+            PlotPanel._stylize_axes(ax)
             self.canvas.draw()
             self.toolbar.update()
+
+    @staticmethod
+    def _stylize_axes(ax):
+        ax.set_aspect('auto')
+        ax.set_facecolor('None')
+        ax.grid(which='both', axis='both', color='grey', linestyle=':')
+        ax.spines['bottom'].set_color('black')
+        ax.spines['left'].set_color('black')
+        ax.tick_params(axis='x', colors='black')
+        ax.tick_params(axis='y', colors='black')
+        ax.yaxis.label.set_color('black')
+        ax.xaxis.label.set_color('black')
 
 
 class CorrectionsPanel(ttk.Frame):
@@ -804,15 +836,15 @@ class CorrectionsPanel(ttk.Frame):
 
 
 class PeakLine(ttk.Frame):
-    def __init__(self, parent, fit_type, remove_func, add_func, id_, *args, **kwargs):
+    def __init__(self, parent, fit_type, remove_func, add_func, id_, data_max=None, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self._id = id_
         self.fit_type = fit_type
-        self.use_peak_vars = []
         self.parameter_vals = {}
         self.parameter_bounds = {}
         self.parameter_fix_vals = {}
         self.parameter_fix_boxes = {}
+        self.data_max = data_max
 
         title_frame = ttk.Frame(self)
         self.remove_peak_button = ttk.Button(title_frame, text='-', command=lambda: remove_func(self._id), width=1)
@@ -820,8 +852,8 @@ class PeakLine(ttk.Frame):
         self.add_peak_button = ttk.Button(title_frame, text='+', command=lambda: add_func(), width=1)
         self.add_peak_button.pack(side=tk.RIGHT, expand=False)
         self.id_var = tk.StringVar(value=f"Peak {id_}:")
-        self.use_peak_vars.append(tk.StringVar(value="True"))
-        use_peak_box = tk.Checkbutton(title_frame, var=self.use_peak_vars[-1],
+        self.use_peak_var = tk.StringVar(value="True")
+        use_peak_box = tk.Checkbutton(title_frame, var=self.use_peak_var,
                                       onvalue="True", offvalue="", background=BG,
                                       anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                       )
@@ -840,12 +872,24 @@ class PeakLine(ttk.Frame):
             name_label = ttk.Label(left_column, text=f"{par_name} / bounds", anchor=tk.E)
             name_label.pack(side=tk.TOP, expand=True)
             parameter_entry_frame = ttk.Frame(right_column)
-            self.parameter_vals[par_name] = tk.StringVar(self, value="")
+            if par_name == 'amplitude' and self.data_max is not None:
+                _val = str(round(self.data_max, int(service.service_vars['ROUND_PRECISION'])))
+                _val_bounds = '; '.join(['0', _val])
+            elif par_name == 'l_fwhm':
+                _val = '0.5'
+                _val_bounds = "0; 2"
+            elif par_name == 'g_fwhm':
+                _val = '0.5'
+                _val_bounds = "0; 2"
+            else:
+                _val = ''
+                _val_bounds = ';'
+            self.parameter_vals[par_name] = tk.StringVar(self, value=_val)
             parameter_entry = ttk.Entry(parameter_entry_frame, textvariable=self.parameter_vals[par_name], width=8)
             parameter_entry.pack(side=tk.LEFT, expand=False)
             slash_label = ttk.Label(parameter_entry_frame, text="/")
             slash_label.pack(side=tk.LEFT, expand=False)
-            self.parameter_bounds[par_name] = tk.StringVar(self, value="")
+            self.parameter_bounds[par_name] = tk.StringVar(self, value=_val_bounds)
             parameter_bounds_entry = ttk.Entry(parameter_entry_frame, textvariable=self.parameter_bounds[par_name], width=8)
             parameter_bounds_entry.pack(side=tk.LEFT, expand=False)
             fix_label = ttk.Label(parameter_entry_frame, text="fix", anchor=tk.W)
@@ -866,68 +910,90 @@ class PeakLine(ttk.Frame):
         return self._id
 
     def get_parameter(self, par_name: str, string_output=False):
-        """Returns parameter str value and bounds for the specified parameter
+        """Returns parameter str value, bounds and whether or not to fix it for the specified parameter
         :param par_name: str
         :param string_output: True if type string output required
-        :return: (float, list of floats) or (str, str) if string_output=True
+        :return: (float, list of floats, bool) or (str, str, str) if string_output=True
         """
         if par_name in self.parameter_vals.keys():
             if string_output:
-                return self.parameter_vals[par_name].get(), self.parameter_bounds[par_name].get()
+                return (self.parameter_vals[par_name].get(),
+                        self.parameter_bounds[par_name].get(),
+                        self.parameter_fix_vals[par_name].get())
             else:
                 try:
                     if self.parameter_vals[par_name].get():
                         val = round(float(self.parameter_vals[par_name].get()), int(service.service_vars['ROUND_PRECISION']))
                     else:
                         val = None
-                    if self.parameter_bounds.get():
+                    if self.parameter_bounds[par_name].get():
                         bounds = [round(float(s.strip()), int(service.service_vars['ROUND_PRECISION']))
-                                  for s in self.parameter_bounds.get().split(';')]
+                                  for s in re.findall("\\d+", self.parameter_bounds[par_name].get())]
+                        if len(bounds) != 2:
+                            #gui_logger.warning(f"Check parameters bounds entries for Peak {self._id}. Must be two numbers.")
+                            bounds = [None, None]
                     else:
                         bounds = [None, None]
-                    return val, bounds
+                    if self.parameter_fix_vals[par_name].get():
+                        fix_choise = True
+                    else:
+                        fix_choise = False
+                    return val, bounds, fix_choise
                 except ValueError:
                     gui_logger.warning(f"Check parameter entries for Peak {self._id}. Must be numbers.")
                     return None
 
     def get_all_parameters(self, string_output=False):
-        """Returns parameter values and bounds for all parameters
+        """Returns parameter names, values, bounds and whether to fix them for all parameters
         :return: (list of str,
                   list of floats,
-                  list of lists (of two floats))
+                  list of lists (of two floats),
+                  list of bools)
                   or
                   (list of str,
+                  list of str,
                   list of str,
                   list of str) if string_output == True
         """
         if string_output:
             vals = [self.parameter_vals[key].get() for key in self.parameter_vals.keys()]
-            bounds = [self.parameter_bounds[key].get() for key in self.parameter_vals.keys()]
-            return self.parameter_vals.keys(), vals, bounds
+            bounds = [self.parameter_bounds[key].get() for key in self.parameter_bounds.keys()]
+            fix_choises = [self.parameter_fix_vals[key].get() for key in self.parameter_fix_vals.keys()]
+            return self.parameter_vals.keys(), vals, bounds, fix_choises
         else:
-            vals, bounds = [], []
+            vals, bounds, fix_choises = [], [], []
             for key in self.parameter_vals.keys():
                 par = self.get_parameter(key, string_output=False)
                 if par is None:
-                    return
-                vals.append(par[0])
-                bounds.append(par[1])
-        return self.parameter_vals.keys(), vals, bounds
+                    vals.append(None)
+                    bounds.append([None, None])
+                    fix_choises.append(False)
+                else:
+                    vals.append(par[0])
+                    bounds.append(par[1])
+                    fix_choises.append(par[2])
+        return self.parameter_vals.keys(), vals, bounds, fix_choises
 
     def set_id(self, new_id):
         self._id = new_id
         self.id_var.set(f"Peak {new_id}:")
 
-    def set_parameter(self, par_name, par_value, par_bounds):
+    def set_parameter(self, par_name, par_value, par_bounds, par_fix):
         """Sets parameter value and bounds for the specified parameter
         :param par_name: str
         :param par_value: float or str representing a float
         :param par_bounds: list of two floats or string representing two floats separated with ';'
+        :param par_fix: bool or str representing a bool
         """
+        assert par_fix in ('True', 'False', '', True, False, 0, 1)
         if type(par_value) == str and type(par_bounds) == str:
             if par_name in self.parameter_vals.keys():
                 self.parameter_vals[par_name].set(par_value)
                 self.parameter_bounds[par_name].set(par_bounds)
+                if par_fix in ('False', '', False):
+                    self.parameter_fix_vals[par_name].set('')
+                else:
+                    self.parameter_fix_vals[par_name].set('True')
                 return True
         else:
             assert len(par_bounds) == 2
@@ -935,17 +1001,19 @@ class PeakLine(ttk.Frame):
                 self.parameter_vals[par_name].set(round(par_value, int(service.service_vars['ROUND_PRECISION'])))
                 self.parameter_bounds[par_name].set(f"{round(par_bounds[0], int(service.service_vars['ROUND_PRECISION']))};"
                                                     f"{round(par_bounds[1], int(service.service_vars['ROUND_PRECISION']))}")
+                self.parameter_fix_vals[par_name].set(bool(par_fix))
                 return True
 
-    def set_all_parameters(self, par_names: list, par_values: list, par_bounds: list):
+    def set_all_parameters(self, par_names: list, par_values: list, par_bounds: list, par_fixes: list):
         """Sets parameter values and bounds for all parameters
         :param par_names: list of str
         :param par_values: list of str or list of floats
         :param par_bounds: list of str or list of lists (of two floats)
+        :param par_fixes: list of str or list of bools
         """
-        assert len(par_values) == len(par_bounds) == len(par_names)
+        assert len(par_values) == len(par_bounds) == len(par_names) == len(par_fixes)
         for i, pn in enumerate(par_names):
-            self.set_parameter(pn, par_values[i], par_bounds[i])
+            self.set_parameter(pn, par_values[i], par_bounds[i], par_fixes[i])
 
 
 class FitWindow(tk.Toplevel):
@@ -956,6 +1024,9 @@ class FitWindow(tk.Toplevel):
         self.label = label
         self.region = region
         self.peak_lines = {}
+        self.peaks = {}
+        self.fitter_obj = None
+        self.results_txt = None
         self.plot_panel = PlotPanel(self, label=None, borderwidth=1, relief="groove")
         self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.plot_panel.plot_regions(region)
@@ -967,6 +1038,22 @@ class FitWindow(tk.Toplevel):
             self.fit_tree = self.fit_panel.treeview
             self._add_peak_line()
         self.fit_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        if not fit_type == 'Error Func':
+            results_panel = ttk.Frame(self)
+            blank_label = ttk.Label(results_panel, text="", anchor=tk.W)
+            blank_label.pack(side=tk.TOP, fill=tk.X)
+            fit_button = ttk.Button(results_panel, text='Do Fit', command=self._do_fit_peaks, width=8)
+            fit_button.pack(side=tk.TOP, fill=tk.X)
+            save_button = ttk.Button(results_panel, text='Save Fit', command=self._save_peaks, width=8)
+            save_button.pack(side=tk.TOP, fill=tk.X)
+            blank_label = ttk.Label(results_panel, text="", anchor=tk.W)
+            blank_label.pack(side=tk.TOP, fill=tk.X)
+            results_label = ttk.Label(results_panel, text="Fit results:", anchor=tk.W)
+            results_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+            fit_results_frame = BrowserTreeView(results_panel, label=None, borderwidth=1, relief="groove")
+            self.fit_results_tree = fit_results_frame.treeview
+            fit_results_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+            results_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
 
     def _add_error_func_section(self):
         def _make_parameter_line(parent_obj, par_name, value, input=True):
@@ -982,8 +1069,9 @@ class FitWindow(tk.Toplevel):
                 label.pack(side=tk.TOP, fill=tk.X, expand=True)
                 parent_obj.error_func_pars_output.append(tk.StringVar(parent_obj, value=value))
                 entry = ttk.Label(parent_obj.output_right_column,
-                                  textvariable=parent_obj.error_func_pars_output[-1])
-            entry.pack(side=tk.TOP, fill=tk.X, expand=False)
+                                  textvariable=parent_obj.error_func_pars_output[-1],
+                                  width=25)
+            entry.pack(side=tk.TOP, anchor=tk.W, expand=False)
 
         self.error_func_pars_input = []
         self.error_func_pars_output = []
@@ -1038,15 +1126,11 @@ class FitWindow(tk.Toplevel):
     def _add_peak_line(self):
         peak_num = len(self.peak_lines.keys())
         self.peak_lines[peak_num] = PeakLine(self.fit_tree, self.fittype, self._remove_peak_line,
-                                             self._add_peak_line, peak_num)
+                                             self._add_peak_line, peak_num, data_max=np.max(self.region.get_data('final')))
         self.peak_lines[peak_num].pack(side=tk.TOP, fill=tk.X, expand=False)
         self._redraw_add_remove_buttons()
         if peak_num > 0:
             self.peak_lines[peak_num].set_all_parameters(*self.peak_lines[peak_num - 1].get_all_parameters(string_output=True))
-            for par_name in fitter.Peak.peak_types[self.fittype]:
-                if self.peak_lines[peak_num - 1].parameter_fix_vals[par_name].get():
-                    self.peak_lines[peak_num].parameter_fix_vals[par_name].set("True")
-
 
     def _do_fit_error_func(self):
         fit_parameters = [float(par_str_var.get()) for par_str_var in self.error_func_pars_input]
@@ -1074,8 +1158,74 @@ class FitWindow(tk.Toplevel):
         self._plot_error_func_fit(f"fit: {round(shift[0], int(service.service_vars['ROUND_PRECISION']))} +/- "
                                   f"{round(shift[1], int(service.service_vars['ROUND_PRECISION']))}")
 
+    def _do_fit_peaks(self):
+        # Collecting parameter initial values, boundaries and eventual fix values
+        initial_guess = []
+        parameter_bounds, fix_parameters = {}, {}
+        for pn in fitter.Peak.peak_types[self.fittype]:
+            parameter_bounds[pn] = {}
+            fix_parameters[pn] = []
+        for i, (key, peak_line) in enumerate(self.peak_lines.items()):
+            if not peak_line.use_peak_var.get():
+                continue
+            par_names, par_initial_vals, par_bounds, par_fixes = peak_line.get_all_parameters(string_output=False)
+            initial_guess += par_initial_vals
+            for j, par_name in enumerate(par_names):
+                if par_fixes[j]:  # If the parameter is fixed, we ignore its boundaries
+                    fix_parameters[par_name].append(key)
+                    parameter_bounds[par_name][key] = [None, None]
+                else:
+                    parameter_bounds[par_name][key] = par_bounds[j]
+        if None in initial_guess:
+            gui_logger.warning("Please fill in initial values for all aprameters. Bounds can stay empty.")
+            return False
+        # Fitting
+        self.fitter_obj = fitter.Fitter(self.region)
+        if self.fittype == 'Gauss':  # Gauss
+            self.fitter_obj.fit_gaussian(initial_guess, fix_parameters, boundaries=parameter_bounds)
+        if self.fittype == 'Lorentz':  # Lorentz
+            self.fitter_obj.fit_lorentzian(initial_guess, fix_parameters, boundaries=parameter_bounds)
+        if self.fittype == 'Pseudo Voigt':  # Pseudo Voigt
+            self.fitter_obj.fit_pseudo_voigt(initial_guess, fix_parameters, boundaries=parameter_bounds)
+        if self.fittype == 'Doniach-Sunjic':  # Doniach-Sunjik
+            self.fitter_obj.fit_doniach_sunjic(initial_guess, fix_parameters, boundaries=parameter_bounds)
+        self.plot_panel.plot_fit(self.region, self.fitter_obj)
+
+        # Showing results
+        round_precision = int(service.get_service_parameter('ROUND_PRECISION'))
+        self.results_txt = f"Goodness:\nChi^2 = {self.fitter_obj.get_chi_squared():.2f}\nRMS = {self.fitter_obj.get_rms():.2f}\n\n"
+        for i, peak in enumerate(self.fitter_obj.get_peaks()):
+            if peak:
+                self.results_txt += f"Peak {peak.get_peak_id()}\n"
+                peak_area = round(peak.get_peak_area(), round_precision)
+                self.results_txt = "  ".join([self.results_txt, f"Area {peak_area}\n"])
+                peak_pars = [round(par, round_precision) for par in peak.get_parameters()]
+                peak_errors = [round(err, round_precision) for err in peak.get_fitting_errors()]
+                for i in range(len(peak_pars)):
+                    par_names = fitter.Peak.peak_types[peak.get_peak_type()]
+                    self.results_txt = "  ".join([self.results_txt, f"{par_names[i]}: {peak_pars[i]} +/- {peak_errors[i]}\n"])
+                self.results_txt += '\n'
+        # Clearing the previously existing text
+        for widget in self.fit_results_tree.winfo_children():
+            widget.destroy()
+        results_msg = tk.Message(self.fit_results_tree, text=self.results_txt, anchor=tk.W, bg=BG)
+        results_msg.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+
+        return True
+
     def _get_peak_lines_ids(self):
         return [k for k, v in self.peak_lines.items() if v]
+
+    def _make_fit_dataframe(self):
+        if self.fitter_obj is not None:
+            data_cols = {}
+            x, fitline = self.fitter_obj.get_virtual_fitline()
+            data_cols["energy"] = x
+            data_cols["fitline"] = fitline
+            for peak in self.fitter_obj.get_peaks():
+                if peak:
+                    _, data_cols[f"Peak{peak.get_peak_id()}"] = peak.get_virtual_data()
+            return pd.DataFrame(data_cols)
 
     def _plot_error_func_fit(self, fit_label):
         ax = self.plot_panel.figure_axes
@@ -1112,6 +1262,27 @@ class FitWindow(tk.Toplevel):
                     self.peak_lines[line_id].add_peak_button.config(state=tk.DISABLED)
                 self.peak_lines[line_id].remove_peak_button.config(state=tk.NORMAL)
 
+    def _save_peaks(self):
+        if self.results_txt is not None:
+            output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
+            dat_file_path = filedialog.asksaveasfilename(initialdir=output_dir,
+                                                         initialfile=self.region.get_info("File Name") + ".fit",
+                                                         title="Save as...",
+                                                         filetypes=(("fit files", "*.fit"), ("all files", "*.*")))
+            if dat_file_path:
+                df = self._make_fit_dataframe()
+                try:
+                    with open(dat_file_path, 'w') as f:
+                        f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        f.write(f"Fitting {self.region.get_id()} with {len(self.peak_lines)} {self.fittype} peaks\n\n")
+                        f.write(self.results_txt)
+                        f.write("\n[Data]\n")
+                        df.to_csv(f, header=True, index=False, sep='\t')
+                except (IOError, OSError):
+                    gui_logger.error(f"Couldn't save file {dat_file_path}", exc_info=True)
+
+                output_dir = os.path.dirname(dat_file_path)
+                service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
 
 class MainWindow(ttk.PanedWindow):
     def __init__(self, parent, *args, **kwargs):

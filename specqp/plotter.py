@@ -176,15 +176,32 @@ def plot_peak(peak, axs, y_offset=0.0, label=None, color=None, fill=True, legend
     :return: None
     """
     peak_line = peak.get_data()
-
     if not label:
-        label = f"Cen: {peak.get_parameters('center'):.2f}; LorentzFWHM: {peak.get_parameters('fwhm'):.2f}"
+        label = f"Cen: {peak.get_parameters('center'):.2f}; LorentzFWHM: {peak.get_parameters('l_fwhm'):.2f}"
 
-    axs.plot(peak.get_data()[0], peak.get_data()[1] + y_offset, color=color, label=label)
+    plot_peak_xy(peak_line[0], peak_line[1], axs, y_offset=y_offset, label=label, color=color,
+                 fill=fill, legend=legend, legend_pos=legend_pos, font_size=font_size)
+
+
+def plot_peak_xy(x, y, axs, y_offset=0.0, label=None,
+                 color=None, fill=True, legend=True, legend_pos='best', font_size=12):
+    """Plotting one peak by given (x, y) points
+    :param x: x coordinates
+    :param y: y coordinates
+    :param axs: matplotlib.figure.axes object
+    :param y_offset: vertical offset of the plot
+    :param label: legend entry
+    :param color: color
+    :param fill: fills the peak area with half-transparent color (same as the color of the curve)
+    :param legend: Enable/disable legend
+    :param legend_pos: legend position
+    :param font_size: font_size for all text within the axes object
+    :return: None
+    """
+    axs.plot(x, y + y_offset, color=color, label=label)
     if fill:
         # Fill the peak shape with color that is retrieved from the last plotted line
-        axs.fill_between(peak_line[0], peak_line[1].min() + y_offset, peak_line[1] + y_offset,
-                        facecolor=axs.get_lines()[-1].get_color(), alpha=0.3)
+        axs.fill_between(x, y.min() + y_offset, y + y_offset, facecolor=axs.get_lines()[-1].get_color(), alpha=0.3)
     if legend:
         axs.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': font_size})
 

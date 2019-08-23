@@ -17,7 +17,7 @@ class Peak:
         "Doniach-Sunjic": ["amplitude", "center", "g_fwhm", "l_fwhm"]
     }
 
-    def __init__(self, x_data, y_data, popt, pcov, peak_id, peak_type):
+    def __init__(self, x_data, y_data, popt, pcov, peak_func, peak_id, peak_type):
         """Creates an instance of Peak object with X and Y data for plotting
         and fitting parameters and parameters coavriance.
         """
@@ -25,15 +25,16 @@ class Peak:
         self._Y = y_data
         self._Popt = popt
         self._Pcov = pcov
+        self._function = peak_func
         self._id = peak_id
         self._Area = np.trapz(self._Y)
         self._PeakType = peak_type
-        self._FittingErrors = []
-        for i in range(len(self._Popt)):
-            # try:
-            self._FittingErrors.append(np.absolute(self._Pcov[i][i])**0.5)
-            # except:
-            #   self._FittingErrors.append(0.00)
+        self._FittingErrors = np.sqrt(np.diag(pcov))
+        # for i in range(len(self._Popt)):
+        #     # try:
+        #     self._FittingErrors.append(np.absolute(self._Pcov[i][i])**0.5)
+        #     # except:
+        #     #   self._FittingErrors.append(0.00)
 
     def __str__(self):
         output = f"Type: {self._PeakType}"
@@ -41,6 +42,22 @@ class Peak:
             output = "\n".join((output, f"{self.peak_types[self._PeakType][i]}: {p:.4f} (+/- {self._FittingErrors[i]:.4f})"))
         output = "\n".join((output, f"Area: {self._Area:.4f}"))
         return output
+
+    def get_virtual_data(self, num=10, multiply=True):
+        """Returns more (or less) data points. If multiply==False, value of 'num' is taken as desired number of ponts.
+        If multiply==True, multiplies the existing number of points by value of 'num'. For plotting a smoother curve,
+        for example.
+        :param num: Number of desired points or multiplicator
+        :param multiply: True if num is multiplicator, False if num is absolute number of points
+        :return (ndarray, ndarray) x and y data with desired number of points
+        """
+        assert num > 0
+        if multiply:
+            peak_virtual_x = np.linspace(self._X[0], self._X[-1], len(self._X) * num, endpoint=True)
+        else:
+            peak_virtual_x = np.linspace(self._X[0], self._X[-1], num, endpoint=True)
+        peak_virtual_y = self._function(peak_virtual_x, *self._Popt)
+        return peak_virtual_x, peak_virtual_y
 
     def get_data(self):
         """Returns a list of x and y data
@@ -57,6 +74,9 @@ class Peak:
                 if parameter == par_name:
                     return self._Popt[i]
         fitter_logger.error(f"Couldn't get fitting parameters from a Peak instance")
+
+    def get_peak_area(self):
+        return self._Area
 
     def get_covariance(self, parameter=None):
         """Returns all fitting parameters covariances or one specified by name 'peak_types'
@@ -97,6 +117,7 @@ class Fitter:
         """Creates an object that contains information about fitting of
         a particular XPS region.
         """
+        self.region = region
         self._X_data = region.get_data(column='energy')
         self._Y_data = region.get_data(column=y_data)
         # Following attributes are assigned during the fitting procedure
@@ -108,7 +129,8 @@ class Fitter:
         self._Peaks = []
         # The gauss widening is constant due to the equipment used in the experiment. So, if we know it,
         # we should fix this parameter in fitting.
-        self._global_gauss_fwhm = gauss_fwhm * 1.0
+        if gauss_fwhm:
+            self._global_gauss_fwhm = gauss_fwhm * 1.0
         self._ID = region.get_id()
 
     def __str__(self):
@@ -144,11 +166,11 @@ class Fitter:
         f = (g_fwhm ** 5 + 2.69269 * g_fwhm ** 4 * l_fwhm + 2.42843 * g_fwhm ** 3 * l_fwhm ** 2 +
              4.47163 * g_fwhm ** 2 * l_fwhm ** 3 + 0.07842 * g_fwhm * l_fwhm ** 4 + l_fwhm ** 5) ** (1. / 5.)
         eta = 1.36603 * (l_fwhm / f) - 0.47719 * (l_fwhm / f) ** 2 + 0.11116 * (l_fwhm / f) ** 3
-        pv_func = (eta * Fitter.lorentz(x, cen, f, 1.0) + (1 - eta) * Fitter.gauss(x, cen, f, 1.0))
+        pv_func = (eta * Fitter.lorentz(x, 1.0, cen, f) + (1 - eta) * Fitter.gauss(x, 1.0, cen, f))
         return amp * pv_func / np.amax(pv_func)  # Normalizing to 1
 
     @staticmethod
-    def doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm):
+    def doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm, reversed=True):
         """Returns a Doniach Sunjic asymmetric lineshape, used for photo-emission.
         Formula taken from https://lmfit.github.io/lmfit-py/builtin_models.html
         :param x: X data
@@ -162,7 +184,10 @@ class Fitter:
         gamma = l_fwhm / 2
         func_numerator = np.cos(np.pi * gamma / 2 + (1.0 - gamma) * np.arctan((x - cen) / sigma))
         func_denominator = (1 + ((x - cen) / sigma) ** 2) ** ((1.0 - gamma) / 2)
-        return (amp / sigma ** (1.0 - gamma)) * func_numerator / func_denominator
+        ds_func = (amp / sigma ** (1.0 - gamma)) * func_numerator / func_denominator
+        if reversed:
+            return ds_func[::-1]
+        return ds_func
 
     def _get_fitting_restrains(self, initial_params, fix_pars=None, tolerance=0.0001, boundaries=None):
         """Parses fitting restrains for multiple peaks
@@ -186,16 +211,16 @@ class Fitter:
         for i in range(0, len(initial_params)):
             if i % peak_pars_cnt == 0:  # Adjusting amplitude parameter boundaries
                 peak_number = i // peak_pars_cnt
-                if fix_pars and ("amp" in fix_pars):
-                    if peak_number in fix_pars["amp"]:
+                if fix_pars and ("amplitude" in fix_pars):
+                    if peak_number in fix_pars["amplitude"]:
                         bounds_low.append(initial_params[i] - tolerance)
                         bounds_high.append(initial_params[i] + tolerance)
                         continue
-                if boundaries and ("amp" in boundaries):
-                    if peak_number in boundaries["amp"]:
-                        if len(boundaries["amp"][peak_number]) == 2:
-                            bounds_low.append(min(boundaries["amp"][peak_number]))
-                            bounds_high.append(max(boundaries["amp"][peak_number]))
+                if boundaries and ("amplitude" in boundaries):
+                    if peak_number in boundaries["amplitude"]:
+                        if len(boundaries["amplitude"][peak_number]) == 2 and None not in boundaries["amplitude"][peak_number]:
+                            bounds_low.append(min(boundaries["amplitude"][peak_number]))
+                            bounds_high.append(max(boundaries["amplitude"][peak_number]))
                             continue
                 # If amplitude is not fixed and not restrained,
                 # fix the lower limit at 0 and the upper limit at data_y max
@@ -208,59 +233,59 @@ class Fitter:
                 continue
             if (i - 1) % peak_pars_cnt == 0:  # Adjusting center parameters boundaries
                 peak_number = (i - 1) // peak_pars_cnt
-                if fix_pars and ("cen" in fix_pars):
-                    if peak_number in fix_pars["cen"]:
+                if fix_pars and ("center" in fix_pars):
+                    if peak_number in fix_pars["center"]:
                         bounds_low.append(initial_params[i] - tolerance)
                         bounds_high.append(initial_params[i] + tolerance)
                         continue
-                if boundaries and ("cen" in boundaries):
-                    if peak_number in boundaries["cen"]:
-                        if len(boundaries["cen"][peak_number]) == 2:
-                            bounds_low.append(min(boundaries["cen"][peak_number]))
-                            bounds_high.append(max(boundaries["cen"][peak_number]))
+                if boundaries and ("center" in boundaries):
+                    if peak_number in boundaries["center"]:
+                        if len(boundaries["center"][peak_number]) == 2 and None not in boundaries["center"][peak_number]:
+                            bounds_low.append(min(boundaries["center"][peak_number]))
+                            bounds_high.append(max(boundaries["center"][peak_number]))
                             continue
             if (i - 2) % peak_pars_cnt == 0:  # Adjusting single (or first) fwhm parameters boundaries
                 peak_number = (i - 2) // peak_pars_cnt
-                if fix_pars and ("fwhm" in fix_pars):
-                    if peak_number in fix_pars["fwhm"]:
+                if fix_pars and ("g_fwhm" in fix_pars):
+                    if peak_number in fix_pars["g_fwhm"]:
                         bounds_low.append(initial_params[i] - tolerance)
                         bounds_high.append(initial_params[i] + tolerance)
                         continue
-                elif fix_pars and ("fwhm1" in fix_pars):
-                    if peak_number in fix_pars["fwhm1"]:
+                elif fix_pars and ("l_fwhm" in fix_pars):
+                    if peak_number in fix_pars["l_fwhm"]:
                         bounds_low.append(initial_params[i] - tolerance)
                         bounds_high.append(initial_params[i] + tolerance)
                         continue
-                if boundaries and ("fwhm" in boundaries):
-                    if peak_number in boundaries["fwhm"]:
-                        if len(boundaries["fwhm"][peak_number]) == 2:
-                            bounds_low.append(min(boundaries["fwhm"][peak_number]))
-                            bounds_high.append(max(boundaries["fwhm"][peak_number]))
+                if boundaries and ("g_fwhm" in boundaries):
+                    if peak_number in boundaries["g_fwhm"]:
+                        if len(boundaries["g_fwhm"][peak_number]) == 2 and None not in boundaries["g_fwhm"][peak_number]:
+                            bounds_low.append(min(boundaries["g_fwhm"][peak_number]))
+                            bounds_high.append(max(boundaries["g_fwhm"][peak_number]))
                             continue
-                elif boundaries and ("fwhm1" in boundaries):
-                    if peak_number in boundaries["fwhm1"]:
-                        if len(boundaries["fwhm1"][peak_number]) == 2:
-                            bounds_low.append(min(boundaries["fwhm1"][peak_number]))
-                            bounds_high.append(max(boundaries["fwhm1"][peak_number]))
+                elif boundaries and ("l_fwhm" in boundaries):
+                    if peak_number in boundaries["l_fwhm"]:
+                        if len(boundaries["l_fwhm"][peak_number]) == 2 and None not in boundaries["l_fwhm"][peak_number]:
+                            bounds_low.append(min(boundaries["l_fwhm"][peak_number]))
+                            bounds_high.append(max(boundaries["l_fwhm"][peak_number]))
                             continue
             if peak_pars_cnt == 4:  # Adjusting second fwhm parameters boundaries
                 if (i - 3) % peak_pars_cnt == 0:  # Adjusting fwhm parameters boundaries
                     peak_number = (i - 3) // peak_pars_cnt
-                    if fix_pars and ("fwhm2" in fix_pars):
-                        if peak_number in fix_pars["fwhm2"]:
+                    if fix_pars and ("l_fwhm" in fix_pars):
+                        if peak_number in fix_pars["l_fwhm"]:
                             bounds_low.append(initial_params[i] - tolerance)
                             bounds_high.append(initial_params[i] + tolerance)
                             continue
-                    if boundaries and ("fwhm2" in boundaries):
-                        if peak_number in boundaries["fwhm2"]:
-                            if len(boundaries["fwhm2"][peak_number]) == 2:
-                                bounds_low.append(min(boundaries["fwhm2"][peak_number]))
-                                bounds_high.append(max(boundaries["fwhm2"][peak_number]))
+                    if boundaries and ("l_fwhm" in boundaries):
+                        if peak_number in boundaries["l_fwhm"]:
+                            if len(boundaries["l_fwhm"][peak_number]) == 2 and None not in boundaries["l_fwhm"][peak_number]:
+                                bounds_low.append(min(boundaries["l_fwhm"][peak_number]))
+                                bounds_high.append(max(boundaries["l_fwhm"][peak_number]))
                                 continue
             bounds_low.append(-np.inf)
             bounds_high.append(np.inf)
 
-            return bounds_low, bounds_high
+        return bounds_low, bounds_high
 
     def fit_gaussian(self, initial_params, fix_pars=None, tolerance=0.0001, boundaries=None):
         """Fits Gaussian function to Region object based on initial values
@@ -303,7 +328,8 @@ class Fitter:
                 self._Peaks.append(Peak(self._X_data, peak_y,
                                         [popt[cnt], popt[cnt+1], popt[cnt+2]],
                                         [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
-                                        peak_id=cnt//3, peak_type=Peak.peak_types.keys()[0]))
+                                        peak_func=_multi_gaussian,
+                                        peak_id=cnt//3, peak_type=list(Peak.peak_types.keys())[0]))
             cnt += 3
 
         self._make_fit()
@@ -351,7 +377,8 @@ class Fitter:
                 self._Peaks.append(Peak(self._X_data, peak_y,
                                         [popt[cnt], popt[cnt+1], popt[cnt+2]],
                                         [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
-                                        peak_id=cnt//3, peak_type=Peak.peak_types.keys()[1]))
+                                        peak_func=_multi_lorentzian,
+                                        peak_id=cnt//3, peak_type=list(Peak.peak_types.keys())[1]))
             cnt += 3
         self._make_fit()
 
@@ -386,7 +413,6 @@ class Fitter:
                                 f"Should be multiple of 4.")
             return
         bounds_low, bounds_high = self._get_fitting_restrains(initial_params, fix_pars, tolerance, boundaries)
-        print(bounds_low, bounds_high)
         # Parameters and parameters covariance of the fit
         popt, pcov = curve_fit(_multi_voigt, self._X_data, self._Y_data, p0=initial_params,
                                bounds=(bounds_low, bounds_high))
@@ -400,7 +426,8 @@ class Fitter:
                 self._Peaks.append(Peak(self._X_data, peak_y,
                                         [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
                                         [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
-                                        peak_id=cnt//4, peak_type=Peak.peak_types.keys()[2]))
+                                        peak_func=_multi_voigt,
+                                        peak_id=cnt//4, peak_type=list(Peak.peak_types.keys())[2]))
             cnt += 4
         self._make_fit()
 
@@ -426,7 +453,7 @@ class Fitter:
                 cen = args[cnt + 1]
                 g_fwhm = args[cnt + 2]
                 l_fwhm = args[cnt + 3]
-                func += Fitter.doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm)
+                func += Fitter.doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm, reversed=self.region.is_binding())
                 cnt += 4
             return func
 
@@ -448,7 +475,8 @@ class Fitter:
                 self._Peaks.append(Peak(self._X_data, peak_y,
                                         [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
                                         [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
-                                        peak_id=cnt//4, peak_type=Peak.peak_types.keys()[3]))
+                                        peak_func=_multi_doniach_sunjic,
+                                        peak_id=cnt//4, peak_type=list(Peak.peak_types.keys())[3]))
             cnt += 4
         self._make_fit()
 
@@ -477,6 +505,26 @@ class Fitter:
         if not self._FitLine.size == 0:
             return self._FitLine
         fitter_logger.warning("Can't get Fit Line from a Fitter instance. Do fit first.")
+
+    def get_virtual_fitline(self, num=10, multiply=True):
+        """Returns the fitline (x,y) with more (or less) data points.
+        If multiply==False, value of 'num' is taken as desired number of ponts.
+        If multiply==True, multiplies the existing number of points by value of 'num'. For plotting a smoother curve,
+        for example.
+        :param num: Number of desired points or multiplicator
+        :param multiply: True if num is multiplicator, False if num is absolute number of points
+        :return (ndarray, ndarray) x and y data with desired number of points
+        """
+        fitline_x, fitline_y = None, None
+        for i, peak in enumerate(self._Peaks):
+            if peak:
+                peak_data = peak.get_virtual_data(num=num, multiply=multiply)
+                if i == 0:
+                    fitline_x, fitline_y = peak_data
+                else:
+                    _, fy = peak_data
+                    fitline_y += fy
+        return fitline_x, fitline_y
 
     def get_residuals(self):
         if not self._Residuals.size == 0:
