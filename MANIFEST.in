@@ -2,6 +2,7 @@ include README.md
 include LICENSE
 include requirements.txt
 recursive-include specqp
+include specqp/assets/specqp_icon.png
 include data
 recursive-include docs
 recursive-exclude specqp/__pycache__

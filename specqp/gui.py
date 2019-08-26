@@ -20,17 +20,17 @@ import matplotlib.image as mpimg
 
 import numpy as np
 
-import service
-import datahandler
-import plotter
-import helpers
-import fitter
+# import service
+# import datahandler
+# import plotter
+# import helpers
+# import fitter
 
-# from specqp import service
-# from specqp import datahandler
-# from specqp import plotter
-# from specqp import helpers
-# from specqp import fitter
+from specqp import service
+from specqp import datahandler
+from specqp import plotter
+from specqp import helpers
+from specqp import fitter
 
 # Default font for the GUI
 LARGE_FONT = ("Verdana", "12")
@@ -39,10 +39,10 @@ gui_logger = logging.getLogger("specqp.gui")  # Creating child logger
 matplotlib.use('TkAgg')  # Configuring matplotlib interaction with tkinter
 style.use('ggplot')  # Configuring matplotlib style
 
-logo_img_file = "assets/specqp_icon.png"
-tool_bar_images = {
-    "invert_x": "assets/invert_x.png"
-}
+logo_img_file = os.path.dirname(os.path.abspath(__file__)) + "/assets/specqp_icon.png"
+# tool_bar_images = {
+#     "invert_x": "assets/invert_x.png"
+# }
 # Global background color hardcoded due to problems with MACOS color representation in tk
 BG = "#ececec"
 

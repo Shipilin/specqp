@@ -13,5 +13,7 @@ setup(name='specqp',
       install_requires=['numpy', 'scipy', 'pandas', 'matplotlib'],
       classifiers=["Programming Language :: Python :: 3",
                    "License :: OSI Approved :: MIT License",
-                   "Operating System :: Mac OSX"]
+                   "Operating System :: Mac OSX"],
+      # package_data={'label': ['assets/specqp_icon.png'],
+      #               'docs': ['FermiLevelFitting.rst', 'Normalization.rst']}
       )

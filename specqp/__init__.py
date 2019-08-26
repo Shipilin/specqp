@@ -1,10 +1,6 @@
-# from specqp.datahandler import RegionsCollection, Region
-# from specqp.fitter import Fitter, Peak
-# from specqp import helpers, plotter
-
-from datahandler import RegionsCollection, Region
-from fitter import Fitter, Peak
-import helpers, plotter
+from specqp.datahandler import RegionsCollection, Region
+from specqp.fitter import Fitter, Peak
+from specqp import helpers, plotter
 
 __appname__ = "SpecQP"
 __version__ = "0.1"
