@@ -1,9 +1,11 @@
-__pycache__
-specqp/tools.py
+__pycache__/
+build/
 data/log/
 data/specqp.init
 jnotebook/
 scripts/
+specqp/__pycache__/
+specqp.egg-info/
 .idea/
 .DS_Store
 .gitignore

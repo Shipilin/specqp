@@ -1,7 +1,8 @@
 import logging
 from matplotlib.figure import Figure
 
-from specqp import helpers
+#from specqp import helpers
+import helpers
 
 plotter_logger = logging.getLogger("specqp.plotter")  # Creating child logger
 

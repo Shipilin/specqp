@@ -1,7 +1,7 @@
 import os
 import logging
-
-from specqp.helpers import is_iterable
+from helpers import is_iterable
+# from specqp.helpers import is_iterable
 
 service_logger = logging.getLogger("specqp.service")  # Configuring child logger
 

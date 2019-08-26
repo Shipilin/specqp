@@ -20,11 +20,17 @@ import matplotlib.image as mpimg
 
 import numpy as np
 
-from specqp import service
-from specqp import datahandler
-from specqp import plotter
-from specqp import helpers
-from specqp import fitter
+import service
+import datahandler
+import plotter
+import helpers
+import fitter
+
+# from specqp import service
+# from specqp import datahandler
+# from specqp import plotter
+# from specqp import helpers
+# from specqp import fitter
 
 # Default font for the GUI
 LARGE_FONT = ("Verdana", "12")
@@ -534,7 +540,10 @@ class CorrectionsPanel(ttk.Frame):
                                 gui_logger.warning("Check Crop values. Must be numbers.")
                     if self.subtract_const_var.get():
                         e = region.get_data('energy')
-                        helpers.shift_by_background(region, [e[-10], e[-1]])
+                        if np.mean(e[-10:-1]) < np.mean(e[0:10]):
+                            helpers.shift_by_background(region, [e[-10], e[-1]])
+                        else:
+                            helpers.shift_by_background(region, [e[0], e[10]])
                         region.make_final_column("bgshifted", overwrite=True)
                         region.add_correction("Constant background subtracted")
                     if self.subtract_shirley_var.get():
@@ -927,7 +936,8 @@ class PeakLine(ttk.Frame):
                         val = None
                     if self.parameter_bounds[par_name].get():
                         bounds = [round(float(s.strip()), int(service.service_vars['ROUND_PRECISION']))
-                                  for s in re.findall("\\d+", self.parameter_bounds[par_name].get())]
+                                  for s in re.findall(r"[+-]? *(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?",
+                                                      self.parameter_bounds[par_name].get())]
                         if len(bounds) != 2:
                             #gui_logger.warning(f"Check parameters bounds entries for Peak {self._id}. Must be two numbers.")
                             bounds = [None, None]
@@ -1158,23 +1168,31 @@ class FitWindow(tk.Toplevel):
                                   f"{round(shift[1], int(service.service_vars['ROUND_PRECISION']))}")
 
     def _do_fit_peaks(self):
+        # In this method we need to be extra cotious with the peak numbering because, if the user disables one or more peaks,
+        # their actual numbers must be preserved but for the fitting routine they should be consequential.
+        # 0, 1, 2, 3,... for fitting
+        # 0, 2, 5, 7 (for example) for gui
+
         # Collecting parameter initial values, boundaries and eventual fix values
         initial_guess = []
         parameter_bounds, fix_parameters = {}, {}
         for pn in fitter.Peak.peak_types[self.fittype]:
             parameter_bounds[pn] = {}
             fix_parameters[pn] = []
-        for i, (key, peak_line) in enumerate(self.peak_lines.items()):
+        # Here we need to dance withe the numbering described in the comment at the beginning of the method
+        cnt = 0
+        for i, (_, peak_line) in enumerate(self.peak_lines.items()):
             if not peak_line.use_peak_var.get():
                 continue
             par_names, par_initial_vals, par_bounds, par_fixes = peak_line.get_all_parameters(string_output=False)
             initial_guess += par_initial_vals
             for j, par_name in enumerate(par_names):
                 if par_fixes[j]:  # If the parameter is fixed, we ignore its boundaries
-                    fix_parameters[par_name].append(key)
-                    parameter_bounds[par_name][key] = [None, None]
+                    fix_parameters[par_name].append(cnt)
+                    parameter_bounds[par_name][cnt] = [None, None]
                 else:
-                    parameter_bounds[par_name][key] = par_bounds[j]
+                    parameter_bounds[par_name][cnt] = par_bounds[j]
+            cnt += 1
         if None in initial_guess:
             gui_logger.warning("Please fill in initial values for all aprameters. Bounds can stay empty.")
             return False
@@ -1193,9 +1211,14 @@ class FitWindow(tk.Toplevel):
         # Showing results
         round_precision = int(service.get_service_parameter('ROUND_PRECISION'))
         self.results_txt = f"Goodness:\nChi^2 = {self.fitter_obj.get_chi_squared():.2f}\nRMS = {self.fitter_obj.get_rms():.2f}\n\n"
+        # Here we also fix the numbering for the proper vizualization in GUI
+        pls = list(self.peak_lines.values())
+        cnt = 0
         for i, peak in enumerate(self.fitter_obj.get_peaks()):
+            while not pls[cnt].use_peak_var.get():
+                cnt += 1
             if peak:
-                self.results_txt += f"Peak {peak.get_peak_id()}\n"
+                self.results_txt += f"Peak {cnt}\n"
                 peak_area = round(peak.get_peak_area(), round_precision)
                 self.results_txt = "  ".join([self.results_txt, f"Area {peak_area}\n"])
                 peak_pars = [round(par, round_precision) for par in peak.get_parameters()]
@@ -1204,6 +1227,7 @@ class FitWindow(tk.Toplevel):
                     par_names = fitter.Peak.peak_types[peak.get_peak_type()]
                     self.results_txt = "  ".join([self.results_txt, f"{par_names[i]}: {peak_pars[i]} +/- {peak_errors[i]}\n"])
                 self.results_txt += '\n'
+            cnt += 1
         # Clearing the previously existing text
         for widget in self.fit_results_tree.winfo_children():
             widget.destroy()
