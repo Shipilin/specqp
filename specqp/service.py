@@ -7,8 +7,8 @@ service_logger = logging.getLogger("specqp.service")  # Configuring child logger
 
 service_vars = {
     "DEFAULT_DATA_FOLDER": os.path.expanduser("~") + "/Documents",
-    "LOG_FILE_NAME": os.path.dirname(os.path.abspath(__file__)) + "/data/log/app.log",
-    "INIT_FILE_NAME": os.path.dirname(os.path.abspath(__file__)) + "/data/specqp.init",
+    "LOG_FILE_NAME": os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/data/log/app.log",
+    "INIT_FILE_NAME": os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/data/specqp.init",
     "DEFAULT_OUTPUT_FOLDER": os.path.expanduser("~") + "/Documents/specqp_output",
     "ROUND_PRECISION": "2",
     "PHOTON_ENERGY": "",

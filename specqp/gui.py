@@ -1,5 +1,6 @@
 import os
 import copy
+from shutil import copyfile
 import re
 import datetime
 import pandas as pd
@@ -1307,6 +1308,7 @@ class FitWindow(tk.Toplevel):
                 output_dir = os.path.dirname(dat_file_path)
                 service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
 
+
 class MainWindow(ttk.PanedWindow):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -1362,6 +1364,14 @@ class Root(tk.Tk):
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Quit", command=self.quit)
         self.main_menu_bar.add_cascade(label="File", menu=self.file_menu)
+
+        # # Corrections menu
+        # self.help_menu.add_command(label="Export log", command=self.export_log)
+        # self.help_menu.add_separator()
+        # self.help_menu.add_command(label="About", command=self.show_about)
+        # self.help_menu.add_separator()
+        # self.help_menu.add_command(label="Help...", command=self.show_help)
+        # self.main_menu_bar.add_cascade(label="Help", menu=self.help_menu)
 
         # Help menu
         self.help_menu.add_command(label="Export log", command=self.export_log)
@@ -1450,7 +1460,16 @@ class Root(tk.Tk):
                         gui_logger.warning(f"No regions loaded from {key}")
 
     def export_log(self):
-        pass
+        output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
+        file_path = filedialog.asksaveasfilename(initialdir=output_dir,
+                                                 initialfile=f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log",
+                                                 title="Save as...",
+                                                 filetypes=(("log files", "*.log"), ("all files", "*.*")))
+        if file_path:
+            try:
+                copyfile(service.get_service_parameter("LOG_FILE_NAME"), file_path)
+            except (IOError):
+                gui_logger.error(f"Couldn't save log file", exc_info=True)
 
     def show_about(self):
         pass
