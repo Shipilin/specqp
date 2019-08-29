@@ -120,11 +120,13 @@ class FileViewerWindow(ttk.Frame):
                 self.text.config(state=tk.DISABLED)
         except OSError:
             gui_logger.warning(f"Can't open the file {filepath}", exc_info=True)
+            self.winfo_toplevel().display_message(f"Can't open the file {filepath}")
             self.text.insert(0.0, f"Can't open the file: {filepath}")
             self.text.config(state=tk.DISABLED)
             pass
         except ValueError:
             gui_logger.warning(f"Can't decode the file {filepath}", exc_info=True)
+            self.winfo_toplevel().display_message(f"Can't decode the file {filepath}")
             self.text.insert(0.0, f"The file can't be decoded': {filepath}")
             self.text.config(state=tk.DISABLED)
             pass
@@ -489,9 +491,13 @@ class CorrectionsPanel(ttk.Frame):
                         region.correct_energy_shift(float(self.energy_shift.get()))
                     except ValueError:
                         gui_logger.warning("Check 'Energy Shift' parameter value. Must be a number.")
+                        self.winfo_toplevel().display_message("Check 'Energy Shift' parameter value. "
+                                                              "Must be a number or a sequence separated by ';'.")
                         return
                     region._flags["energy_shift_corrected"] = False
-            fit_window = FitWindow(self.winfo_toplevel(), region, fit_type, label='fit')
+            fit_window = FitWindow(self.winfo_toplevel(), region, fit_type,
+                                   label='fit', legend=bool(self.plot_legend_var.get()),
+                                   scatter=bool(self.scatter_var.get()))
             self.winfo_toplevel().update()  # Update to be able to request fit_window parameters
             fit_window.wm_minsize(width=fit_window.winfo_width(), height=fit_window.winfo_height())
             self.winfo_toplevel().fit_windows.append(fit_window)
@@ -507,30 +513,65 @@ class CorrectionsPanel(ttk.Frame):
                 try:
                     pe = float(pe)
                 except ValueError:
-                    gui_logger.warning("Check 'Photon Energy' value. Must be a number.")
+                    gui_logger.warning("Check 'Photon Energy' parameter value. Must be a number.")
+                    self.winfo_toplevel().display_message("Check 'Photon Energy' parameter value. Must be a number.")
                     return
             if es:
                 try:
-                    es = float(es)
+                    es = [float(es_str.strip()) for es_str in es.split(';')]
                 except ValueError:
-                    gui_logger.warning("Check 'Energy Shift' value. Must be a number.")
+                    self.winfo_toplevel().display_message("Check 'Energy Shift' value. Must be a number or a sequence separated by ';'.")
+                    gui_logger.warning("Check 'Energy Shift' value. Must be a number or a sequence separated by ';'.")
                     return
             if self.plot_use_settings_var.get():
-                service.set_init_parameters(["PHOTON_ENERGY", "ENERGY_SHIFT"], [pe, es])
-                for region in regions_in_work:
+                service.set_init_parameters(["PHOTON_ENERGY", "ENERGY_SHIFT"], [pe, "; ".join([str(s) for s in es])])
+                for i, region in enumerate(regions_in_work):
                     # if self.is_fermi_var.get():
                     #     region.set_fermi_flag()
                     if pe:
                         region.set_excitation_energy(pe)
-                    if es and not region.get_flags()["fermi_flag"]:
-                        region.correct_energy_shift(es)
-                        region.add_correction("Energy shift corrected")
+                    if len(es) == 1 and not region.get_flags()["fermi_flag"]:
+                        region.correct_energy_shift(es[0])
+                        region.add_correction(f"Energy shift corrected by {round(es[0], int(service.service_vars['ROUND_PRECISION']))} eV")
+                    elif len(es) == len(regions_in_work) and not region.get_flags()["fermi_flag"]:
+                        if es[i]:
+                            region.correct_energy_shift(es[i])
+                            region.add_correction(f"Energy shift corrected by {round(es[i], int(service.service_vars['ROUND_PRECISION']))} eV")
+                    else:
+                        gui_logger.warning("Check the number of 'Energy Shift' values. Must be equal to the number of regions.")
+                        self.winfo_toplevel().display_message("Check the number of 'Energy Shift' values. "
+                                                              "Must be equal to the number of regions.")
                     if self.plot_binding_var.get():
                         region.invert_to_binding()
                     if self.normalize_sweeps_var.get():
                         region.normalize_by_sweeps()
                         region.make_final_column("sweepsNormalized", overwrite=True)
-                        region.add_correction("Normalized by sweeps")
+                        region.add_correction("Normalized by sweeps and dwell time")
+                    if self.do_const_norm_var.get():
+                        norm_const = self.const_norm_var.get()
+                        if norm_const:
+                            try:
+                                const = None
+                                if ';' in norm_const:
+                                    if len(norm_const.split(';')) == len(regions_in_work):
+                                        const = float(norm_const.split(';')[i].strip())
+                                    else:
+                                        gui_logger.warning("Check the number of normalization constant values. "
+                                                           "Must be equal to number of regions.")
+                                        self.winfo_toplevel().display_message("Check the number of normalization "
+                                                                              "constant values. Must be equal to number "
+                                                                              "of regions.")
+                                else:
+                                    const = float(norm_const.strip())
+                                if const is not None:
+                                    helpers.normalize(region, y_data='final', const=const, add_column=True)
+                                    if i == len(regions_in_work) - 1:
+                                        service.set_init_parameters("NORMALIZATION_CONSTANT", norm_const)
+                                    region.make_final_column("normalized", overwrite=True)
+                                    region.add_correction(f"Normalized by {round(const, int(service.service_vars['ROUND_PRECISION']))}")
+                            except ValueError:
+                                gui_logger.warning("Check normalization constant values. Must be numbers.")
+                                self.winfo_toplevel().display_message("Check normalization constant value(s). Must be number(s).")
                     if self.do_crop_var.get():
                         crop_left, crop_right = self.crop_left_var.get(), self.crop_right_var.get()
                         if crop_left and crop_right:
@@ -539,6 +580,7 @@ class CorrectionsPanel(ttk.Frame):
                                 service.set_init_parameters("CROP", ';'.join([crop_left, crop_right]))
                             except ValueError:
                                 gui_logger.warning("Check Crop values. Must be numbers.")
+                                self.winfo_toplevel().display_message("Check crop values. Must be numbers.")
                     if self.subtract_const_var.get():
                         e = region.get_data('energy')
                         if np.mean(e[-10:-1]) < np.mean(e[0:10]):
@@ -612,6 +654,15 @@ class CorrectionsPanel(ttk.Frame):
         self.offset_slider.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.offset_value_entry.pack(side=tk.RIGHT, expand=False)
         self.offset_subframe.pack(side=tk.TOP, fill=tk.X, expand=True)
+        # Scatter
+        self.scatter_label = ttk.Label(self.plotting_left_column, text="Plot scatter", anchor=tk.W)
+        self.scatter_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.scatter_var = tk.StringVar(value="")
+        self.scatter_box = tk.Checkbutton(self.plotting_right_column, var=self.scatter_var,
+                                          onvalue="True", offvalue="", background=BG,
+                                          anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                          )
+        self.scatter_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Legend
         self.plot_legend_label = ttk.Label(self.plotting_left_column, text="Add legend", anchor=tk.W)
         self.plot_legend_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -657,13 +708,13 @@ class CorrectionsPanel(ttk.Frame):
         self.pe_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         # Read photon energy from init file if available
         self.photon_energy = tk.StringVar(self, value=service.get_service_parameter("PHOTON_ENERGY"))
-        self.pe_entry = ttk.Entry(self.settings_right_column, textvariable=self.photon_energy, width=8)
+        self.pe_entry = ttk.Entry(self.settings_right_column, textvariable=self.photon_energy, width=20)
         self.pe_entry.pack(side=tk.TOP, anchor=tk.W, expand=False)
         # Energy shift
-        self.eshift_label = ttk.Label(self.settings_left_column, text="Energy Shift (eV)", anchor=tk.W)
+        self.eshift_label = ttk.Label(self.settings_left_column, text="Energy Shift(s) (eV)", anchor=tk.W)
         self.eshift_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         self.energy_shift = tk.StringVar(self, value=service.get_service_parameter("ENERGY_SHIFT"))
-        self.eshift_entry = ttk.Entry(self.settings_right_column, textvariable=self.energy_shift, width=8)
+        self.eshift_entry = ttk.Entry(self.settings_right_column, textvariable=self.energy_shift, width=20)
         self.eshift_entry.pack(side=tk.TOP, anchor=tk.W, expand=False)
         # Normalize by sweeps
         self.normalize_sweeps_label = ttk.Label(self.settings_left_column, text="Normalize by sweeps", anchor=tk.W)
@@ -674,6 +725,21 @@ class CorrectionsPanel(ttk.Frame):
                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                    )
         self.normalize_sweeps_box.pack(side=tk.TOP, anchor=tk.W)
+        # Normalize by a constant
+        self.const_norm_label = ttk.Label(self.settings_left_column, text="Normalize by const(s)", anchor=tk.W)
+        self.const_norm_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        norm_entrie_frame = ttk.Frame(self.settings_right_column)
+        self.do_const_norm_var = tk.StringVar(value="")
+        self.do_const_norm_box = tk.Checkbutton(norm_entrie_frame, var=self.do_const_norm_var,
+                                                onvalue="True", offvalue="", background=BG,
+                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                                command=self._read_const_norm_value
+                                                )
+        self.do_const_norm_box.pack(side=tk.LEFT, anchor=tk.W)
+        self.const_norm_var = tk.StringVar(self, value="")
+        self.const_norm_entry = ttk.Entry(norm_entrie_frame, textvariable=self.const_norm_var, width=17)
+        self.const_norm_entry.pack(side=tk.LEFT, expand=False)
+        norm_entrie_frame.pack(side=tk.TOP, expand=False, anchor=tk.W)
         # Crop
         self.crop_label = ttk.Label(self.settings_left_column, text="Crop from:to (eV)", anchor=tk.W)
         self.crop_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -684,14 +750,14 @@ class CorrectionsPanel(ttk.Frame):
                                           anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
                                           command=self._read_crop_values
                                           )
-        self.do_crop_box.pack(side=tk.LEFT)
+        self.do_crop_box.pack(side=tk.LEFT, anchor=tk.W)
         self.crop_left_var = tk.StringVar(self, value="")
         self.crop_right_var = tk.StringVar(self, value="")
         self.crop_left_entry = ttk.Entry(crop_entries_frame, textvariable=self.crop_left_var, width=8)
         self.crop_left_entry.pack(side=tk.LEFT, expand=False)
         self.crop_right_entry = ttk.Entry(crop_entries_frame, textvariable=self.crop_right_var, width=8)
         self.crop_right_entry.pack(side=tk.RIGHT, expand=False)
-        crop_entries_frame.pack(side=tk.TOP, expand=False)
+        crop_entries_frame.pack(side=tk.TOP, expand=False, anchor=tk.W)
         # Subtract linear background
         self.subtract_const_label = ttk.Label(self.settings_left_column, text="Subtract constant bg", anchor=tk.W)
         self.subtract_const_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -711,7 +777,7 @@ class CorrectionsPanel(ttk.Frame):
                                                    )
         self.subtract_shirley_box.pack(side=tk.TOP, anchor=tk.W)
         # Pack two-columns section
-        self.settings_left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.settings_left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         self.settings_right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.settings_two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
 
@@ -728,12 +794,14 @@ class CorrectionsPanel(ttk.Frame):
             new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
             new_plot_panel.plot_regions(self.regions_in_work,
                                         add_dimension=bool(self.plot_add_dim_var.get()),
+                                        scatter=bool(self.scatter_var.get()),
                                         legend=bool(self.plot_legend_var.get()),
                                         title=bool(self.plot_title_var.get()),
                                         y_offset=offset, colormap=cmap)
         else:
             self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(self.regions_in_work,
                                                                         add_dimension=bool(self.plot_add_dim_var.get()),
+                                                                        scatter=bool(self.scatter_var.get()),
                                                                         legend=bool(self.plot_legend_var.get()),
                                                                         title=bool(self.plot_title_var.get()),
                                                                         y_offset=offset, colormap=cmap)
@@ -745,6 +813,13 @@ class CorrectionsPanel(ttk.Frame):
             crop_vals = service.get_service_parameter("CROP").split(';')
             self.crop_left_var.set(crop_vals[0])
             self.crop_right_var.set(crop_vals[1])
+
+    def _read_const_norm_value(self):
+        if self.const_norm_var.get():
+            return
+        nc = service.get_service_parameter("NORMALIZATION_CONSTANT")
+        if nc:
+            self.const_norm_var.set(nc)
 
     def _save(self):
         if self.regions_in_work:
@@ -761,11 +836,13 @@ class CorrectionsPanel(ttk.Frame):
                             region.save_xy(f, add_dimension=save_add_dimension, headers=False)
                     except (IOError, OSError):
                         gui_logger.error(f"Couldn't save file {name_dat}", exc_info=True)
+                        self.winfo_toplevel().display_message(f"Couldn't save file {name_dat}")
                     try:
                         with open(name_sqr, 'w') as f:
                             region.save_as_file(f, details=True, add_dimension=save_add_dimension, headers=True)
                     except (IOError, OSError):
                         gui_logger.error(f"Couldn't save file {name_sqr}", exc_info=True)
+                        self.winfo_toplevel().display_message(f"Couldn't save file {name_sqr}")
 
     def _saveas(self):
         if self.regions_in_work:
@@ -782,12 +859,14 @@ class CorrectionsPanel(ttk.Frame):
                             region.save_xy(f, add_dimension=save_add_dimension, headers=False)
                     except (IOError, OSError):
                         gui_logger.error(f"Couldn't save file {dat_file_path}", exc_info=True)
+                        self.winfo_toplevel().display_message(f"Couldn't save file {dat_file_path}")
                     sqr_file_path = dat_file_path.rpartition('.')[0] + '.sqr'
                     try:
                         with open(sqr_file_path, 'w') as f:
                             region.save_as_file(f, details=True, add_dimension=save_add_dimension, headers=True)
                     except (IOError, OSError):
                         gui_logger.error(f"Couldn't save file {sqr_file_path}", exc_info=True)
+                        self.winfo_toplevel().display_message(f"Couldn't save file {sqr_file_path}")
 
                 output_dir = os.path.dirname(dat_file_path)
             service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
@@ -796,11 +875,13 @@ class CorrectionsPanel(ttk.Frame):
         if self.plot_use_settings_var.get():
             self.photon_energy.set(service.get_service_parameter("PHOTON_ENERGY"))
             self.energy_shift.set(service.get_service_parameter("ENERGY_SHIFT"))
+            self.const_norm_var.set(service.get_service_parameter("NORMALIZATION_CONSTANT"))
             self.normalize_sweeps_var.set("True")
             self.subtract_const_var.set("True")
             self.plot_binding_var.set("True")
             self.subtract_shirley_var.set("")
             self.do_crop_var.set("")
+            self.do_const_norm_var.set("")
             try:
                 crop_vals = service.get_service_parameter("CROP").split(';')
             except (IndexError, IOError):
@@ -809,6 +890,8 @@ class CorrectionsPanel(ttk.Frame):
             self.crop_right_var.set(crop_vals[1])
             for obj in (self.subtract_const_box,
                         self.subtract_shirley_box,
+                        self.do_const_norm_box,
+                        self.const_norm_entry,
                         self.do_crop_box,
                         self.crop_left_entry,
                         self.crop_right_entry,
@@ -824,6 +907,8 @@ class CorrectionsPanel(ttk.Frame):
                         self.do_crop_var,
                         self.crop_left_var,
                         self.crop_right_var,
+                        self.do_const_norm_var,
+                        self.const_norm_var,
                         self.normalize_sweeps_var,
                         self.plot_binding_var,
                         self.photon_energy,
@@ -833,6 +918,8 @@ class CorrectionsPanel(ttk.Frame):
             # Setting boxes and entries to DISABLED
             for obj in (self.subtract_const_box,
                         self.subtract_shirley_box,
+                        self.do_const_norm_box,
+                        self.const_norm_entry,
                         self.do_crop_box,
                         self.crop_left_entry,
                         self.crop_right_entry,
@@ -951,6 +1038,7 @@ class PeakLine(ttk.Frame):
                     return val, bounds, fix_choise
                 except ValueError:
                     gui_logger.warning(f"Check parameter entries for Peak {self._id}. Must be numbers.")
+                    self.winfo_toplevel().display_message(f"Check parameter entries for Peak {self._id}. Must be numbers.")
                     return None
 
     def get_all_parameters(self, string_output=False):
@@ -1027,7 +1115,7 @@ class PeakLine(ttk.Frame):
 
 
 class FitWindow(tk.Toplevel):
-    def __init__(self, parent, region, fit_type, label='fit', *args, **kwargs):
+    def __init__(self, parent, region, fit_type, label='fit', legend=True, scatter=False, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.wm_title(f"Fitting {fit_type} to {region.get_id()}")
         self.fittype = fit_type
@@ -1039,7 +1127,7 @@ class FitWindow(tk.Toplevel):
         self.results_txt = None
         self.plot_panel = PlotPanel(self, label=None, borderwidth=1, relief="groove")
         self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        self.plot_panel.plot_regions(region)
+        self.plot_panel.plot_regions(region, legend=legend, scatter=scatter)
         if fit_type == 'Error Func':
             self.fit_panel = ttk.Frame(self, borderwidth=1, relief="groove")
             self._add_error_func_section()
@@ -1195,7 +1283,8 @@ class FitWindow(tk.Toplevel):
                     parameter_bounds[par_name][cnt] = par_bounds[j]
             cnt += 1
         if None in initial_guess:
-            gui_logger.warning("Please fill in initial values for all aprameters. Bounds can stay empty.")
+            gui_logger.warning("Please fill in initial values for all parameters. Bounds can stay empty.")
+            self.winfo_toplevel().display_message("Please fill in initial values for all parameters. Bounds can stay empty.")
             return False
         # Fitting
         self.fitter_obj = fitter.Fitter(self.region)
@@ -1304,6 +1393,7 @@ class FitWindow(tk.Toplevel):
                         df.to_csv(f, header=True, index=False, sep='\t')
                 except (IOError, OSError):
                     gui_logger.error(f"Couldn't save file {dat_file_path}", exc_info=True)
+                    self.winfo_toplevel().display_message(f"Couldn't save file {dat_file_path}")
 
                 output_dir = os.path.dirname(dat_file_path)
                 service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
@@ -1333,6 +1423,7 @@ class Root(tk.Tk):
         self.fit_windows = []
         # Attribute keeping track of all regions loaded in the current GUI session
         self.loaded_regions = datahandler.RegionsCollection()
+        self.results_msg = None
 
         self.main_menu_bar = tk.Menu(self)
         self.file_menu = tk.Menu(self.main_menu_bar, tearoff=0)
@@ -1340,8 +1431,21 @@ class Root(tk.Tk):
         self.generate_main_menu()
 
         tk.Tk.wm_title(self, "SpecQP")
-        self.main_window = MainWindow(self, orient=tk.HORIZONTAL)
-        self.main_window.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.general_outlay_manager = ttk.PanedWindow(self, orient=tk.VERTICAL)
+        self.main_window = MainWindow(self.general_outlay_manager, orient=tk.HORIZONTAL)
+        self.general_outlay_manager.add(self.main_window)
+        self.log_window = ttk.PanedWindow(self, orient=tk.HORIZONTAL, height=50)
+        self.log_panel = BrowserTreeView(self, label=None, borderwidth=1, relief="groove")
+        self.log_window.add(self.log_panel)
+        self.general_outlay_manager.add(self.log_window)
+        self.general_outlay_manager.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # self.main_window = MainWindow(self, orient=tk.HORIZONTAL)
+        # self.main_window.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # self.log_window = ttk.PanedWindow(self, orient=tk.HORIZONTAL, height=50)
+        # self.log_panel = BrowserTreeView(self, label=None, borderwidth=1, relief="groove")
+        # self.log_window.add(self.log_panel)
+        # self.log_window.pack(side=tk.BOTTOM, fill=tk.X, expand=True)
 
     def _configure_style(self):
         # Setting GUI color style
@@ -1350,6 +1454,14 @@ class Root(tk.Tk):
         # self.style.configure('.TEntry', bg=BG, fg=BG, disabledforeground=BG, disabledbackground=BG)
         # self.style.configure('default.TCheckbutton', background=BG)
         # self.style.configure('default.TFrame', background=BG)
+
+    def display_message(self, msg):
+        if self.results_msg:
+            self.results_msg.destroy()
+        msg = f"{datetime.datetime.now().strftime('%H:%M:%S')} " + msg
+        self.results_msg = tk.Message(self.log_panel.treeview, text=msg,
+                                 width=self.winfo_toplevel().winfo_width(), anchor=tk.W, bg=BG)
+        self.results_msg.pack(side=tk.TOP, fill=tk.X, expand=True)
 
     # TODO: write the functionality for the menu, add new menus if needed.
     def generate_main_menu(self):
@@ -1414,6 +1526,7 @@ class Root(tk.Tk):
             new_plot_panel.figure_axes.set_xlim(left=0)
         else:
             gui_logger.warning("Couldn't get calibration data files from askopenfiles dialog.")
+            self.winfo_toplevel().display_message("Couldn't get calibration data files")
 
     def _open_file_as_text(self):
         """Open the read-only view of a text file in a Toplevel widget

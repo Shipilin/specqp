@@ -14,6 +14,7 @@ service_vars = {
     "PHOTON_ENERGY": "",
     "ENERGY_SHIFT": "",
     "FERMI_FIT_PARAMETERS": "1.00;0.00;0.10;0.00",
+    "NORMALIZATION_CONSTANT": "1",
     "CROP": ";"
 }
 
