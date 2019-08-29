@@ -1373,6 +1373,8 @@ class FitWindow(tk.Toplevel):
             for i, line_id in enumerate(line_ids):
                 if i < len(line_ids) - 1:
                     self.peak_lines[line_id].add_peak_button.config(state=tk.DISABLED)
+                elif i == len(line_ids) - 1:
+                    self.peak_lines[line_id].add_peak_button.config(state=tk.NORMAL)
                 self.peak_lines[line_id].remove_peak_button.config(state=tk.NORMAL)
 
     def _save_peaks(self):
