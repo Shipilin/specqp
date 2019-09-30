@@ -21,6 +21,27 @@ DATA_FILE_TYPES = (
 )
 
 
+def load_calibration_curves(filenames):
+    """Reads file or files using provided name(s). Checks for file existance etc.
+    :param filenames: str or sequence: filepath(s)
+    :return:
+    """
+    calibration_data = {}
+    if not type(filenames) == str and not helpers.is_iterable(filenames):
+        filenames = [filenames]
+    for filename in filenames:
+        if os.path.isfile(filename):
+            try:
+                with open(filename, 'r') as f:
+                    df = pd.read_csv(f, sep='\t')
+                    calibration_data[os.path.basename(filename).rpartition(',')[2]] = \
+                        (df['Press_03_value'].to_numpy(), df['Press_05_value'].to_numpy())
+            except (IOError, OSError):
+                datahandler_logger.error(f"Couldn't access the file: {filename}", exc_info=True)
+                continue
+    return calibration_data
+
+
 def load_scienta_txt(filename, regions_number_line=1, first_region_number=1):
     """Opens and parses provided scienta.txt file returning the data and info for all regions
     as a list of Region objects. Variable 'regions_number_line' gives the
@@ -232,27 +253,6 @@ def load_specs_xy(filename):
         # Create a Region object for the current region
         regions.append(Region(energy, counts, info=info_lines_revised, conditions=region_conditions))
     return regions
-
-
-def load_calibration_curves(filenames):
-    """Reads file or files using provided name(s). Checks for file existance etc.
-    :param filenames: str or sequence: filepath(s)
-    :return:
-    """
-    calibration_data = {}
-    if not type(filenames) == str and not helpers.is_iterable(filenames):
-        filenames = [filenames]
-    for filename in filenames:
-        if os.path.isfile(filename):
-            try:
-                with open(filename, 'r') as f:
-                    df = pd.read_csv(f, sep='\t')
-                    calibration_data[os.path.basename(filename).rpartition(',')[2]] = \
-                        (df['Press_03_value'].to_numpy(), df['Press_05_value'].to_numpy())
-            except (IOError, OSError):
-                datahandler_logger.error(f"Couldn't access the file: {filename}", exc_info=True)
-                continue
-    return calibration_data
 
 
 class Region:
@@ -479,13 +479,21 @@ class Region:
         """
         return self._add_dimension_scans_number
 
-    def get_conditions(self, entry=None):
+    def get_conditions(self, entry=None, as_string=False):
         """Returns experimental conditions as a dictionary {"entry": value} or
         the value of the specified entry.
         """
         if self._conditions:
             if entry:
                 return self._conditions[entry]
+            elif as_string:
+                cond_string = ""
+                for val in self._conditions.values():
+                    if not bool(cond_string):  # If string is empty
+                        cond_string = "".join([cond_string,val])
+                    else:
+                        cond_string = "; ".join([cond_string, val])
+                return cond_string
             return self._conditions
         else:
             datahandler_logger.warning(f"The region {self._id} doesn't contain information about conditions.")
@@ -597,6 +605,9 @@ class Region:
     def is_add_dimension(self):
         return self._flags[self.region_flags[4]]
 
+    def is_binding(self):
+        return self._flags[self.region_flags[1]]
+
     def is_dummy(self):
         if len(self._data['energy']) == 0:
             return True
@@ -607,9 +618,6 @@ class Region:
 
     def is_sweeps_normalized(self):
         return self._flags[self.region_flags[3]]
-
-    def is_binding(self):
-        return self._flags[self.region_flags[1]]
 
     def make_final_column(self, parent_column, overwrite=False):
         """Populates the 'final' column with the values from the column "parent_column", which contains processed data.
@@ -801,11 +809,11 @@ class Region:
         self._excitation_energy = float(excitation_energy)
         self._info[Region.info_entries[3]] = str(float(excitation_energy))
 
-    def set_id(self, region_id):
-        self._id = region_id
-
     def set_fermi_flag(self):
         self._flags[Region.region_flags[2]] = True
+
+    def set_id(self, region_id):
+        self._id = region_id
 
 
 class RegionsCollection:
@@ -867,18 +875,18 @@ class RegionsCollection:
             return None
         return ids
 
-    def get_ids(self):
-        """Returns the list of IDs for regions in RegionCollection object
-        :return: list of IDs
-        """
-        return list(self.regions.keys())
-
     def get_by_id(self, region_id):
         if not type(region_id) == str and helpers.is_iterable(region_id):  # Return multiple regions
             return [self.regions[reg_id] for reg_id in region_id if reg_id in self.regions]
         else:
             if region_id in self.regions:
                 return self.regions[region_id]
+
+    def get_ids(self):
+        """Returns the list of IDs for regions in RegionCollection object
+        :return: list of IDs
+        """
+        return list(self.regions.keys())
 
     def get_regions(self):
         return self.regions.values()

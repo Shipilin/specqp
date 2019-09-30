@@ -2,6 +2,7 @@ import logging
 from matplotlib.figure import Figure
 
 from specqp import helpers
+from specqp.datahandler import Region
 # import helpers
 
 plotter_logger = logging.getLogger("specqp.plotter")  # Creating child logger
@@ -27,18 +28,26 @@ def _get_arrays(region, x_data='energy', y_data='final'):
 
 
 def _make_label(region, legend_features=None):
+    def _add_to_label(lbl: str, new_lbl_entry: str):
+        if not bool(lbl):  # If label is empty
+            lbl = "".join([lbl, new_lbl_entry])
+        else:
+            lbl = " : ".join([lbl, new_lbl_entry])
+        return lbl
+
+    label = ""
     if 'ID' in legend_features:
-        label = f"{region.get_id()}"
-    else:
-        label = ""
+        label = _add_to_label(label, f"{region.get_id()}")
+    for entry in legend_features:
+        if entry in Region.info_entries:
+            label = _add_to_label(label, f"{region.get_info(entry)}")
     features = region.get_conditions()
-    if legend_features and features:
+    if "Conditions" in legend_features and features:
+        label = _add_to_label(label, f"{region.get_conditions(as_string=True)}")
+    elif legend_features and features:
         for legend_feature in legend_features:
             if legend_feature in features:
-                if not label:  # If label is empty
-                    label = "".join([label, features[legend_feature]])
-                else:
-                    label = " : ".join([label, features[legend_feature]])
+                label = _add_to_label(label, features[legend_feature])
     elif legend_features and not features:
         plotter_logger.info(f"Conditions for region {region.get_id()} are not known.")
     return label
@@ -114,11 +123,13 @@ def _plot_curve(x, y, region, axs, invert_x=True, log_scale=False, y_offset=0.0,
                 scatter=False, label=None, color=None, title=True, font_size=12,
                 legend=True, legend_features=None, legend_pos='best'):
 
-    if not label:
+    if label is None:
         label = _make_label(region, legend_features=legend_features)
     # If we want scatter plot
+    if not bool(label):
+        label = " "
     if scatter:
-        axs.scatter(x, y + y_offset , s=7, c=color, label=label)
+        axs.scatter(x, y + y_offset, s=7, c=color, label=label)
     else:
         axs.plot(x, y + y_offset, color=color, label=label)
     axs.tick_params(axis='both', which='both', labelsize=font_size)

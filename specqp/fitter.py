@@ -43,26 +43,32 @@ class Peak:
         output = "\n".join((output, f"Area: {self._Area:.4f}"))
         return output
 
-    def get_virtual_data(self, num=10, multiply=True):
-        """Returns more (or less) data points. If multiply==False, value of 'num' is taken as desired number of ponts.
-        If multiply==True, multiplies the existing number of points by value of 'num'. For plotting a smoother curve,
-        for example.
-        :param num: Number of desired points or multiplicator
-        :param multiply: True if num is multiplicator, False if num is absolute number of points
-        :return (ndarray, ndarray) x and y data with desired number of points
+    def get_covariance(self, parameter=None):
+        """Returns all fitting parameters covariances or one specified by name 'peak_types'
         """
-        assert num > 0
-        if multiply:
-            peak_virtual_x = np.linspace(self._X[0], self._X[-1], len(self._X) * num, endpoint=True)
+        if not parameter:
+            return self._Pcov
         else:
-            peak_virtual_x = np.linspace(self._X[0], self._X[-1], num, endpoint=True)
-        peak_virtual_y = self._function(peak_virtual_x, *self._Popt)
-        return peak_virtual_x, peak_virtual_y
+            for i, par_name in enumerate(self.peak_types[self._PeakType]):
+                if parameter == par_name:
+                    return self._Pcov[i]
+        fitter_logger.error(f"Couldn't get covariance from a Peak instance")
 
     def get_data(self):
         """Returns a list of x and y data
         """
         return [self._X, self._Y]
+
+    def get_fitting_errors(self, parameter=None):
+        """Returns fitting errors for all parameters or one specified by name 'peak_types'
+        """
+        if not parameter:
+            return self._FittingErrors
+        else:
+            for i, par_name in enumerate(self.peak_types[self._PeakType]):
+                if parameter == par_name:
+                    return self._FittingErrors[i]
+        fitter_logger.error(f"Couldn't get fitting errors from a Peak instance")
 
     def get_parameters(self, parameter=None):
         """Returns all fitting parameters or one specified by name from 'peak_types'
@@ -78,33 +84,27 @@ class Peak:
     def get_peak_area(self):
         return self._Area
 
-    def get_covariance(self, parameter=None):
-        """Returns all fitting parameters covariances or one specified by name 'peak_types'
-        """
-        if not parameter:
-            return self._Pcov
-        else:
-            for i, par_name in enumerate(self.peak_types[self._PeakType]):
-                if parameter == par_name:
-                    return self._Pcov[i]
-        fitter_logger.error(f"Couldn't get covariance from a Peak instance")
-
-    def get_fitting_errors(self, parameter=None):
-        """Returns fitting errors for all parameters or one specified by name 'peak_types'
-        """
-        if not parameter:
-            return self._FittingErrors
-        else:
-            for i, par_name in enumerate(self.peak_types[self._PeakType]):
-                if parameter == par_name:
-                    return self._FittingErrors[i]
-        fitter_logger.error(f"Couldn't get fitting errors from a Peak instance")
+    def get_peak_id(self):
+        return self._id
 
     def get_peak_type(self):
         return self._PeakType
 
-    def get_peak_id(self):
-        return self._id
+    def get_virtual_data(self, num=10, multiply=True):
+        """Returns more (or less) data points. If multiply==False, value of 'num' is taken as desired number of ponts.
+        If multiply==True, multiplies the existing number of points by value of 'num'. For plotting a smoother curve,
+        for example.
+        :param num: Number of desired points or multiplicator
+        :param multiply: True if num is multiplicator, False if num is absolute number of points
+        :return (ndarray, ndarray) x and y data with desired number of points
+        """
+        assert num > 0
+        if multiply:
+            peak_virtual_x = np.linspace(self._X[0], self._X[-1], len(self._X) * num, endpoint=True)
+        else:
+            peak_virtual_x = np.linspace(self._X[0], self._X[-1], num, endpoint=True)
+        peak_virtual_y = self._function(peak_virtual_x, *self._Popt)
+        return peak_virtual_x, peak_virtual_y
 
     def set_peak_id(self, new_id):
         self._id = new_id
@@ -564,3 +564,5 @@ class Fitter:
 
     def get_global_gauss_fwhm(self):
         return self._global_gauss_fwhm
+
+

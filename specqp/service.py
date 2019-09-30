@@ -15,7 +15,8 @@ service_vars = {
     "ENERGY_SHIFT": "",
     "FERMI_FIT_PARAMETERS": "1.00;0.00;0.10;0.00",
     "NORMALIZATION_CONSTANT": "1",
-    "CROP": ";"
+    "CROP": ";",
+    "LEGEND": ";True;True"
 }
 
 

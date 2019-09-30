@@ -390,7 +390,7 @@ class PlotPanel(ttk.Frame):
 
     def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False,
                      y_offset=0.0, scatter=False, label=None, color=None, title=True, font_size=12, legend=True,
-                     legend_features=("ID",), legend_pos='best', add_dimension=False, colormap=None):
+                     legend_features=("ID", ), legend_pos='best', add_dimension=False, colormap=None):
         if regions:
             if not helpers.is_iterable(regions):
                 regions = [regions]
@@ -476,10 +476,31 @@ class CorrectionsPanel(ttk.Frame):
         self.opmenu_fit_type = ttk.OptionMenu(self.fit_subframe, self.select_fit_type, self.select_fit_type.get(), *options)
         self.opmenu_fit_type.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         self.fit_subframe.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.global_fit = ttk.Button(self, text='Global Fit', command=self._global_fit)
+        self.global_fit.pack(side=tk.TOP, fill=tk.X, expand=False)
+
+    def _global_fit(self):
+        fit_type = self.select_fit_type.get()
+        if fit_type == 'Error Func':
+            gui_logger.warning("There is no 'Global Fit' procedure for 'Error Func' fitting option.")
+            self.winfo_toplevel().display_message("There is no 'Global Fit' procedure for 'Error Func' fitting option.")
+            return
+        regions_in_work = self._get_regions_in_work()
+        if not self.regions_in_work:
+            return
+        global_fit_window = GlobalFitWindow(self.winfo_toplevel(), regions_in_work, fit_type,
+                                            label='Global Fit', legend=bool(self.plot_legend_var.get()),
+                                            legend_features=self._get_legend_features(),
+                                            scatter=bool(self.scatter_var.get()))
+        self.winfo_toplevel().update()  # Update to be able to request fit_window parameters
+        global_fit_window.wm_minsize(width=global_fit_window.winfo_width(), height=global_fit_window.winfo_height())
+        self.winfo_toplevel().fit_windows.append(global_fit_window)
 
     def _fit(self):
         fit_type = self.select_fit_type.get()
         regions_in_work = self._get_regions_in_work()
+        if not self.regions_in_work:
+            return
         for region in regions_in_work:
             if fit_type == 'Error Func':
                 region.set_fermi_flag()
@@ -502,6 +523,16 @@ class CorrectionsPanel(ttk.Frame):
             fit_window.wm_minsize(width=fit_window.winfo_width(), height=fit_window.winfo_height())
             self.winfo_toplevel().fit_windows.append(fit_window)
 
+    def _get_legend_features(self):
+        lfs = []
+        if bool(self.plot_legend_fn_var.get()):
+            lfs.append("File Name")
+        if bool(self.plot_legend_rn_var.get()):
+            lfs.append("Region Name")
+        if bool(self.plot_legend_con_var.get()):
+            lfs.append("Conditions")
+        return lfs
+
     def _get_regions_in_work(self):
         reg_ids = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
         # We will work with copies of regions, so that the temporary changes are not stored
@@ -509,27 +540,63 @@ class CorrectionsPanel(ttk.Frame):
         if regions_in_work:
             pe = self.photon_energy.get()
             es = self.energy_shift.get()
+            nc = self.const_norm_var.get()
             if pe:
                 try:
-                    pe = float(pe)
+                    pe = [float(pe_str.strip()) for pe_str in pe.split(';')]
                 except ValueError:
-                    gui_logger.warning("Check 'Photon Energy' parameter value. Must be a number.")
-                    self.winfo_toplevel().display_message("Check 'Photon Energy' parameter value. Must be a number.")
+                    gui_logger.warning("Check 'Photon Energy' values. Must be a number or a sequence separated by ';'.")
+                    self.winfo_toplevel().display_message("Check 'Photon Energy' values. Must be a number or a sequence separated by ';'.")
                     return
             if es:
                 try:
                     es = [float(es_str.strip()) for es_str in es.split(';')]
                 except ValueError:
-                    self.winfo_toplevel().display_message("Check 'Energy Shift' value. Must be a number or a sequence separated by ';'.")
-                    gui_logger.warning("Check 'Energy Shift' value. Must be a number or a sequence separated by ';'.")
+                    gui_logger.warning("Check 'Energy Shift' values. Must be a number or a sequence separated by ';'.")
+                    self.winfo_toplevel().display_message("Check 'Energy Shifts' value. Must be a number or a sequence separated by ';'.")
                     return
+            if nc:
+                try:
+                    nc = [float(nc_str.strip()) for nc_str in nc.split(';')]
+                except ValueError:
+                    gui_logger.warning("Check 'Normalize by const(s)' values. Must be a number or a sequence separated by ';'.")
+                    self.winfo_toplevel().display_message("Check 'Normalize by const(s)' value. Must be a number or a sequence separated by ';'.")
+                    return
+
             if self.plot_use_settings_var.get():
-                service.set_init_parameters(["PHOTON_ENERGY", "ENERGY_SHIFT"], [pe, "; ".join([str(s) for s in es])])
+                service.set_init_parameters(["PHOTON_ENERGY", "ENERGY_SHIFT"],
+                                            ["; ".join([str(s) for s in pe]), "; ".join([str(s) for s in es])])
+                service.set_init_parameters("NORMALIZATION_CONSTANT", "; ".join([str(s) for s in nc]))
+                # Check that the number of parameters is equal to the number of regions
+                if len(pe) > 1 and len(pe) != len(regions_in_work):
+                    msg = "Check the number of 'Photon Energy' values. Must be equal to the number of regions. " \
+                          "First valid value was used for all regions."
+                    gui_logger.warning(msg)
+                    self.winfo_toplevel().display_message(msg)
+                if len(es) > 1 and len(es) != len(regions_in_work):
+                    msg = "Check the number of 'Energy Shift' values. Must be equal to the number of regions. " \
+                          "First valid value was used for all regions."
+                    gui_logger.warning(msg)
+                    self.winfo_toplevel().display_message(msg)
+                if len(nc) > 1 and len(nc) != len(regions_in_work):
+                    msg = "Check the number of 'Normalize by const(s)' values. Must be equal to the number of regions. " \
+                          "First valid value was used for all regions."
+                    gui_logger.warning(msg)
+                    self.winfo_toplevel().display_message(msg)
+
                 for i, region in enumerate(regions_in_work):
-                    # if self.is_fermi_var.get():
-                    #     region.set_fermi_flag()
-                    if pe:
-                        region.set_excitation_energy(pe)
+                    # Read Photon Energy value from the GUI and set it for the region
+                    if len(pe) == 1:
+                        region.set_excitation_energy(pe[0])
+                    elif len(pe) == len(regions_in_work):
+                        if pe[i]:
+                            region.set_excitation_energy(pe[i])
+                    elif len(pe) > 0:
+                        for val in pe:
+                            if bool(val):
+                                region.set_excitation_energy(val)
+                                break
+                    # Read Energy Shift value from the GUI and set it for the region
                     if len(es) == 1 and not region.get_flags()["fermi_flag"]:
                         region.correct_energy_shift(es[0])
                         region.add_correction(f"Energy shift corrected by {round(es[0], int(service.service_vars['ROUND_PRECISION']))} eV")
@@ -537,10 +604,12 @@ class CorrectionsPanel(ttk.Frame):
                         if es[i]:
                             region.correct_energy_shift(es[i])
                             region.add_correction(f"Energy shift corrected by {round(es[i], int(service.service_vars['ROUND_PRECISION']))} eV")
-                    else:
-                        gui_logger.warning("Check the number of 'Energy Shift' values. Must be equal to the number of regions.")
-                        self.winfo_toplevel().display_message("Check the number of 'Energy Shift' values. "
-                                                              "Must be equal to the number of regions.")
+                    elif len(es) > 0 and not region.get_flags()["fermi_flag"]:
+                        for val in es:
+                            if bool(val):
+                                region.correct_energy_shift(val)
+                                region.add_correction(f"Energy shift corrected by {round(val, int(service.service_vars['ROUND_PRECISION']))} eV")
+                                break
                     if self.plot_binding_var.get():
                         region.invert_to_binding()
                     if self.normalize_sweeps_var.get():
@@ -548,30 +617,26 @@ class CorrectionsPanel(ttk.Frame):
                         region.make_final_column("sweepsNormalized", overwrite=True)
                         region.add_correction("Normalized by sweeps and dwell time")
                     if self.do_const_norm_var.get():
-                        norm_const = self.const_norm_var.get()
-                        if norm_const:
-                            try:
-                                const = None
-                                if ';' in norm_const:
-                                    if len(norm_const.split(';')) == len(regions_in_work):
-                                        const = float(norm_const.split(';')[i].strip())
-                                    else:
-                                        gui_logger.warning("Check the number of normalization constant values. "
-                                                           "Must be equal to number of regions.")
-                                        self.winfo_toplevel().display_message("Check the number of normalization "
-                                                                              "constant values. Must be equal to number "
-                                                                              "of regions.")
-                                else:
-                                    const = float(norm_const.strip())
-                                if const is not None:
-                                    helpers.normalize(region, y_data='final', const=const, add_column=True)
-                                    if i == len(regions_in_work) - 1:
-                                        service.set_init_parameters("NORMALIZATION_CONSTANT", norm_const)
+                        if len(nc) == 1:
+                            helpers.normalize(region, y_data='final', const=nc[0], add_column=True)
+                            region.make_final_column("normalized", overwrite=True)
+                            region.add_correction(
+                                f"Normalized by {round(nc[0], int(service.service_vars['ROUND_PRECISION']))}")
+                        elif len(nc) == len(regions_in_work):
+                            if nc[i]:
+                                helpers.normalize(region, y_data='final', const=nc[i], add_column=True)
+                                region.make_final_column("normalized", overwrite=True)
+                                region.add_correction(
+                                    f"Normalized by {round(nc[i], int(service.service_vars['ROUND_PRECISION']))}")
+                        elif len(nc) > 0:
+                            for val in nc:
+                                if bool(nc):
+                                    helpers.normalize(region, y_data='final', const=val, add_column=True)
                                     region.make_final_column("normalized", overwrite=True)
-                                    region.add_correction(f"Normalized by {round(const, int(service.service_vars['ROUND_PRECISION']))}")
-                            except ValueError:
-                                gui_logger.warning("Check normalization constant values. Must be numbers.")
-                                self.winfo_toplevel().display_message("Check normalization constant value(s). Must be number(s).")
+                                    region.add_correction(
+                                        f"Normalized by {round(val, int(service.service_vars['ROUND_PRECISION']))}")
+                                    break
+
                     if self.do_crop_var.get():
                         crop_left, crop_right = self.crop_left_var.get(), self.crop_right_var.get()
                         if crop_left and crop_right:
@@ -583,7 +648,8 @@ class CorrectionsPanel(ttk.Frame):
                                 self.winfo_toplevel().display_message("Check crop values. Must be numbers.")
                     if self.subtract_const_var.get():
                         e = region.get_data('energy')
-                        if np.mean(e[-10:-1]) < np.mean(e[0:10]):
+                        c = region.get_data('counts')
+                        if np.mean(c[-10:-1]) < np.mean(c[0:10]):
                             helpers.shift_by_background(region, [e[-10], e[-1]])
                         else:
                             helpers.shift_by_background(region, [e[0], e[10]])
@@ -666,12 +732,43 @@ class CorrectionsPanel(ttk.Frame):
         # Legend
         self.plot_legend_label = ttk.Label(self.plotting_left_column, text="Add legend", anchor=tk.W)
         self.plot_legend_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        legend_boxes = ttk.Frame(self.plotting_right_column)
         self.plot_legend_var = tk.StringVar(value="True")
-        self.plot_legend_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_legend_var,
+        self.plot_legend_box = tk.Checkbutton(legend_boxes, var=self.plot_legend_var,
+                                              onvalue="True", offvalue="", background=BG,
+                                              anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                              command=self._toggle_legend_settings
+                                              )
+        self.plot_legend_box.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        init_legend_settings = service.get_service_parameter("LEGEND").split(';')
+            # File name in the legend
+        fn_label = ttk.Label(legend_boxes, text="FN", anchor=tk.W)
+        fn_label.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        self.plot_legend_fn_var = tk.StringVar(value=init_legend_settings[0].strip())
+        self.plot_legend_fn_box = tk.Checkbutton(legend_boxes, var=self.plot_legend_fn_var,
                                               onvalue="True", offvalue="", background=BG,
                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                               )
-        self.plot_legend_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.plot_legend_fn_box.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+            # Region name in the legend
+        rn_label = ttk.Label(legend_boxes, text="RN", anchor=tk.W)
+        rn_label.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        self.plot_legend_rn_var = tk.StringVar(value=init_legend_settings[1].strip())
+        self.plot_legend_rn_box = tk.Checkbutton(legend_boxes, var=self.plot_legend_rn_var,
+                                              onvalue="True", offvalue="", background=BG,
+                                              anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                              )
+        self.plot_legend_rn_box.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+            # Conditions in the legend
+        con_label = ttk.Label(legend_boxes, text="CON", anchor=tk.W)
+        con_label.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        self.plot_legend_con_var = tk.StringVar(value=init_legend_settings[2].strip())
+        self.plot_legend_con_box = tk.Checkbutton(legend_boxes, var=self.plot_legend_con_var,
+                                              onvalue="True", offvalue="", background=BG,
+                                              anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                              )
+        self.plot_legend_con_box.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        legend_boxes.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Title
         self.plot_title_label = ttk.Label(self.plotting_left_column, text="Add title", anchor=tk.W)
         self.plot_title_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -783,10 +880,15 @@ class CorrectionsPanel(ttk.Frame):
 
     def _plot(self):
         self.regions_in_work = self._get_regions_in_work()
+        if not self.regions_in_work:
+            return
+        legend_options = ";".join([self.plot_legend_fn_var.get(), self.plot_legend_rn_var.get(), self.plot_legend_con_var.get()])
+        service.set_init_parameters("LEGEND", legend_options)
         offset = (self.offset_slider.get() / 100) * max([np.max(region.get_data(column='final'))
                                                          for region in self.regions_in_work if
                                                          len(region.get_data(column='final')) > 0])
         cmap = None if self.select_colormap.get() == "Default colormap" else self.select_colormap.get()
+        legend_features = self._get_legend_features()
         if bool(self.plot_separate_var.get()):
             new_plot_window = tk.Toplevel(self.winfo_toplevel())
             new_plot_window.wm_title("Raw data")
@@ -796,6 +898,7 @@ class CorrectionsPanel(ttk.Frame):
                                         add_dimension=bool(self.plot_add_dim_var.get()),
                                         scatter=bool(self.scatter_var.get()),
                                         legend=bool(self.plot_legend_var.get()),
+                                        legend_features=tuple(legend_features),
                                         title=bool(self.plot_title_var.get()),
                                         y_offset=offset, colormap=cmap)
         else:
@@ -803,6 +906,7 @@ class CorrectionsPanel(ttk.Frame):
                                                                         add_dimension=bool(self.plot_add_dim_var.get()),
                                                                         scatter=bool(self.scatter_var.get()),
                                                                         legend=bool(self.plot_legend_var.get()),
+                                                                        legend_features=tuple(legend_features),
                                                                         title=bool(self.plot_title_var.get()),
                                                                         y_offset=offset, colormap=cmap)
 
@@ -870,6 +974,29 @@ class CorrectionsPanel(ttk.Frame):
 
                 output_dir = os.path.dirname(dat_file_path)
             service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
+
+    def _toggle_legend_settings(self):
+        legend_sub_widgets = (
+            self.plot_legend_fn_var,
+            self.plot_legend_rn_var,
+            self.plot_legend_con_var,
+            self.plot_legend_fn_box,
+            self.plot_legend_rn_box,
+            self.plot_legend_con_box
+        )
+        if not bool(self.plot_legend_var.get()):
+            legend_sub_widgets_values = [w.get() for w in legend_sub_widgets[0:3]]
+            service.set_init_parameters("LEGEND", ";".join(legend_sub_widgets_values))
+            for obj in legend_sub_widgets[0:3]:
+                obj.set("")
+            for obj in legend_sub_widgets[3:]:
+                obj.config(state=tk.DISABLED)
+        else:
+            legend_sub_widgets_values = service.get_service_parameter("LEGEND").split(";")
+            for i, obj in enumerate(legend_sub_widgets[0:3]):
+                obj.set(legend_sub_widgets_values[i].strip())
+            for obj in legend_sub_widgets[3:]:
+                    obj.config(state=tk.NORMAL)
 
     def _toggle_settings(self):
         if self.plot_use_settings_var.get():
@@ -1084,7 +1211,7 @@ class PeakLine(ttk.Frame):
         :param par_fix: bool or str representing a bool
         """
         assert par_fix in ('True', 'False', '', True, False, 0, 1)
-        if type(par_value) == str and type(par_bounds) == str:
+        if type(par_value) is str and type(par_bounds) is str:
             if par_name in self.parameter_vals.keys():
                 self.parameter_vals[par_name].set(par_value)
                 self.parameter_bounds[par_name].set(par_bounds)
@@ -1115,7 +1242,7 @@ class PeakLine(ttk.Frame):
 
 
 class FitWindow(tk.Toplevel):
-    def __init__(self, parent, region, fit_type, label='fit', legend=True, scatter=False, *args, **kwargs):
+    def __init__(self, parent, region, fit_type, label='fit', legend=True, legend_features=None, scatter=False, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.wm_title(f"Fitting {fit_type} to {region.get_id()}")
         self.fittype = fit_type
@@ -1343,7 +1470,7 @@ class FitWindow(tk.Toplevel):
     def _plot_error_func_fit(self, fit_label):
         ax = self.plot_panel.figure_axes
         ax.clear()
-        plotter.plot_region(self.region, ax, y_data="final", scatter=True, title=False, legend_features=('ID',))
+        plotter.plot_region(self.region, ax, y_data="final", scatter=True, title=False, legend_features=("ID", "Conditions"))
         plotter.plot_region(self.region, ax, y_data="fitFermi", title=False, label=fit_label)
         ax.grid(which='both', axis='x', color='grey', linestyle=':')
         self.plot_panel.canvas.draw()
@@ -1399,6 +1526,12 @@ class FitWindow(tk.Toplevel):
 
                 output_dir = os.path.dirname(dat_file_path)
                 service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
+
+
+class GlobalFitWindow(FitWindow):
+    def __init__(self, parent, regions, fit_type, label='fit', legend=True, legend_features=None, scatter=False, *args, **kwargs):
+        super().__init__(parent, regions[0], fit_type, label=label, legend=legend, scatter=scatter, *args, **kwargs)
+        self.plot_panel.plot_regions(regions, legend=legend, legend_features=legend_features, scatter=scatter)
 
 
 class MainWindow(ttk.PanedWindow):
@@ -1457,10 +1590,11 @@ class Root(tk.Tk):
         # self.style.configure('default.TCheckbutton', background=BG)
         # self.style.configure('default.TFrame', background=BG)
 
-    def display_message(self, msg):
+    def display_message(self, msg, timestamp=True):
         if self.results_msg:
             self.results_msg.destroy()
-        msg = f"{datetime.datetime.now().strftime('%H:%M:%S')} " + msg
+        if timestamp:
+            msg = f"{datetime.datetime.now().strftime('%H:%M:%S')} " + msg
         self.results_msg = tk.Message(self.log_panel.treeview, text=msg,
                                  width=self.winfo_toplevel().winfo_width(), anchor=tk.W, bg=BG)
         self.results_msg.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -1555,15 +1689,23 @@ class Root(tk.Tk):
                                                  initialdir=service.get_service_parameter("DEFAULT_DATA_FOLDER"),
                                                  multiple=True)
         if file_names:
-            loaded_ids = {}
-            # If the user opens a file, remember the file folder to use it next time when the open request is received
-            service.set_init_parameters("DEFAULT_DATA_FOLDER", os.path.dirname(file_names[0]))
-            for file_name in file_names:
-                loaded_ids[file_name] = self.loaded_regions.add_regions_from_file(file_name, file_type)
+            self.load_file_list(file_names, file_type)
         else:
             gui_logger.warning("Couldn't get the file path from the load_file dialog in Root class")
             return
 
+    def load_file_list(self, file_list: list, file_type):
+        loaded_ids = {}
+        if type(file_type) is str:
+            file_type = [file_type]
+        # If the user opens a file, remember the file folder to use it next time when the open request is received
+        service.set_init_parameters("DEFAULT_DATA_FOLDER", os.path.dirname(file_list[0]))
+        if len(file_type) == len(file_list):
+            for i, file_name in enumerate(file_list):
+                loaded_ids[file_name] = self.loaded_regions.add_regions_from_file(file_name, file_type[i])
+        else:
+            for file_name in file_list:
+                loaded_ids[file_name] = self.loaded_regions.add_regions_from_file(file_name, file_type[0])
         if loaded_ids:
             for key, val in loaded_ids.items():
                 # The 'loaded_ids' dictionary can contain several None values, which will be evaluated as True
@@ -1593,9 +1735,39 @@ class Root(tk.Tk):
         pass
 
 
-def main():
+def _parse_batch_parameters(container, params):
+    for key, val in params.items():
+        try:
+            if not bool(val):
+                continue
+            if key == 'PE':
+                container.photon_energy.set('; '.join(val))
+                continue
+            if key == 'ES':
+                container.energy_shift.set('; '.join(val))
+                continue
+            if key == 'NC':
+                container.do_const_norm_var.set("True")
+                container.const_norm_var.set('; '.join(val))
+                continue
+        except ValueError:
+            print(f"Couldn't get parameter {key} value from batch file.")
+
+
+def main(*args, **kwargs):
     app = Root()
+    use_batch_parameters = False
+    # Loading a batch of files if we know their paths and their types (scienta/specs)
+    if "-batchload" in args and "FP" in kwargs and "FT" in kwargs:
+        assert len(kwargs["FP"]) == len(kwargs["FT"])
+        app.load_file_list(kwargs["FP"], kwargs["FT"])
+        if "CO" in kwargs and bool(kwargs["CO"]):
+            for i, region in enumerate(app.loaded_regions.get_regions()):
+                region.set_conditions({"Comments": kwargs["CO"][i],}, overwrite=True)
+        use_batch_parameters = True
     app.update()  # Update to be able to request main window parameters
     app.minsize(app.winfo_width(), app.winfo_height())
     app.resizable(1, 1)
+    if use_batch_parameters:
+        _parse_batch_parameters(app.gui_widgets["CorrectionsPanel"], kwargs)
     app.mainloop()

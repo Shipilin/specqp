@@ -38,17 +38,98 @@ def initialize_logging():
     specqp_logger.addHandler(file_handler)
 
 
+def parse_batch_file(filename, sections=None):
+    guidelines = []
+    fl = filename
+    if not os.path.isfile(filename):
+        filename = os.getcwd() + '/' + filename
+        if not os.path.isfile(filename):
+            specqp_logger.error(f"Can't find the source text file {fl}. The file was not loaded.")
+            return [None]
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+        if sections is None:
+            guidelines = [line for line in lines if line[0] == 'F']
+            return guidelines
+        else:
+            for section in sections:
+                section_start = [i + 1 for i, line in enumerate(lines) if f"[{section}]" in line]
+                section_end = [i for i, line in enumerate(lines) if f"[/{section}]" in line]
+                if len(section_start) != len(section_end):
+                    specqp_logger.error(f"Every section of the instruction file should begin with"
+                                        "'[sectionname]' label and end with [/sectionname] label. "
+                                        "The file {fl} was not loaded.")
+                    return [None]
+                for i in range(len(section_start)):
+                    guidelines += [line for line in lines[section_start[i]:section_end[i]] if line[0] == 'F']
+            return guidelines
+
+
 # TODO: write the logics for the batch mode
 def main(*args, **kwargs):
-    """Defines the behavior of the app if run in batch mode
+    """Defines the behavior of the app if run with flags and/or other parameters
     """
-    specqp_logger.info("Running the app in batch mode")
-    if args is not None:
-        for arg in args:
-            print(arg)
-    if kwargs is not None:
-        for key, value in kwargs.items():
-            print(f"{key}={value}")
+    # If no command line arguments or only '-gui' flag provided, run blank GUI
+    if (len(args) == 0 and len(kwargs) == 0) or \
+       (len(args) == 1 and args[0] == "-gui" and len(kwargs) == 0):
+        call_gui()
+
+    # To load a bunch of regions from files listed in a text file provide flag '-gui' and the filename(s)
+    elif "-gui" in args and ("filename" in kwargs or "filenames" in kwargs):
+        instruction_lines = []
+        if "section" in kwargs or "sections" in kwargs:
+            loader_instructions = {
+                "FP": [],
+                "FT": [],
+                "PE": [],
+                "ES": [],
+                "NC": [],
+                "CO": []
+            }
+            sections_to_load = []
+            if "section" in kwargs:
+                sections_to_load.append(kwargs["section"])
+            elif "sections" in kwargs:
+                sections_to_load += [sec.strip() for sec in kwargs["sections"].split(";")]
+            if "filename" in kwargs:
+                instruction_lines += parse_batch_file(kwargs["filename"], sections_to_load)
+            elif "filenames" in kwargs:
+                for filename in kwargs["filenames"].split(';'):
+                    instruction_lines += parse_batch_file(filename.strip(), sections_to_load)
+        else:
+            loader_instructions = {
+                "FP": [],
+                "FT": [],
+                "CO": []
+            }
+            if "filename" in kwargs:
+                instruction_lines += parse_batch_file(kwargs["filename"])
+            elif "filenames" in kwargs:
+                for filename in kwargs["filenames"].split(';'):
+                    instruction_lines += parse_batch_file(filename.strip())
+
+        loaded_files = []
+        if len(instruction_lines) > 0:
+            for line in instruction_lines:
+                if line is not None:
+                    parts = [l.strip().split('=') for l in line.split(';')]
+                    fname = parts[0][1].strip() # The name of the file to load is the first parameter in the line
+                    # In case the file has already been put in the loading que, skip it
+                    if fname in loaded_files:
+                        continue
+                    else:
+                        loaded_files.append(fname)
+                    for part in parts:
+                        name, value = part[0].strip(), part[1].strip()
+                        if name in loader_instructions:
+                            if name == "NC" and value == '':
+                                value = "1"
+                            loader_instructions[name].append(value)
+        if len(loader_instructions["FP"]) > 0:
+            call_gui("-batchload", **loader_instructions)
+        else:
+            print("No source files were loaded. Specqp process is terminated.")
+            sys.exit()
 
 
 if __name__ == "__main__":
@@ -63,16 +144,17 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         # If only script name is specified call GUI for interactive work
         specqp_logger.info("Running the app in GUI mode")
-        call_gui()
+        main()
     if len(sys.argv) > 1:
         # If there are additional arguments run in batch mode
         specqp_logger.info("Running the app in BATCH mode")
         args = []
-        kwargs = []
+        kwargs = {}
         for arg in sys.argv[1:]:
             if "=" in arg:
+                key, val = arg.split('=')
                 # If keyword arguments are provided
-                kwargs.append(arg)
+                kwargs[key.strip()] = val.strip()
             else:
                 args.append(arg)
-        main(*args, *kwargs)
+        main(*args, **kwargs)
