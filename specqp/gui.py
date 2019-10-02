@@ -3,13 +3,16 @@ import copy
 from shutil import copyfile
 import re
 import datetime
+import ntpath
+import logging
+
 import pandas as pd
+import numpy as np
+
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter import Widget
-import ntpath
-import logging
 
 import matplotlib
 from matplotlib import cm
@@ -18,14 +21,6 @@ from matplotlib.backend_tools import ToolBase
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.backend_bases import key_press_handler
 import matplotlib.image as mpimg
-
-import numpy as np
-
-# import service
-# import datahandler
-# import plotter
-# import helpers
-# import fitter
 
 from specqp import service
 from specqp import datahandler
@@ -36,15 +31,14 @@ from specqp import fitter
 # Default font for the GUI
 LARGE_FONT = ("Verdana", "12")
 
+COLORS = ['gray', 'navy', 'blue', 'turquoise', 'cyan', 'aquamarine', 'green', 'khaki', 'yellow', 'gold',
+          'goldenrod', 'salmon', 'orange', 'coral', 'tomato', 'red', 'pink', 'maroon', 'purple', 'thistle']
+
 gui_logger = logging.getLogger("specqp.gui")  # Creating child logger
 matplotlib.use('TkAgg')  # Configuring matplotlib interaction with tkinter
 style.use('ggplot')  # Configuring matplotlib style
 
 logo_img_file = os.path.dirname(os.path.abspath(__file__)) + "/assets/specqp_icon.png"
-# tool_bar_images = {
-#     "invert_x": "assets/invert_x.png"
-# }
-# Global background color hardcoded due to problems with MACOS color representation in tk
 BG = "#ececec"
 
 
@@ -291,50 +285,6 @@ class BrowserPanel(ttk.Frame):
         self.winfo_toplevel().quit()  # stops mainloop
 
 
-class CustomToolbar(NavigationToolbar2Tk):
-    def home(self):
-        NavigationToolbar2Tk.home(self)
-        self.update()
-        self.canvas.draw()
-
-    def zoom(self):
-        NavigationToolbar2Tk.zoom(self)
-        self.update()
-        self.canvas.draw()
-
-    def invert_x(self):
-        self.canvas.figure.axes[0].invert_xaxis()
-        self.canvas.draw()
-
-    def enable_ruler(self):
-        markerprops = dict(marker='o', markersize=5, markeredgecolor='red')
-        lineprops = dict(color='red', linewidth=2)
-        ax = self.winfo_toplevel().gui_widgets["PlotPanel"].figure_axes
-        ruler = tools.Ruler(ax=ax, useblit=True, markerprops=markerprops, lineprops=lineprops)
-
-    def save_figure(self):
-        NavigationToolbar2Tk.save_figure(self)
-        self.update()
-        self.canvas.draw()
-
-    def __init__(self, canvas, parent):
-        invert_x_tool = ToolBase(self, 'invert_x')
-        self.toolitems = (
-            ('Home', 'Reset original view', 'home', 'home'),
-            #('Back', 'Back to previous view', 'back', 'back'),
-            #('Forward', 'Forward to next view', 'forward', 'forward'),
-            #('Pan', 'Pan axes with left mouse, zoom with right', 'move', 'pan'),
-            ('Zoom', 'Zoom to rectangle', 'zoom_to_rect', 'zoom'),
-            #('Subplots', 'Configure subplots', 'subplots', 'configure_subplots'),
-            (None, None, None, None),
-            ('InvertX', 'Invert X-axis', 'back', 'invert_x'),
-            ('Ruler', 'Enable ruler', 'forward', 'enable_ruler'),
-            (None, None, None, None),
-            ('Save', 'Save the figure', 'filesave', 'save_figure'),
-            )
-        NavigationToolbar2Tk.__init__(self, canvas, parent)
-
-
 class PlotPanel(ttk.Frame):
     def __init__(self, parent, label=None, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -363,7 +313,7 @@ class PlotPanel(ttk.Frame):
     #     gui_logger.debug(f"{event.button} pressed on plot canvas")
     #     key_press_handler(event, self.canvas, self.toolbar)
 
-    def plot_fit(self, reg, fobj, ax=None, legend_feature=("ID",), legend_pos='best', title=False):
+    def plot_fit(self, reg, fobj, region_color=None, colors=None, ax=None, legend_feature=("ID",), legend_pos='best', title=False):
         """Plots region data with fit line, fitted peaks and residuals
         :param reg: region object
         :param fobj: fitter object
@@ -372,19 +322,27 @@ class PlotPanel(ttk.Frame):
         if not ax:
             ax = self.figure_axes
         ax.clear()
-        plotter.plot_region(reg, ax, color='red', scatter=True,
-                            legend_features=legend_feature, legend_pos=legend_pos, title=title)
+
         for i, peak in enumerate(fobj.get_peaks()):
             if peak:
                 peak_data = peak.get_virtual_data()
-                plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos,
-                                     label=f"{peak.get_parameters('center'):.2f}")
+                if colors is not None and colors[i] != "Default color":
+                    plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos,
+                                         label=f"{peak.get_parameters('center'):.2f}", color=colors[i])
+                else:
+                    plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos,
+                                         label=f"{peak.get_parameters('center'):.2f}")
+
+        if region_color is None:
+            region_color = 'red'
+        plotter.plot_region(reg, ax, color=region_color, scatter=True,
+                            legend_features=legend_feature, legend_pos=legend_pos, title=title)
 
         fitline_x, fitline_y = fobj.get_virtual_fitline()
         ax.plot(fitline_x, fitline_y, linestyle='--', color='black', label=None)
         # Add residuals
         ax.plot(fobj.get_data()[0], fobj.get_residuals(), linestyle=':', alpha=1, color='black', label=None)
-        PlotPanel._stylize_axes(ax)
+        plotter.stylize_axes(ax)
         self.canvas.draw()
         self.toolbar.update()
 
@@ -423,21 +381,9 @@ class PlotPanel(ttk.Frame):
                     offset += y_offset * region.get_add_dimension_counter()
             if len(regions) > 1:
                 ax.set_title(None)
-            PlotPanel._stylize_axes(ax)
+            plotter.stylize_axes(ax)
             self.canvas.draw()
             self.toolbar.update()
-
-    @staticmethod
-    def _stylize_axes(ax):
-        ax.set_aspect('auto')
-        ax.set_facecolor('None')
-        ax.grid(which='both', axis='both', color='grey', linestyle=':')
-        ax.spines['bottom'].set_color('black')
-        ax.spines['left'].set_color('black')
-        ax.tick_params(axis='x', colors='black')
-        ax.tick_params(axis='y', colors='black')
-        ax.yaxis.label.set_color('black')
-        ax.xaxis.label.set_color('black')
 
 
 class CorrectionsPanel(ttk.Frame):
@@ -1074,6 +1020,13 @@ class PeakLine(ttk.Frame):
         self.remove_peak_button.pack(side=tk.RIGHT, expand=False)
         self.add_peak_button = ttk.Button(title_frame, text='+', command=lambda: add_func(), width=1)
         self.add_peak_button.pack(side=tk.RIGHT, expand=False)
+        # Choose peak color
+        self.peak_color = tk.StringVar()
+        self.peak_color.set("Default color")
+        # Some colormaps suitable for plotting
+        options = ['Default color'] + COLORS
+        self.opmenu_color = ttk.OptionMenu(title_frame, self.peak_color, self.peak_color.get(), *options)
+        self.opmenu_color.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         self.id_var = tk.StringVar(value=f"Peak {id_}:")
         self.use_peak_var = tk.StringVar(value="True")
         use_peak_box = tk.Checkbutton(title_frame, var=self.use_peak_var,
@@ -1255,14 +1208,29 @@ class FitWindow(tk.Toplevel):
         self.plot_panel = PlotPanel(self, label=None, borderwidth=1, relief="groove")
         self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.plot_panel.plot_regions(region, legend=legend, scatter=scatter)
+        self.peaks_panel = ttk.Frame(self, borderwidth=1, relief="groove")
         if fit_type == 'Error Func':
-            self.fit_panel = ttk.Frame(self, borderwidth=1, relief="groove")
+            self.fit_panel = ttk.Frame(self.peaks_panel, borderwidth=1, relief="groove")
             self._add_error_func_section()
         else:
-            self.fit_panel = BrowserTreeView(self, label=None, borderwidth=1, relief="groove")
+            # Choose spectrum color
+            spectrum_color_frame = ttk.Frame(self.peaks_panel, borderwidth=1, relief="groove")
+            spectrum_color_label = ttk.Label(spectrum_color_frame, text="Spectrum color", anchor=tk.W)
+            spectrum_color_label.pack(side=tk.LEFT, expand=False)
+            self.spectrum_color = tk.StringVar()
+            self.spectrum_color.set("Default color")
+            # Some colormaps suitable for plotting
+            options = ['Default color'] + COLORS
+            self.opmenu_spectrum_color = ttk.OptionMenu(spectrum_color_frame, self.spectrum_color, self.spectrum_color.get(), *options)
+            self.opmenu_spectrum_color.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+            spectrum_color_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
+            blank_label = ttk.Label(self.peaks_panel, text="", anchor=tk.W)
+            blank_label.pack(side=tk.TOP, expand=False)
+            self.fit_panel = BrowserTreeView(self.peaks_panel, label=None, borderwidth=1, relief="groove")
             self.fit_tree = self.fit_panel.treeview
             self._add_peak_line()
-        self.fit_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        self.fit_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.peaks_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         if not fit_type == 'Error Func':
             results_panel = ttk.Frame(self)
             blank_label = ttk.Label(results_panel, text="", anchor=tk.W)
@@ -1389,9 +1357,10 @@ class FitWindow(tk.Toplevel):
         # 0, 1, 2, 3,... for fitting
         # 0, 2, 5, 7 (for example) for gui
 
-        # Collecting parameter initial values, boundaries and eventual fix values
+        # Collecting parameter initial values, boundaries and eventual fix values, and peak colors
         initial_guess = []
         parameter_bounds, fix_parameters = {}, {}
+        peak_colors = []
         for pn in fitter.Peak.peak_types[self.fittype]:
             parameter_bounds[pn] = {}
             fix_parameters[pn] = []
@@ -1408,6 +1377,7 @@ class FitWindow(tk.Toplevel):
                     parameter_bounds[par_name][cnt] = [None, None]
                 else:
                     parameter_bounds[par_name][cnt] = par_bounds[j]
+            peak_colors.append(peak_line.peak_color.get())
             cnt += 1
         if None in initial_guess:
             gui_logger.warning("Please fill in initial values for all parameters. Bounds can stay empty.")
@@ -1423,7 +1393,10 @@ class FitWindow(tk.Toplevel):
             self.fitter_obj.fit_pseudo_voigt(initial_guess, fix_parameters, boundaries=parameter_bounds)
         if self.fittype == 'Doniach-Sunjic':  # Doniach-Sunjik
             self.fitter_obj.fit_doniach_sunjic(initial_guess, fix_parameters, boundaries=parameter_bounds)
-        self.plot_panel.plot_fit(self.region, self.fitter_obj)
+        if self.spectrum_color.get() != "Default color":
+            self.plot_panel.plot_fit(self.region, self.fitter_obj, region_color=self.spectrum_color.get(), colors=peak_colors)
+        else:
+            self.plot_panel.plot_fit(self.region, self.fitter_obj, colors=peak_colors)
 
         # Showing results
         round_precision = int(service.get_service_parameter('ROUND_PRECISION'))

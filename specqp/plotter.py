@@ -233,6 +233,18 @@ def plot_fit(fitter, axs, y_offset=0, label=None, color='black', legend=True, le
         axs.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': font_size})
 
 
+def stylize_axes(ax):
+    ax.set_aspect('auto')
+    ax.set_facecolor('None')
+    ax.grid(which='both', axis='both', color='grey', linestyle=':')
+    ax.spines['bottom'].set_color('black')
+    ax.spines['left'].set_color('black')
+    ax.tick_params(axis='x', colors='black')
+    ax.tick_params(axis='y', colors='black')
+    ax.yaxis.label.set_color('black')
+    ax.xaxis.label.set_color('black')
+
+
 class SpecqpPlot(Figure):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
