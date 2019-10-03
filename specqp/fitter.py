@@ -29,12 +29,12 @@ class Peak:
         self._id = peak_id
         self._Area = np.trapz(self._Y)
         self._PeakType = peak_type
-        self._FittingErrors = np.sqrt(np.diag(pcov))
-        # for i in range(len(self._Popt)):
-        #     # try:
-        #     self._FittingErrors.append(np.absolute(self._Pcov[i][i])**0.5)
-        #     # except:
-        #     #   self._FittingErrors.append(0.00)
+        self._FittingErrors = []#np.sqrt(np.diag(pcov))
+        for i in range(len(self._Popt)):
+            try:
+                self._FittingErrors.append(np.absolute(self._Pcov[i][i])**0.5)
+            except RuntimeWarning:
+                self._FittingErrors.append(0.00)
 
     def __str__(self):
         output = f"Type: {self._PeakType}"

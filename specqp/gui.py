@@ -11,7 +11,7 @@ import numpy as np
 
 import tkinter as tk
 from tkinter import ttk
-from tkinter import filedialog
+from tkinter import filedialog, simpledialog, messagebox
 from tkinter import Widget
 
 import matplotlib
@@ -313,7 +313,8 @@ class PlotPanel(ttk.Frame):
     #     gui_logger.debug(f"{event.button} pressed on plot canvas")
     #     key_press_handler(event, self.canvas, self.toolbar)
 
-    def plot_fit(self, reg, fobj, region_color=None, colors=None, ax=None, legend_feature=("ID",), legend_pos='best', title=False):
+    def plot_fit(self, reg, fobj, region_color=None, colors=None, residuals=None, fitline="True", ax=None,
+                 legend_feature=("ID",), legend_pos='best', title=False, font_size=12):
         """Plots region data with fit line, fitted peaks and residuals
         :param reg: region object
         :param fobj: fitter object
@@ -338,11 +339,14 @@ class PlotPanel(ttk.Frame):
         plotter.plot_region(reg, ax, color=region_color, scatter=True,
                             legend_features=legend_feature, legend_pos=legend_pos, title=title)
 
-        fitline_x, fitline_y = fobj.get_virtual_fitline()
-        ax.plot(fitline_x, fitline_y, linestyle='--', color='black', label=None)
+        if fitline is not None and fitline != "":
+            fitline_x, fitline_y = fobj.get_virtual_fitline()
+            ax.plot(fitline_x, fitline_y, linestyle='--', color='black', label=None)
         # Add residuals
-        ax.plot(fobj.get_data()[0], fobj.get_residuals(), linestyle=':', alpha=1, color='black', label=None)
-        plotter.stylize_axes(ax)
+        if residuals is not None and residuals != "":
+            ax.plot(fobj.get_data()[0], fobj.get_residuals(), linestyle=':', alpha=1, color='black', label=None)
+            plotter.stylize_axes(ax)
+        ax.set_aspect(float(service.get_service_parameter("PLOT_ASPECT_RATIO"))/ax.get_data_ratio())
         self.canvas.draw()
         self.toolbar.update()
 
@@ -382,6 +386,7 @@ class PlotPanel(ttk.Frame):
             if len(regions) > 1:
                 ax.set_title(None)
             plotter.stylize_axes(ax)
+            ax.set_aspect(float(service.get_service_parameter("PLOT_ASPECT_RATIO"))/ax.get_data_ratio())
             self.canvas.draw()
             self.toolbar.update()
 
@@ -444,10 +449,10 @@ class CorrectionsPanel(ttk.Frame):
 
     def _fit(self):
         fit_type = self.select_fit_type.get()
-        regions_in_work = self._get_regions_in_work()
+        self.regions_in_work = self._get_regions_in_work()
         if not self.regions_in_work:
             return
-        for region in regions_in_work:
+        for region in self.regions_in_work:
             if fit_type == 'Error Func':
                 region.set_fermi_flag()
                 # Special case: we didn't know that the region was Fermi before and might have corrected by the specified
@@ -846,7 +851,8 @@ class CorrectionsPanel(ttk.Frame):
                                         legend=bool(self.plot_legend_var.get()),
                                         legend_features=tuple(legend_features),
                                         title=bool(self.plot_title_var.get()),
-                                        y_offset=offset, colormap=cmap)
+                                        y_offset=offset, colormap=cmap,
+                                        font_size=int(service.get_service_parameter("FONT_SIZE")))
         else:
             self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(self.regions_in_work,
                                                                         add_dimension=bool(self.plot_add_dim_var.get()),
@@ -854,7 +860,8 @@ class CorrectionsPanel(ttk.Frame):
                                                                         legend=bool(self.plot_legend_var.get()),
                                                                         legend_features=tuple(legend_features),
                                                                         title=bool(self.plot_title_var.get()),
-                                                                        y_offset=offset, colormap=cmap)
+                                                                        y_offset=offset, colormap=cmap,
+                                                                        font_size=int(service.get_service_parameter("FONT_SIZE")))
 
     def _read_crop_values(self):
         if self.crop_left_var.get() or self.crop_right_var.get():
@@ -1207,7 +1214,8 @@ class FitWindow(tk.Toplevel):
         self.results_txt = None
         self.plot_panel = PlotPanel(self, label=None, borderwidth=1, relief="groove")
         self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        self.plot_panel.plot_regions(region, legend=legend, scatter=scatter)
+        self.plot_panel.plot_regions(region, legend=legend, scatter=scatter,
+                                     font_size=int(service.get_service_parameter("FONT_SIZE")))
         self.peaks_panel = ttk.Frame(self, borderwidth=1, relief="groove")
         if fit_type == 'Error Func':
             self.fit_panel = ttk.Frame(self.peaks_panel, borderwidth=1, relief="groove")
@@ -1224,6 +1232,23 @@ class FitWindow(tk.Toplevel):
             self.opmenu_spectrum_color = ttk.OptionMenu(spectrum_color_frame, self.spectrum_color, self.spectrum_color.get(), *options)
             self.opmenu_spectrum_color.pack(side=tk.RIGHT, fill=tk.X, expand=True)
             spectrum_color_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
+            # Draw residuals and fit line
+            residuals_frame = ttk.Frame(self.peaks_panel, borderwidth=1, relief="groove")
+            residuals_label = ttk.Label(residuals_frame, text="Plot residuals", anchor=tk.W)
+            residuals_label.pack(side=tk.LEFT, expand=False)
+            self.plot_residuals_var = tk.StringVar(value="")
+            self.plot_residuals_box = tk.Checkbutton(residuals_frame, var=self.plot_residuals_var,
+                                                     onvalue="True", offvalue="", background=BG,
+                                                     anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+            self.plot_residuals_box.pack(side=tk.LEFT, anchor=tk.W)
+            fitline_label = ttk.Label(residuals_frame, text="Plot fit line", anchor=tk.W)
+            fitline_label.pack(side=tk.LEFT, expand=False)
+            self.plot_fitline_var = tk.StringVar(value="True")
+            self.plot_fitline_box = tk.Checkbutton(residuals_frame, var=self.plot_fitline_var,
+                                                     onvalue="True", offvalue="", background=BG,
+                                                     anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+            self.plot_fitline_box.pack(side=tk.LEFT, anchor=tk.W)
+            residuals_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
             blank_label = ttk.Label(self.peaks_panel, text="", anchor=tk.W)
             blank_label.pack(side=tk.TOP, expand=False)
             self.fit_panel = BrowserTreeView(self.peaks_panel, label=None, borderwidth=1, relief="groove")
@@ -1394,9 +1419,12 @@ class FitWindow(tk.Toplevel):
         if self.fittype == 'Doniach-Sunjic':  # Doniach-Sunjik
             self.fitter_obj.fit_doniach_sunjic(initial_guess, fix_parameters, boundaries=parameter_bounds)
         if self.spectrum_color.get() != "Default color":
-            self.plot_panel.plot_fit(self.region, self.fitter_obj, region_color=self.spectrum_color.get(), colors=peak_colors)
+            region_color = self.spectrum_color.get()
         else:
-            self.plot_panel.plot_fit(self.region, self.fitter_obj, colors=peak_colors)
+            region_color = None
+        self.plot_panel.plot_fit(self.region, self.fitter_obj, region_color=region_color, colors=peak_colors,
+                                 residuals=self.plot_residuals_var.get(), fitline=self.plot_fitline_var.get(),
+                                 font_size=int(service.get_service_parameter("FONT_SIZE")))
 
         # Showing results
         round_precision = int(service.get_service_parameter('ROUND_PRECISION'))
@@ -1443,9 +1471,12 @@ class FitWindow(tk.Toplevel):
     def _plot_error_func_fit(self, fit_label):
         ax = self.plot_panel.figure_axes
         ax.clear()
-        plotter.plot_region(self.region, ax, y_data="final", scatter=True, title=False, legend_features=("ID", "Conditions"))
-        plotter.plot_region(self.region, ax, y_data="fitFermi", title=False, label=fit_label)
-        ax.grid(which='both', axis='x', color='grey', linestyle=':')
+        plotter.plot_region(self.region, ax, y_data="final", scatter=True, title=False, legend_features=("ID", "Conditions"),
+                            font_size=int(service.get_service_parameter("FONT_SIZE")))
+        plotter.plot_region(self.region, ax, y_data="fitFermi", title=False, label=fit_label,
+                            font_size=int(service.get_service_parameter("FONT_SIZE")))
+        plotter.stylize_axes(ax)
+        ax.set_aspect(float(service.get_service_parameter("PLOT_ASPECT_RATIO"))/ax.get_data_ratio())
         self.plot_panel.canvas.draw()
         self.plot_panel.toolbar.update()
 
@@ -1504,7 +1535,8 @@ class FitWindow(tk.Toplevel):
 class GlobalFitWindow(FitWindow):
     def __init__(self, parent, regions, fit_type, label='fit', legend=True, legend_features=None, scatter=False, *args, **kwargs):
         super().__init__(parent, regions[0], fit_type, label=label, legend=legend, scatter=scatter, *args, **kwargs)
-        self.plot_panel.plot_regions(regions, legend=legend, legend_features=legend_features, scatter=scatter)
+        self.plot_panel.plot_regions(regions, legend=legend, legend_features=legend_features, scatter=scatter,
+                                     font_size=int(service.get_service_parameter("FONT_SIZE")))
 
 
 class MainWindow(ttk.PanedWindow):
@@ -1535,6 +1567,7 @@ class Root(tk.Tk):
 
         self.main_menu_bar = tk.Menu(self)
         self.file_menu = tk.Menu(self.main_menu_bar, tearoff=0)
+        self.plot_menu = tk.Menu(self.main_menu_bar, tearoff=0)
         self.help_menu = tk.Menu(self.main_menu_bar, tearoff=0)
         self.generate_main_menu()
 
@@ -1547,13 +1580,6 @@ class Root(tk.Tk):
         self.log_window.add(self.log_panel)
         self.general_outlay_manager.add(self.log_window)
         self.general_outlay_manager.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-        # self.main_window = MainWindow(self, orient=tk.HORIZONTAL)
-        # self.main_window.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        # self.log_window = ttk.PanedWindow(self, orient=tk.HORIZONTAL, height=50)
-        # self.log_panel = BrowserTreeView(self, label=None, borderwidth=1, relief="groove")
-        # self.log_window.add(self.log_panel)
-        # self.log_window.pack(side=tk.BOTTOM, fill=tk.X, expand=True)
 
     def _configure_style(self):
         # Setting GUI color style
@@ -1581,18 +1607,14 @@ class Root(tk.Tk):
         self.file_menu.add_command(label="Load SPECS Files", command=self.load_specs_file)
         self.file_menu.add_command(label="Open pressure calibration", command=self.load_pressure_calibration)
         self.file_menu.add_command(label="Open File as Text", command=self._open_file_as_text)
-
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Quit", command=self.quit)
         self.main_menu_bar.add_cascade(label="File", menu=self.file_menu)
 
-        # # Corrections menu
-        # self.help_menu.add_command(label="Export log", command=self.export_log)
-        # self.help_menu.add_separator()
-        # self.help_menu.add_command(label="About", command=self.show_about)
-        # self.help_menu.add_separator()
-        # self.help_menu.add_command(label="Help...", command=self.show_help)
-        # self.main_menu_bar.add_cascade(label="Help", menu=self.help_menu)
+        # Plot menu
+        self.plot_menu.add_command(label="Set font size", command=self._set_plot_font_size)
+        self.plot_menu.add_command(label="Set plot aspect ratio", command=self._set_plot_aspect_ratio)
+        self.main_menu_bar.add_cascade(label="Plot", menu=self.plot_menu)
 
         # Help menu
         self.help_menu.add_command(label="Export log", command=self.export_log)
@@ -1701,8 +1723,26 @@ class Root(tk.Tk):
             except (IOError):
                 gui_logger.error(f"Couldn't save log file", exc_info=True)
 
+    def _set_plot_aspect_ratio(self):
+        aspect_ratio = simpledialog.askfloat("Set plot aspect ratio", "Float value A (height = A * width)", parent=self)
+        if aspect_ratio is not None:
+            service.set_init_parameters("PLOT_ASPECT_RATIO", aspect_ratio)
+            self.display_message(f"[Height = {aspect_ratio} * width] was set as the default aspect ratio for plots.")
+        else:
+            service.set_init_parameters("PLOT_ASPECT_RATIO", 0.75)
+            self.display_message("No aspect ratio value received. Default aspect ratio [height = 0.75 * width] was set for plots.")
+
+    def _set_plot_font_size(self):
+        fontsize = simpledialog.askinteger("Set plot font size", "Font size (pt)", parent=self, minvalue=0, maxvalue=100)
+        if fontsize is not None:
+            service.set_init_parameters("FONT_SIZE", fontsize)
+            self.display_message(f"{fontsize}pt was set as the default font size for plots.")
+        else:
+            service.set_init_parameters("FONT_SIZE", 12)
+            self.display_message("No font size value received. Default font size for plotting was set to 12pt.")
+
     def show_about(self):
-        pass
+        messagebox.showinfo("About", "SpecQP v1.0\nMikhail Shipilin\nmikhail.shipilin@gmail.com")
 
     def show_help(self):
         pass

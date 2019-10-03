@@ -11,6 +11,8 @@ service_vars = {
     "INIT_FILE_NAME": os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/data/specqp.init",
     "DEFAULT_OUTPUT_FOLDER": os.path.expanduser("~") + "/Documents/specqp_output",
     "ROUND_PRECISION": "2",
+    "PLOT_ASPECT_RATIO": "0.75",
+    "FONT_SIZE": "12",
     "PHOTON_ENERGY": "",
     "ENERGY_SHIFT": "",
     "FERMI_FIT_PARAMETERS": "1.00;0.00;0.10;0.00",
