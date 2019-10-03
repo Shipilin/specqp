@@ -3,6 +3,7 @@ include LICENSE
 include requirements.txt
 recursive-include specqp
 include specqp/assets/specqp_icon.png
+exclude specqp/global_fit.py
 include data
 recursive-include docs
 recursive-exclude specqp/__pycache__

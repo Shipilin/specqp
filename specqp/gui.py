@@ -328,15 +328,15 @@ class PlotPanel(ttk.Frame):
             if peak:
                 peak_data = peak.get_virtual_data()
                 if colors is not None and colors[i] != "Default color":
-                    plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos,
+                    plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos, font_size=font_size,
                                          label=f"{peak.get_parameters('center'):.2f}", color=colors[i])
                 else:
-                    plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos,
+                    plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos, font_size=font_size,
                                          label=f"{peak.get_parameters('center'):.2f}")
 
         if region_color is None:
             region_color = 'red'
-        plotter.plot_region(reg, ax, color=region_color, scatter=True,
+        plotter.plot_region(reg, ax, color=region_color, scatter=True, font_size=font_size,
                             legend_features=legend_feature, legend_pos=legend_pos, title=title)
 
         if fitline is not None and fitline != "":
@@ -452,7 +452,13 @@ class CorrectionsPanel(ttk.Frame):
         self.regions_in_work = self._get_regions_in_work()
         if not self.regions_in_work:
             return
-        for region in self.regions_in_work:
+        es = self.energy_shift.get()
+        if es:
+            try:
+                es = [float(es_str.strip()) for es_str in es.split(';')]
+            except ValueError:
+                return
+        for i, region in enumerate(self.regions_in_work):
             if fit_type == 'Error Func':
                 region.set_fermi_flag()
                 # Special case: we didn't know that the region was Fermi before and might have corrected by the specified
@@ -460,11 +466,11 @@ class CorrectionsPanel(ttk.Frame):
                 if region.is_energy_corrected():
                     region._flags["energy_shift_corrected"] = False
                     try:
-                        region.correct_energy_shift(float(self.energy_shift.get()))
+                        if len(self.regions_in_work) != len(es):
+                            region.correct_energy_shift(es[0])
+                        else:
+                            region.correct_energy_shift(es[i])
                     except ValueError:
-                        gui_logger.warning("Check 'Energy Shift' parameter value. Must be a number.")
-                        self.winfo_toplevel().display_message("Check 'Energy Shift' parameter value. "
-                                                              "Must be a number or a sequence separated by ';'.")
                         return
                     region._flags["energy_shift_corrected"] = False
             fit_window = FitWindow(self.winfo_toplevel(), region, fit_type,
@@ -1275,6 +1281,8 @@ class FitWindow(tk.Toplevel):
             fit_results_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
             results_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
 
+        #self.attributes('-topmost', 'true')
+
     def _add_error_func_section(self):
         def _make_parameter_line(parent_obj, par_name, value, input=True):
             if input:
@@ -1408,7 +1416,7 @@ class FitWindow(tk.Toplevel):
             cnt += 1
         if None in initial_guess:
             gui_logger.warning("Please fill in initial values for all parameters. Bounds can stay empty.")
-            self.winfo_toplevel().display_message("Please fill in initial values for all parameters. Bounds can stay empty.")
+            self.master.display_message("Please fill in initial values for all parameters. Bounds can stay empty.")
             return False
         # Fitting
         self.fitter_obj = fitter.Fitter(self.region)
