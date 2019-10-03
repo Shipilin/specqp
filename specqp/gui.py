@@ -755,13 +755,15 @@ class CorrectionsPanel(ttk.Frame):
         self.pe_label = ttk.Label(self.settings_left_column, text="Photon Energy (eV)", anchor=tk.W)
         self.pe_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         # Read photon energy from init file if available
-        self.photon_energy = tk.StringVar(self, value=service.get_service_parameter("PHOTON_ENERGY"))
+        val = service.get_service_parameter("PHOTON_ENERGY").split(';')[0]
+        self.photon_energy = tk.StringVar(self, value=val)
         self.pe_entry = ttk.Entry(self.settings_right_column, textvariable=self.photon_energy, width=20)
         self.pe_entry.pack(side=tk.TOP, anchor=tk.W, expand=False)
         # Energy shift
+        val = service.get_service_parameter("ENERGY_SHIFT").split(';')[0]
         self.eshift_label = ttk.Label(self.settings_left_column, text="Energy Shift(s) (eV)", anchor=tk.W)
         self.eshift_label.pack(side=tk.TOP, fill=tk.X, expand=True)
-        self.energy_shift = tk.StringVar(self, value=service.get_service_parameter("ENERGY_SHIFT"))
+        self.energy_shift = tk.StringVar(self, value=val)
         self.eshift_entry = ttk.Entry(self.settings_right_column, textvariable=self.energy_shift, width=20)
         self.eshift_entry.pack(side=tk.TOP, anchor=tk.W, expand=False)
         # Normalize by sweeps
@@ -874,7 +876,7 @@ class CorrectionsPanel(ttk.Frame):
     def _read_const_norm_value(self):
         if self.const_norm_var.get():
             return
-        nc = service.get_service_parameter("NORMALIZATION_CONSTANT")
+        nc = service.get_service_parameter("NORMALIZATION_CONSTANT").split(';')[0]
         if nc:
             self.const_norm_var.set(nc)
 
@@ -1595,7 +1597,7 @@ class Root(tk.Tk):
         if timestamp:
             msg = f"{datetime.datetime.now().strftime('%H:%M:%S')} " + msg
         self.results_msg = tk.Message(self.log_panel.treeview, text=msg,
-                                 width=self.winfo_toplevel().winfo_width(), anchor=tk.W, bg=BG)
+                                      width=self.winfo_toplevel().winfo_width(), anchor=tk.W, bg=BG)
         self.results_msg.pack(side=tk.TOP, fill=tk.X, expand=True)
 
     # TODO: write the functionality for the menu, add new menus if needed.
