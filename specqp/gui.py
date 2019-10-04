@@ -427,8 +427,8 @@ class CorrectionsPanel(ttk.Frame):
         self.opmenu_fit_type = ttk.OptionMenu(self.fit_subframe, self.select_fit_type, self.select_fit_type.get(), *options)
         self.opmenu_fit_type.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         self.fit_subframe.pack(side=tk.TOP, fill=tk.X, expand=False)
-        self.global_fit = ttk.Button(self, text='Global Fit', command=self._global_fit)
-        self.global_fit.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # self.global_fit = ttk.Button(self, text='Global Fit', command=self._global_fit)
+        # self.global_fit.pack(side=tk.TOP, fill=tk.X, expand=False)
 
     def _global_fit(self):
         fit_type = self.select_fit_type.get()
@@ -1213,6 +1213,14 @@ class FitWindow(tk.Toplevel):
     def __init__(self, parent, region, fit_type, label='fit', legend=True, legend_features=None, scatter=False, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.wm_title(f"Fitting {fit_type} to {region.get_id()}")
+
+        # self.main_menu_bar = tk.Menu(self)
+        # self.plot_menu = tk.Menu(self.main_menu_bar, tearoff=0)
+        # self.plot_menu.add_command(label="Set font size", command=self._set_plot_font_size)
+        # self.plot_menu.add_command(label="Set plot aspect ratio", command=self._set_plot_aspect_ratio)
+        # self.main_menu_bar.add_cascade(label="Plot", menu=self.plot_menu)
+        # self.config(menu=self.main_menu_bar)
+
         self.fittype = fit_type
         self.label = label
         self.region = region
