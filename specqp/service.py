@@ -18,6 +18,8 @@ service_vars = {
     "FERMI_FIT_PARAMETERS": "1.00;0.00;0.10;0.00",
     "NORMALIZATION_CONSTANT": "1",
     "CROP": ";",
+    "NORMALIZE_SWEEPS": "True",
+    "SUBTRACT_SHIRLEY": "",
     "LEGEND": ";True;True"
 }
 
@@ -88,6 +90,9 @@ def set_init_parameters(parameters, values):
     # If nothing new appeared or same values are already stored do nothing
     if change_counter == 0:
         return
+
+
+def write_init_file():
     # Otherwise, write the file anew
     new_lines = []
     for key, val in service_vars.items():

@@ -77,15 +77,18 @@ def main(*args, **kwargs):
     # To load a bunch of regions from files listed in a text file provide flag '-gui' and the filename(s)
     elif "-gui" in args and ("filename" in kwargs or "filenames" in kwargs):
         instruction_lines = []
+        loader_instructions = {
+            "FP": [],
+            "FT": [],
+            "PE": [],
+            "ES": [],
+            "NC": [],
+            "CO": [],
+            "CROP": [],
+            "CBG": [],
+            "SBG": []
+        }
         if "section" in kwargs or "sections" in kwargs:
-            loader_instructions = {
-                "FP": [],
-                "FT": [],
-                "PE": [],
-                "ES": [],
-                "NC": [],
-                "CO": []
-            }
             sections_to_load = []
             if "section" in kwargs:
                 sections_to_load.append(kwargs["section"])
@@ -97,11 +100,6 @@ def main(*args, **kwargs):
                 for filename in kwargs["filenames"].split(';'):
                     instruction_lines += parse_batch_file(filename.strip(), sections_to_load)
         else:
-            loader_instructions = {
-                "FP": [],
-                "FT": [],
-                "CO": []
-            }
             if "filename" in kwargs:
                 instruction_lines += parse_batch_file(kwargs["filename"])
             elif "filenames" in kwargs:
@@ -124,6 +122,10 @@ def main(*args, **kwargs):
                         if name in loader_instructions:
                             if name == "NC" and value == '':
                                 value = "1"
+                            if name == "CROP" and value != '':
+                                value = [v.strip() for v in value.split(':')]
+                            if name == "CROP" and value == '':
+                                value = [0, 0]  # To emphasize  that no cropping shall be done
                             loader_instructions[name].append(value)
         if len(loader_instructions["FP"]) > 0:
             call_gui("-batchload", **loader_instructions)

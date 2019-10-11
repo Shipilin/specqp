@@ -12,12 +12,10 @@ import numpy as np
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog, simpledialog, messagebox
-from tkinter import Widget
 
 import matplotlib
 from matplotlib import cm
 from matplotlib import style
-from matplotlib.backend_tools import ToolBase
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.backend_bases import key_press_handler
 import matplotlib.image as mpimg
@@ -27,6 +25,7 @@ from specqp import datahandler
 from specqp import plotter
 from specqp import helpers
 from specqp import fitter
+from specqp.globalfitter import GlobalFit
 
 # Default font for the GUI
 LARGE_FONT = ("Verdana", "12")
@@ -302,12 +301,12 @@ class PlotPanel(ttk.Frame):
         self.toolbar = NavigationToolbar2Tk(self.canvas, self) #CustomToolbar(self.canvas, self)
         self.toolbar.update()
         self.toolbar.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
-        self.canvas.mpl_connect("key_press_event", self._on_key_press)
+        # self.canvas.mpl_connect("key_press_event", self._on_key_press)
         # self.canvas.mpl_connect("button_press_event", self._on_mouse_click)
 
-    def _on_key_press(self, event):
-        gui_logger.debug(f"{event.key} pressed on plot canvas")
-        key_press_handler(event, self.canvas, self.toolbar)
+    # def _on_key_press(self, event):
+    #     gui_logger.debug(f"{event.key} pressed on plot canvas")
+    #     key_press_handler(event, self.canvas, self.toolbar)
 
     # def _on_mouse_click(self, event):
     #     gui_logger.debug(f"{event.button} pressed on plot canvas")
@@ -427,22 +426,20 @@ class CorrectionsPanel(ttk.Frame):
         self.opmenu_fit_type = ttk.OptionMenu(self.fit_subframe, self.select_fit_type, self.select_fit_type.get(), *options)
         self.opmenu_fit_type.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         self.fit_subframe.pack(side=tk.TOP, fill=tk.X, expand=False)
-        # self.global_fit = ttk.Button(self, text='Global Fit', command=self._global_fit)
-        # self.global_fit.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.advanced_fit = ttk.Button(self, text='Advanced Fit', command=self._do_advanced_fit)
+        self.advanced_fit.pack(side=tk.TOP, fill=tk.X, expand=False)
 
-    def _global_fit(self):
-        fit_type = self.select_fit_type.get()
-        if fit_type == 'Error Func':
-            gui_logger.warning("There is no 'Global Fit' procedure for 'Error Func' fitting option.")
-            self.winfo_toplevel().display_message("There is no 'Global Fit' procedure for 'Error Func' fitting option.")
-            return
-        regions_in_work = self._get_regions_in_work()
+    def _do_advanced_fit(self):
+        regions_in_work = self._get_regions_in_work(checkbg=True)
         if not self.regions_in_work:
             return
-        global_fit_window = GlobalFitWindow(self.winfo_toplevel(), regions_in_work, fit_type,
-                                            label='Global Fit', legend=bool(self.plot_legend_var.get()),
-                                            legend_features=self._get_legend_features(),
-                                            scatter=bool(self.scatter_var.get()))
+        plot_options = {
+                        'scatter': bool(self.scatter_var.get()),
+                        'legend': bool(self.plot_legend_var.get()),
+                        'legend_features': tuple(self._get_legend_features()),
+                        'title': bool(self.plot_title_var.get()),
+                        }
+        global_fit_window = GlobalFitWindow(self.winfo_toplevel(), regions_in_work, plot_options=plot_options)
         self.winfo_toplevel().update()  # Update to be able to request fit_window parameters
         global_fit_window.wm_minsize(width=global_fit_window.winfo_width(), height=global_fit_window.winfo_height())
         self.winfo_toplevel().fit_windows.append(global_fit_window)
@@ -473,9 +470,13 @@ class CorrectionsPanel(ttk.Frame):
                     except ValueError:
                         return
                     region._flags["energy_shift_corrected"] = False
-            fit_window = FitWindow(self.winfo_toplevel(), region, fit_type,
-                                   label='fit', legend=bool(self.plot_legend_var.get()),
-                                   scatter=bool(self.scatter_var.get()))
+            # Transfer plotting options to the new fitting window
+            plot_options = {'scatter': bool(self.scatter_var.get()),
+                            'legend': bool(self.plot_legend_var.get()),
+                            'legend_features': tuple(self._get_legend_features()),
+                            'title': bool(self.plot_title_var.get()),
+            }
+            fit_window = FitWindow(self.winfo_toplevel(), region, fit_type, plot_options)
             self.winfo_toplevel().update()  # Update to be able to request fit_window parameters
             fit_window.wm_minsize(width=fit_window.winfo_width(), height=fit_window.winfo_height())
             self.winfo_toplevel().fit_windows.append(fit_window)
@@ -490,7 +491,7 @@ class CorrectionsPanel(ttk.Frame):
             lfs.append("Conditions")
         return lfs
 
-    def _get_regions_in_work(self):
+    def _get_regions_in_work(self, checkbg=True):
         reg_ids = self.winfo_toplevel().gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
         # We will work with copies of regions, so that the temporary changes are not stored
         regions_in_work = copy.deepcopy(self.winfo_toplevel().loaded_regions.get_by_id(reg_ids))
@@ -603,19 +604,20 @@ class CorrectionsPanel(ttk.Frame):
                             except ValueError:
                                 gui_logger.warning("Check Crop values. Must be numbers.")
                                 self.winfo_toplevel().display_message("Check crop values. Must be numbers.")
-                    if self.subtract_const_var.get():
-                        e = region.get_data('energy')
-                        c = region.get_data('counts')
-                        if np.mean(c[-10:-1]) < np.mean(c[0:10]):
-                            helpers.shift_by_background(region, [e[-10], e[-1]])
-                        else:
-                            helpers.shift_by_background(region, [e[0], e[10]])
-                        region.make_final_column("bgshifted", overwrite=True)
-                        region.add_correction("Constant background subtracted")
-                    if self.subtract_shirley_var.get():
-                        helpers.subtract_shirley(region)
-                        region.make_final_column("no_shirley", overwrite=True)
-                        region.add_correction("Shirley background subtracted")
+                    if checkbg:  # If we want to take background options into consideration
+                        if self.subtract_const_var.get():
+                            e = region.get_data('energy')
+                            c = region.get_data('counts')
+                            if np.mean(c[-10:-1]) < np.mean(c[0:10]):
+                                helpers.shift_by_background(region, [e[-10], e[-1]])
+                            else:
+                                helpers.shift_by_background(region, [e[0], e[10]])
+                            region.make_final_column("bgshifted", overwrite=True)
+                            region.add_correction("Constant background subtracted")
+                        if self.subtract_shirley_var.get():
+                            helpers.subtract_shirley(region)
+                            region.make_final_column("no_shirley", overwrite=True)
+                            region.add_correction("Shirley background subtracted")
         return regions_in_work
 
     def _make_plotting_settings_subframe(self):
@@ -778,7 +780,8 @@ class CorrectionsPanel(ttk.Frame):
         self.normalize_sweeps_var = tk.StringVar(value="True")
         self.normalize_sweeps_box = tk.Checkbutton(self.settings_right_column, var=self.normalize_sweeps_var,
                                                    onvalue="True", offvalue="", background=BG,
-                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                                   command=self._toggle_normalize_sweeps
                                                    )
         self.normalize_sweeps_box.pack(side=tk.TOP, anchor=tk.W)
         # Normalize by a constant
@@ -814,7 +817,7 @@ class CorrectionsPanel(ttk.Frame):
         self.crop_right_entry = ttk.Entry(crop_entries_frame, textvariable=self.crop_right_var, width=8)
         self.crop_right_entry.pack(side=tk.RIGHT, expand=False)
         crop_entries_frame.pack(side=tk.TOP, expand=False, anchor=tk.W)
-        # Subtract linear background
+        # Subtract constant background
         self.subtract_const_label = ttk.Label(self.settings_left_column, text="Subtract constant bg", anchor=tk.W)
         self.subtract_const_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         self.subtract_const_var = tk.StringVar(value="True")
@@ -829,7 +832,8 @@ class CorrectionsPanel(ttk.Frame):
         self.subtract_shirley_var = tk.StringVar(value="")
         self.subtract_shirley_box = tk.Checkbutton(self.settings_right_column, var=self.subtract_shirley_var,
                                                    onvalue="True", offvalue="", background=BG,
-                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                                   command=self._toggle_shirley
                                                    )
         self.subtract_shirley_box.pack(side=tk.TOP, anchor=tk.W)
         # Pack two-columns section
@@ -959,21 +963,40 @@ class CorrectionsPanel(ttk.Frame):
             for obj in legend_sub_widgets[3:]:
                     obj.config(state=tk.NORMAL)
 
+    def _toggle_normalize_sweeps(self):
+        if not bool(self.normalize_sweeps_var.get()):
+            service.set_init_parameters("NORMALIZE_SWEEPS", "")
+        else:
+            service.set_init_parameters("NORMALIZE_SWEEPS", "")
+
     def _toggle_settings(self):
         if self.plot_use_settings_var.get():
             self.photon_energy.set(service.get_service_parameter("PHOTON_ENERGY"))
             self.energy_shift.set(service.get_service_parameter("ENERGY_SHIFT"))
-            self.const_norm_var.set(service.get_service_parameter("NORMALIZATION_CONSTANT"))
-            self.normalize_sweeps_var.set("True")
+            norm_const = service.get_service_parameter("NORMALIZATION_CONSTANT")
+            self.const_norm_var.set(norm_const)
+            if bool(norm_const):
+                self.do_const_norm_var.set("True")
+            else:
+                self.do_const_norm_var.set("")
+            if bool(service.get_service_parameter("NORMALIZE_SWEEPS")):
+                self.normalize_sweeps_var.set("True")
+            else:
+                self.normalize_sweeps_var.set("")
             self.subtract_const_var.set("True")
             self.plot_binding_var.set("True")
-            self.subtract_shirley_var.set("")
-            self.do_crop_var.set("")
-            self.do_const_norm_var.set("")
+            if bool(service.get_service_parameter("SUBTRACT_SHIRLEY")):
+                self.subtract_shirley_var.set("True")
+            else:
+                self.subtract_shirley_var.set("")
             try:
                 crop_vals = service.get_service_parameter("CROP").split(';')
             except (IndexError, IOError):
                 crop_vals = ['','']
+            if bool(crop_vals[0]) and bool(crop_vals[1]):
+                self.do_crop_var.set("True")
+            else:
+                self.do_crop_var.set("")
             self.crop_left_var.set(crop_vals[0])
             self.crop_right_var.set(crop_vals[1])
             for obj in (self.subtract_const_box,
@@ -1017,6 +1040,12 @@ class CorrectionsPanel(ttk.Frame):
                         self.eshift_entry
                         ):
                 obj.config(state=tk.DISABLED)
+
+    def _toggle_shirley(self):
+        if not bool(self.subtract_shirley_var.get()):
+            service.set_init_parameters("SUBTRACT_SHIRLEY", "")
+        else:
+            service.set_init_parameters("SUBTRACT_SHIRLEY", "True")
 
 
 class PeakLine(ttk.Frame):
@@ -1070,6 +1099,9 @@ class PeakLine(ttk.Frame):
                 _val = '0.5'
                 _val_bounds = "0; 2"
             elif par_name == 'g_fwhm':
+                _val = '0.5'
+                _val_bounds = "0; 2"
+            elif par_name == 'fwhm':
                 _val = '0.5'
                 _val_bounds = "0; 2"
             else:
@@ -1210,19 +1242,11 @@ class PeakLine(ttk.Frame):
 
 
 class FitWindow(tk.Toplevel):
-    def __init__(self, parent, region, fit_type, label='fit', legend=True, legend_features=None, scatter=False, *args, **kwargs):
+    def __init__(self, parent, region, fit_type, plot_options, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.wm_title(f"Fitting {fit_type} to {region.get_id()}")
-
-        # self.main_menu_bar = tk.Menu(self)
-        # self.plot_menu = tk.Menu(self.main_menu_bar, tearoff=0)
-        # self.plot_menu.add_command(label="Set font size", command=self._set_plot_font_size)
-        # self.plot_menu.add_command(label="Set plot aspect ratio", command=self._set_plot_aspect_ratio)
-        # self.main_menu_bar.add_cascade(label="Plot", menu=self.plot_menu)
-        # self.config(menu=self.main_menu_bar)
-
         self.fittype = fit_type
-        self.label = label
+        self.plot_options = plot_options
         self.region = region
         self.peak_lines = {}
         self.peaks = {}
@@ -1230,26 +1254,26 @@ class FitWindow(tk.Toplevel):
         self.results_txt = None
         self.plot_panel = PlotPanel(self, label=None, borderwidth=1, relief="groove")
         self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        self.plot_panel.plot_regions(region, legend=legend, scatter=scatter,
-                                     font_size=int(service.get_service_parameter("FONT_SIZE")))
-        self.peaks_panel = ttk.Frame(self, borderwidth=1, relief="groove")
+
+        self.fit_settings_panel = ttk.Frame(self, borderwidth=1, relief="groove")
+        # Choose spectrum color
+        spectrum_color_frame = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
+        spectrum_color_label = ttk.Label(spectrum_color_frame, text="Spectrum color", anchor=tk.W)
+        spectrum_color_label.pack(side=tk.LEFT, expand=False)
+        self.spectrum_color = tk.StringVar()
+        self.spectrum_color.set("Default color")
+        # Some colormaps suitable for plotting
+        options = ['Default color'] + COLORS
+        self.opmenu_spectrum_color = ttk.OptionMenu(spectrum_color_frame, self.spectrum_color,
+                                                    self.spectrum_color.get(), *options)
+        self.opmenu_spectrum_color.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        spectrum_color_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
         if fit_type == 'Error Func':
-            self.fit_panel = ttk.Frame(self.peaks_panel, borderwidth=1, relief="groove")
+            self.fit_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
             self._add_error_func_section()
         else:
-            # Choose spectrum color
-            spectrum_color_frame = ttk.Frame(self.peaks_panel, borderwidth=1, relief="groove")
-            spectrum_color_label = ttk.Label(spectrum_color_frame, text="Spectrum color", anchor=tk.W)
-            spectrum_color_label.pack(side=tk.LEFT, expand=False)
-            self.spectrum_color = tk.StringVar()
-            self.spectrum_color.set("Default color")
-            # Some colormaps suitable for plotting
-            options = ['Default color'] + COLORS
-            self.opmenu_spectrum_color = ttk.OptionMenu(spectrum_color_frame, self.spectrum_color, self.spectrum_color.get(), *options)
-            self.opmenu_spectrum_color.pack(side=tk.RIGHT, fill=tk.X, expand=True)
-            spectrum_color_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
             # Draw residuals and fit line
-            residuals_frame = ttk.Frame(self.peaks_panel, borderwidth=1, relief="groove")
+            residuals_frame = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
             residuals_label = ttk.Label(residuals_frame, text="Plot residuals", anchor=tk.W)
             residuals_label.pack(side=tk.LEFT, expand=False)
             self.plot_residuals_var = tk.StringVar(value="")
@@ -1265,17 +1289,19 @@ class FitWindow(tk.Toplevel):
                                                      anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
             self.plot_fitline_box.pack(side=tk.LEFT, anchor=tk.W)
             residuals_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
-            blank_label = ttk.Label(self.peaks_panel, text="", anchor=tk.W)
+            blank_label = ttk.Label(self.fit_settings_panel, text="", anchor=tk.W)
             blank_label.pack(side=tk.TOP, expand=False)
-            self.fit_panel = BrowserTreeView(self.peaks_panel, label=None, borderwidth=1, relief="groove")
+            self.fit_panel = BrowserTreeView(self.fit_settings_panel, label=None, borderwidth=1, relief="groove")
             self.fit_tree = self.fit_panel.treeview
             self._add_peak_line()
         self.fit_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        self.peaks_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        self.fit_settings_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         if not fit_type == 'Error Func':
             results_panel = ttk.Frame(self)
             blank_label = ttk.Label(results_panel, text="", anchor=tk.W)
             blank_label.pack(side=tk.TOP, fill=tk.X)
+            replot_button = ttk.Button(results_panel, text='Replot', command=self._plot, width=8)
+            replot_button.pack(side=tk.TOP, fill=tk.X)
             fit_button = ttk.Button(results_panel, text='Do Fit', command=self._do_fit_peaks, width=8)
             fit_button.pack(side=tk.TOP, fill=tk.X)
             save_button = ttk.Button(results_panel, text='Save Fit', command=self._save_peaks, width=8)
@@ -1289,6 +1315,7 @@ class FitWindow(tk.Toplevel):
             fit_results_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
             results_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
 
+        self._plot()
         #self.attributes('-topmost', 'true')
 
     def _add_error_func_section(self):
@@ -1442,6 +1469,8 @@ class FitWindow(tk.Toplevel):
             region_color = None
         self.plot_panel.plot_fit(self.region, self.fitter_obj, region_color=region_color, colors=peak_colors,
                                  residuals=self.plot_residuals_var.get(), fitline=self.plot_fitline_var.get(),
+                                 legend_feature=self.plot_options['legend_features'],
+                                 title=self.plot_options['title'],
                                  font_size=int(service.get_service_parameter("FONT_SIZE")))
 
         # Showing results
@@ -1486,10 +1515,28 @@ class FitWindow(tk.Toplevel):
                     _, data_cols[f"Peak{peak.get_peak_id()}"] = peak.get_virtual_data()
             return pd.DataFrame(data_cols)
 
+    def _plot(self):
+        if self.spectrum_color.get() != "Default color":
+            region_color = self.spectrum_color.get()
+        else:
+            region_color = None
+        self.plot_panel.plot_regions(self.region,
+                                     color=region_color,
+                                     title=self.plot_options['title'],
+                                     legend=self.plot_options['legend'],
+                                     legend_features=self.plot_options['legend_features'],
+                                     scatter=self.plot_options['scatter'],
+                                     font_size=int(service.get_service_parameter("FONT_SIZE")))
+
     def _plot_error_func_fit(self, fit_label):
+        if self.spectrum_color.get() != "Default color":
+            region_color = self.spectrum_color.get()
+        else:
+            region_color = None
         ax = self.plot_panel.figure_axes
         ax.clear()
-        plotter.plot_region(self.region, ax, y_data="final", scatter=True, title=False, legend_features=("ID", "Conditions"),
+        plotter.plot_region(self.region, ax, y_data="final", scatter=True, color=region_color,
+                            title=False, legend_features=("ID", "Conditions"),
                             font_size=int(service.get_service_parameter("FONT_SIZE")))
         plotter.plot_region(self.region, ax, y_data="fitFermi", title=False, label=fit_label,
                             font_size=int(service.get_service_parameter("FONT_SIZE")))
@@ -1550,11 +1597,220 @@ class FitWindow(tk.Toplevel):
                 service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
 
 
-class GlobalFitWindow(FitWindow):
-    def __init__(self, parent, regions, fit_type, label='fit', legend=True, legend_features=None, scatter=False, *args, **kwargs):
-        super().__init__(parent, regions[0], fit_type, label=label, legend=legend, scatter=scatter, *args, **kwargs)
-        self.plot_panel.plot_regions(regions, legend=legend, legend_features=legend_features, scatter=scatter,
+class GlobalFitWindow(tk.Toplevel):
+    def __init__(self, parent, regions, plot_options, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.wm_title("Advanced fitting")
+        self.plot_options = plot_options
+        self.regions = regions
+        self.results_txt = None
+        self.bg_types = ("constant", "linear", "square", "shirley")
+
+        toppanel = ttk.Frame(self, borderwidth=1, relief="groove")
+        # Right panel for plotting
+        self.plot_panel = PlotPanel(toppanel, label=None, borderwidth=1, relief="groove")
+        self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        self.plot_panel.plot_regions(regions,
+                                     title=plot_options['title'],
+                                     legend=plot_options['legend'],
+                                     legend_features=plot_options['legend_features'],
+                                     scatter=plot_options['scatter'],
                                      font_size=int(service.get_service_parameter("FONT_SIZE")))
+        # Left panel for fitting settings
+        self.fit_settings_panel = ttk.Frame(toppanel, borderwidth=1, relief="groove")
+        self.settings = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
+        # Choose spectrum color
+        spectrum_color_frame = ttk.Frame(self.settings)
+        spectrum_color_label = ttk.Label(spectrum_color_frame, text="Spectrum color", anchor=tk.W)
+        spectrum_color_label.pack(side=tk.LEFT, expand=False)
+        self.spectrum_color = tk.StringVar()
+        self.spectrum_color.set("Default color")
+        # Some colormaps suitable for plotting
+        options = ['Default color'] + COLORS
+        self.opmenu_spectrum_color = ttk.OptionMenu(spectrum_color_frame, self.spectrum_color,
+                                                    self.spectrum_color.get(), *options)
+        self.opmenu_spectrum_color.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        spectrum_color_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
+        # Draw residuals and fit line
+        residuals_frame = ttk.Frame(self.settings)
+        residuals_label = ttk.Label(residuals_frame, text="Plot residuals", anchor=tk.W)
+        residuals_label.pack(side=tk.LEFT, expand=False)
+        self.plot_residuals_var = tk.StringVar(value="")
+        self.plot_residuals_box = tk.Checkbutton(residuals_frame, var=self.plot_residuals_var,
+                                                 onvalue="True", offvalue="", background=BG,
+                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+        self.plot_residuals_box.pack(side=tk.LEFT, anchor=tk.W)
+        fitline_label = ttk.Label(residuals_frame, text="Plot fit line", anchor=tk.W)
+        fitline_label.pack(side=tk.LEFT, expand=False)
+        self.plot_fitline_var = tk.StringVar(value="True")
+        self.plot_fitline_box = tk.Checkbutton(residuals_frame, var=self.plot_fitline_var,
+                                               onvalue="True", offvalue="", background=BG,
+                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+        self.plot_fitline_box.pack(side=tk.LEFT, anchor=tk.W)
+        residuals_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
+        self.settings.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # Choose background settings
+        self.bg_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
+        self._populate_bg_panel()
+        self.bg_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
+        # Panel with fit lines specifications
+        self.fit_panel = BrowserTreeView(self.fit_settings_panel, label=None, borderwidth=1, relief="groove")
+        self.fit_tree = self.fit_panel.treeview
+        self._populate_fit_tree()
+        self.fit_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # Action buttons
+        self.buttons_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
+        fit_button = ttk.Button(self.buttons_panel, text='Do Fit', command=self._do_fit)
+        fit_button.pack(side=tk.TOP, fill=tk.X)
+        save_button = ttk.Button(self.buttons_panel, text='Save Fit', command=self._save_fit)
+        save_button.pack(side=tk.TOP, fill=tk.X)
+        close_window_button = ttk.Button(self.buttons_panel, text='Close Window', command=self.destroy)
+        close_window_button.pack(side=tk.TOP, fill=tk.X)
+        self.buttons_panel.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
+        self.fit_settings_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        toppanel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # Bottom panel for output
+        output_panel = ttk.Frame(self, borderwidth=1, relief="groove", height=50)
+        fit_results_frame = BrowserTreeView(output_panel, label=None, borderwidth=1, relief="groove")
+        self.fit_results_tree = fit_results_frame.treeview
+        fit_results_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        output_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False)
+
+    def _display_message(self, msg, timestamp=True):
+        # Clearing the previously existing text
+        for widget in self.fit_results_tree.winfo_children():
+            widget.destroy()
+        if timestamp:
+            msg = f"{datetime.datetime.now().strftime('%H:%M:%S')} " + msg
+        results_msg = tk.Message(self.fit_results_tree, width=self.winfo_toplevel().winfo_width(), text=msg, anchor=tk.W, bg=BG)
+        results_msg.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+
+    def _do_fit(self):
+        bg_params = {}
+        try:
+            for label_name in self.bg_types:
+                if not bool(self.bg_values[label_name]['use'].get()):
+                    continue
+                bg_params[label_name] = {}
+                bg_val = self.bg_values[label_name]['value'].get()
+                if label_name == "constant" and bg_val in ('min', 'first'):
+                    bg_params[label_name]['value'] = bg_val
+                else:
+                    bg_params[label_name]['value'] = float(bg_val)
+                bg_params[label_name]['fittable'] = not bool(self.bg_values[label_name]['fix'].get())
+                bg_params[label_name]['min'] = float(self.bg_values[label_name]['min'].get())
+                bg_params[label_name]['max'] = float(self.bg_values[label_name]['max'].get())
+        except ValueError:
+            self._display_message("Check the values of background parameters. "
+                                  "Should be numbers.\n"
+                                  "For constant background, 'min' and 'first' are also allowed for Value parameter.")
+            return
+
+        # for region in self.regions:
+        #     fit = GlobalFit(region)
+        #     fit.make_params(peaksInfo, bgParams)
+        #     result = fit.fit()
+        #     raw_fit_result, raw_colums, absolute_fit_result, absolute_columns = fit.collect_fit_data(result)
+        #     if not rawWriter:
+        #         rawFile, rawWriter = fit.make_fits_file(folder, file + '_raw', raw_colums)
+        #     fit.save_fits_line(rawWriter, raw_fit_result)
+        #     if not absoluteWriter:
+        #         absoluteFile, absoluteWriter = fit.make_fits_file(folder, file + '_absolute', absolute_columns)
+        #     fit.save_fits_line(absoluteWriter, absolute_fit_result)
+        #     fit.print_fits(result)
+        #     # plt = fit.plot_residual_interactive(result)
+        #     # plt.show()
+        # rawFile.close()
+        # absoluteFile.close()
+        #
+        # data = select_spec(allData, '{:d}-{:d}'.format(startRegion, endRegion))
+        # fit = fit_global(data)
+        # fit.make_params(peaksInfo, bgParams)
+        # fit.load_fits('{}/{}_raw.csv'.format(folder, file))
+        # plt = fit.plot_residual_interactive()
+        # plt.show()
+
+    def _populate_bg_panel(self):
+        self.bg_values = {}
+        bg_label = ttk.Label(self.bg_panel, text="Fitting Background:", anchor=tk.W)
+        bg_label.pack(side=tk.TOP, expand=False, anchor=tk.W)
+        left_panel = ttk.Frame(self.bg_panel)
+        middle_panel = ttk.Frame(self.bg_panel)
+        sep = ttk.Separator(self.bg_panel, orient=tk.VERTICAL)
+        right_panel = ttk.Frame(self.bg_panel)
+        for label_name in self.bg_types:
+            entry_line = ttk.Frame(right_panel)
+            # Collecting all values in one dictionary
+            self.bg_values[label_name] = {}
+            self.bg_values[label_name]['use'] = tk.StringVar(self, value="")
+            self.bg_values[label_name]['use_cb'] = tk.Checkbutton(left_panel, var=self.bg_values[label_name]['use'],
+                                                                  onvalue="True", offvalue="", background=BG,
+                                                                  anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+            self.bg_values[label_name]['value'] = tk.StringVar(self, value="0.0")
+            self.bg_values[label_name]['value_entry'] = ttk.Entry(entry_line,
+                                                                  textvariable=self.bg_values[label_name]['value'],
+                                                                  width=5)
+            self.bg_values[label_name]['fix'] = tk.StringVar(self, value="True")
+            self.bg_values[label_name]['fix_cb'] = tk.Checkbutton(entry_line, var=self.bg_values[label_name]['fix'],
+                                                                  onvalue="True", offvalue="", background=BG,
+                                                                  anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+            self.bg_values[label_name]['min'] = tk.StringVar(self, value="0.0")
+            self.bg_values[label_name]['min_entry'] = ttk.Entry(entry_line,
+                                                                textvariable=self.bg_values[label_name]['min'],
+                                                                width=5)
+            self.bg_values[label_name]['max'] = tk.StringVar(self, value="0.0")
+            self.bg_values[label_name]['max_entry'] = ttk.Entry(entry_line,
+                                                                textvariable=self.bg_values[label_name]['max'],
+                                                                width=5)
+            # Stop collecting values
+            self.bg_values[label_name]['use_cb'].pack(side=tk.TOP, fill=tk.Y, anchor=tk.W, expand=True)
+            label = ttk.Label(middle_panel, text=label_name.capitalize(), anchor=tk.W)
+            label.pack(side=tk.TOP, fill=tk.Y, expand=True, anchor=tk.W)
+
+            fix_label = ttk.Label(entry_line, text='Fix', anchor=tk.W)
+            fix_label.pack(side=tk.LEFT, expand=False, anchor=tk.W)
+            self.bg_values[label_name]['fix_cb'].pack(side=tk.LEFT, anchor=tk.W)
+            val_label = ttk.Label(entry_line, text='Value', anchor=tk.W)
+            val_label.pack(side=tk.LEFT, expand=False, anchor=tk.W)
+            self.bg_values[label_name]['value_entry'].pack(side=tk.LEFT, anchor=tk.W)
+            bounds_label = ttk.Label(entry_line, text='Bounds', anchor=tk.W)
+            bounds_label.pack(side=tk.LEFT, expand=False, anchor=tk.W)
+            self.bg_values[label_name]['min_entry'].pack(side=tk.LEFT, anchor=tk.W)
+            self.bg_values[label_name]['max_entry'].pack(side=tk.LEFT, anchor=tk.W)
+            entry_line.pack(side=tk.TOP, fill=tk.X, expand=True)
+
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        middle_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        sep.pack(side=tk.LEFT, fill=tk.Y, expand=True)
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
+
+    def _populate_fit_tree(self):
+        pass
+
+    #TODO finish saving routine
+    def _save_fit(self):
+        if self.results_txt is not None:
+            output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
+            dat_file_path = filedialog.asksaveasfilename(initialdir=output_dir,
+                                                         initialfile="global.fit",
+                                                         title="Save as...",
+                                                         filetypes=(("fit files", "*.fit"), ("all files", "*.*")))
+            if dat_file_path:
+                df = self._make_fit_dataframe()
+                try:
+                    with open(dat_file_path, 'w') as f:
+                        f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        f.write(f"Fitting {self.region.get_id()} with {len(self.peak_lines)} {self.fittype} peaks\n\n")
+                        f.write(self.results_txt)
+                        f.write("\n[Data]\n")
+                        df.to_csv(f, header=True, index=False, sep='\t')
+                except (IOError, OSError):
+                    gui_logger.error(f"Couldn't save file {dat_file_path}", exc_info=True)
+                    self.winfo_toplevel().display_message(f"Couldn't save file {dat_file_path}")
+
+                output_dir = os.path.dirname(dat_file_path)
+                service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
 
 
 class MainWindow(ttk.PanedWindow):
@@ -1781,6 +2037,21 @@ def _parse_batch_parameters(container, params):
                 container.do_const_norm_var.set("True")
                 container.const_norm_var.set('; '.join(val))
                 continue
+            if key == 'CROP':
+                if val[0][0] == val[0][1]:
+                    continue
+                start, stop = val[0][0], val[0][1]
+                if all(x == start for x in list(zip(*val))[0]) and \
+                   all(x == stop for x in list(zip(*val))[1]):
+                    container.do_crop_var.set("True")
+                    container.crop_left_var.set(start)
+                    container.crop_right_var.set(stop)
+            if key == 'CBG':
+                if all(bool(x) == False for x in val):
+                    container.subtract_const_var.set("")
+            if key == 'SBG':
+                if all(bool(x) == True for x in val):
+                    container.subtract_shirley_var.set("True")
         except ValueError:
             print(f"Couldn't get parameter {key} value from batch file.")
 
@@ -1801,4 +2072,7 @@ def main(*args, **kwargs):
     app.resizable(1, 1)
     if use_batch_parameters:
         _parse_batch_parameters(app.gui_widgets["CorrectionsPanel"], kwargs)
+        app.gui_widgets["CorrectionsPanel"]._plot()
     app.mainloop()
+    # Upon exit save the service file
+    service.write_init_file()

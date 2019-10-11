@@ -170,7 +170,9 @@ def _plot_curve(x, y, region, axs, invert_x=True, log_scale=False, y_offset=0.0,
     if log_scale:
         axs.set_yscale('log')
 
-    axs.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+    # Switch to scientific notation when y-axis numbers get bigger than 4 digits
+    if max(y) > 9999:
+        axs.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
 
 
 def plot_peak(peak, axs, y_offset=0.0, label=None, color=None, fill=True, legend=True, legend_pos='best', font_size=12):
