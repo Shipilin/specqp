@@ -3,11 +3,13 @@
 ### What for
 
 The package can be used for quick and more advanced plotting and fitting of spectroscopy
-data. In version 1.x it provides functionality for working with X-ray photoelectron spectroscopy
+data. In versions 1.x it provides functionality for working with X-ray photoelectron spectroscopy
 data. Plotting, normalization, background subtraction, fitting possibilities are included for 
-single and series of curves. 
+single and series of curves.
+ 
 GUI interface is also realized providing full interactive functionality for handling single
-and series of curves. GUI
+and series of curves. In versions 1.x only *.xy* files from SPECS instruments and *.txt* files
+from SCIENTA instruments are handled within GUI.
 
 ### Installation MacOS
 
