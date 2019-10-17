@@ -197,7 +197,7 @@ def plot_peak(peak, axs, y_offset=0.0, label=None, color=None, fill=True, legend
                  fill=fill, legend=legend, legend_pos=legend_pos, font_size=font_size)
 
 
-def plot_peak_xy(x, y, axs, y_offset=0.0, label=None,
+def plot_peak_xy(x, y, axs, y_offset=0.0, label=None, baseline=None,
                  color=None, fill=True, legend=True, legend_pos='best', font_size=12):
     """Plotting one peak by given (x, y) points
     :param x: x coordinates
@@ -215,7 +215,10 @@ def plot_peak_xy(x, y, axs, y_offset=0.0, label=None,
     axs.plot(x, y + y_offset, color=color, label=label)
     if fill:
         # Fill the peak shape with color that is retrieved from the last plotted line
-        axs.fill_between(x, y.min() + y_offset, y + y_offset, facecolor=axs.get_lines()[-1].get_color(), alpha=0.3)
+        if baseline is not None:
+            axs.fill_between(x, baseline + y_offset, y + y_offset, facecolor=axs.get_lines()[-1].get_color(), alpha=0.3)
+        else:
+            axs.fill_between(x, y.min() + y_offset, y + y_offset, facecolor=axs.get_lines()[-1].get_color(), alpha=0.3)
     if legend:
         axs.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': font_size})
 

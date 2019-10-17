@@ -312,7 +312,7 @@ class PlotPanel(ttk.Frame):
     #     gui_logger.debug(f"{event.button} pressed on plot canvas")
     #     key_press_handler(event, self.canvas, self.toolbar)
 
-    def plot_fit(self, reg, fobj, region_color=None, colors=None, residuals=None, fitline="True", ax=None,
+    def plot_fit(self, reg, fobj, ymin=None, ymax=None, region_color=None, colors=None, residuals=None, fitline="True", bg="", ax=None,
                  legend_feature=("ID",), legend_pos='best', title=False, font_size=12):
         """Plots region data with fit line, fitted peaks and residuals
         :param reg: region object
@@ -326,11 +326,17 @@ class PlotPanel(ttk.Frame):
         for i, peak in enumerate(fobj.get_peaks()):
             if peak:
                 peak_data = peak.get_virtual_data()
+                baseline = None
+                _, bg_y = fobj.get_virtual_bg()
+                if np.max(bg_y) > 0:
+                    baseline=bg_y
                 if colors is not None and colors[i] != "Default color":
-                    plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos, font_size=font_size,
+                    plotter.plot_peak_xy(peak_data[0], peak_data[1] + bg_y, ax, baseline=baseline,
+                                         legend_pos=legend_pos, font_size=font_size,
                                          label=f"{peak.get_parameters('center'):.2f}", color=colors[i])
                 else:
-                    plotter.plot_peak_xy(peak_data[0], peak_data[1], ax, legend_pos=legend_pos, font_size=font_size,
+                    plotter.plot_peak_xy(peak_data[0], peak_data[1] + bg_y, ax, baseline=baseline,
+                                         legend_pos=legend_pos, font_size=font_size,
                                          label=f"{peak.get_parameters('center'):.2f}")
 
         if region_color is None:
@@ -338,18 +344,23 @@ class PlotPanel(ttk.Frame):
         plotter.plot_region(reg, ax, color=region_color, scatter=True, font_size=font_size,
                             legend_features=legend_feature, legend_pos=legend_pos, title=title)
 
+        if bg is not None and bg != "":
+            bg_x, bg_y = fobj.get_virtual_bg()
+            ax.plot(bg_x, bg_y, linestyle='-', color='black', label=None, alpha=0.5)
         if fitline is not None and fitline != "":
-            fitline_x, fitline_y = fobj.get_virtual_fitline()
+            fitline_x, fitline_y = fobj.get_virtual_fitline(usebg=True)
             ax.plot(fitline_x, fitline_y, linestyle='--', color='black', label=None)
         # Add residuals
         if residuals is not None and residuals != "":
             ax.plot(fobj.get_data()[0], fobj.get_residuals(), linestyle=':', alpha=1, color='black', label=None)
             plotter.stylize_axes(ax)
+        ax.set_ylim([ymin, ymax])
         ax.set_aspect(float(service.get_service_parameter("PLOT_ASPECT_RATIO"))/ax.get_data_ratio())
         self.canvas.draw()
         self.toolbar.update()
 
-    def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', invert_x=True, log_scale=False,
+    def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', ymin=None, ymax=None, invert_x=True,
+                     log_scale=False,
                      y_offset=0.0, scatter=False, label=None, color=None, title=True, font_size=12, legend=True,
                      legend_features=("ID", ), legend_pos='best', add_dimension=False, colormap=None):
         if regions:
@@ -385,6 +396,7 @@ class PlotPanel(ttk.Frame):
             if len(regions) > 1:
                 ax.set_title(None)
             plotter.stylize_axes(ax)
+            ax.set_ylim([ymin, ymax])
             ax.set_aspect(float(service.get_service_parameter("PLOT_ASPECT_RATIO"))/ax.get_data_ratio())
             self.canvas.draw()
             self.toolbar.update()
@@ -439,7 +451,7 @@ class CorrectionsPanel(ttk.Frame):
                         'legend_features': tuple(self._get_legend_features()),
                         'title': bool(self.plot_title_var.get()),
                         }
-        global_fit_window = GlobalFitWindow(self.winfo_toplevel(), regions_in_work, plot_options=plot_options)
+        global_fit_window = AdvancedFitWindow(self.winfo_toplevel(), regions_in_work, plot_options=plot_options)
         self.winfo_toplevel().update()  # Update to be able to request fit_window parameters
         global_fit_window.wm_minsize(width=global_fit_window.winfo_width(), height=global_fit_window.winfo_height())
         self.winfo_toplevel().fit_windows.append(global_fit_window)
@@ -1115,7 +1127,7 @@ class PeakLine(ttk.Frame):
             self.parameter_bounds[par_name] = tk.StringVar(self, value=_val_bounds)
             parameter_bounds_entry = ttk.Entry(parameter_entry_frame, textvariable=self.parameter_bounds[par_name], width=8)
             parameter_bounds_entry.pack(side=tk.LEFT, expand=False)
-            fix_label = ttk.Label(parameter_entry_frame, text="fix", anchor=tk.W)
+            fix_label = ttk.Label(parameter_entry_frame, text="Fix", anchor=tk.W)
             fix_label.pack(side=tk.LEFT, expand=False)
             self.parameter_fix_vals[par_name] = tk.StringVar(value="")
             self.parameter_fix_boxes[par_name] = tk.Checkbutton(parameter_entry_frame,
@@ -1252,12 +1264,16 @@ class FitWindow(tk.Toplevel):
         self.peaks = {}
         self.fitter_obj = None
         self.results_txt = None
-        self.plot_panel = PlotPanel(self, label=None, borderwidth=1, relief="groove")
-        self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        self.fit_settings_panel = ttk.Frame(self, borderwidth=1, relief="groove")
+        toppanel = ttk.Frame(self, borderwidth=1, relief="groove")
+        # Right panel for plotting
+        self.plot_panel = PlotPanel(toppanel, label=None, borderwidth=1, relief="groove")
+        self.plot_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        # Left panel for fitting settings
+        self.fit_settings_panel = ttk.Frame(toppanel, borderwidth=1, relief="groove")
+        self.settings = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
         # Choose spectrum color
-        spectrum_color_frame = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
+        spectrum_color_frame = ttk.Frame(self.settings)
         spectrum_color_label = ttk.Label(spectrum_color_frame, text="Spectrum color", anchor=tk.W)
         spectrum_color_label.pack(side=tk.LEFT, expand=False)
         self.spectrum_color = tk.StringVar()
@@ -1269,54 +1285,57 @@ class FitWindow(tk.Toplevel):
         self.opmenu_spectrum_color.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         spectrum_color_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
         if fit_type == 'Error Func':
+            self.settings.pack(side=tk.TOP, fill=tk.X, expand=False)
             self.fit_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
             self._add_error_func_section()
-        else:
-            # Draw residuals and fit line
-            residuals_frame = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
-            residuals_label = ttk.Label(residuals_frame, text="Plot residuals", anchor=tk.W)
-            residuals_label.pack(side=tk.LEFT, expand=False)
-            self.plot_residuals_var = tk.StringVar(value="")
-            self.plot_residuals_box = tk.Checkbutton(residuals_frame, var=self.plot_residuals_var,
-                                                     onvalue="True", offvalue="", background=BG,
-                                                     anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
-            self.plot_residuals_box.pack(side=tk.LEFT, anchor=tk.W)
-            fitline_label = ttk.Label(residuals_frame, text="Plot fit line", anchor=tk.W)
-            fitline_label.pack(side=tk.LEFT, expand=False)
-            self.plot_fitline_var = tk.StringVar(value="True")
-            self.plot_fitline_box = tk.Checkbutton(residuals_frame, var=self.plot_fitline_var,
-                                                     onvalue="True", offvalue="", background=BG,
-                                                     anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
-            self.plot_fitline_box.pack(side=tk.LEFT, anchor=tk.W)
-            residuals_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
-            blank_label = ttk.Label(self.fit_settings_panel, text="", anchor=tk.W)
-            blank_label.pack(side=tk.TOP, expand=False)
-            self.fit_panel = BrowserTreeView(self.fit_settings_panel, label=None, borderwidth=1, relief="groove")
-            self.fit_tree = self.fit_panel.treeview
-            self._add_peak_line()
+            self.fit_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+            self.fit_settings_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            toppanel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+            self._plot()
+            return
+        # Draw residuals and fit line
+        residuals_frame = ttk.Frame(self.settings)
+        residuals_label = ttk.Label(residuals_frame, text="Plot residuals", anchor=tk.W)
+        residuals_label.pack(side=tk.LEFT, expand=False)
+        self.plot_residuals_var = tk.StringVar(value="")
+        self.plot_residuals_box = tk.Checkbutton(residuals_frame, var=self.plot_residuals_var,
+                                                 onvalue="True", offvalue="", background=BG,
+                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+        self.plot_residuals_box.pack(side=tk.LEFT, anchor=tk.W)
+        fitline_label = ttk.Label(residuals_frame, text="Plot fit line", anchor=tk.W)
+        fitline_label.pack(side=tk.LEFT, expand=False)
+        self.plot_fitline_var = tk.StringVar(value="True")
+        self.plot_fitline_box = tk.Checkbutton(residuals_frame, var=self.plot_fitline_var,
+                                               onvalue="True", offvalue="", background=BG,
+                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+        self.plot_fitline_box.pack(side=tk.LEFT, anchor=tk.W)
+        residuals_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
+        self.settings.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.fit_panel = BrowserTreeView(self.fit_settings_panel, label=None, borderwidth=1, relief="groove")
+        self.fit_tree = self.fit_panel.treeview
+        self._add_peak_line()
         self.fit_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # Action buttons
+        self.buttons_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
+        replot_button = ttk.Button( self.buttons_panel, text='Replot', command=self._plot, width=8)
+        replot_button.pack(side=tk.TOP, fill=tk.X)
+        fit_button = ttk.Button(self.buttons_panel, text='Do Fit', command=self._do_fit_peaks)
+        fit_button.pack(side=tk.TOP, fill=tk.X)
+        save_button = ttk.Button(self.buttons_panel, text='Save Fit', command=self._save_peaks)
+        save_button.pack(side=tk.TOP, fill=tk.X)
+        close_window_button = ttk.Button(self.buttons_panel, text='Close Window', command=self.destroy)
+        close_window_button.pack(side=tk.TOP, fill=tk.X)
+        self.buttons_panel.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
         self.fit_settings_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
-        if not fit_type == 'Error Func':
-            results_panel = ttk.Frame(self)
-            blank_label = ttk.Label(results_panel, text="", anchor=tk.W)
-            blank_label.pack(side=tk.TOP, fill=tk.X)
-            replot_button = ttk.Button(results_panel, text='Replot', command=self._plot, width=8)
-            replot_button.pack(side=tk.TOP, fill=tk.X)
-            fit_button = ttk.Button(results_panel, text='Do Fit', command=self._do_fit_peaks, width=8)
-            fit_button.pack(side=tk.TOP, fill=tk.X)
-            save_button = ttk.Button(results_panel, text='Save Fit', command=self._save_peaks, width=8)
-            save_button.pack(side=tk.TOP, fill=tk.X)
-            blank_label = ttk.Label(results_panel, text="", anchor=tk.W)
-            blank_label.pack(side=tk.TOP, fill=tk.X)
-            results_label = ttk.Label(results_panel, text="Fit results:", anchor=tk.W)
-            results_label.pack(side=tk.TOP, fill=tk.X, expand=False)
-            fit_results_frame = BrowserTreeView(results_panel, label=None, borderwidth=1, relief="groove")
-            self.fit_results_tree = fit_results_frame.treeview
-            fit_results_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-            results_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        toppanel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # Bottom panel for output
+        output_panel = ttk.Frame(self, borderwidth=1, relief="groove", height=50)
+        fit_results_frame = BrowserTreeView(output_panel, label=None, borderwidth=1, relief="groove")
+        self.fit_results_tree = fit_results_frame.treeview
+        fit_results_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        output_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False)
 
         self._plot()
-        #self.attributes('-topmost', 'true')
 
     def _add_error_func_section(self):
         def _make_parameter_line(parent_obj, par_name, value, input=True):
@@ -1395,6 +1414,15 @@ class FitWindow(tk.Toplevel):
         if peak_num > 0:
             self.peak_lines[peak_num].set_all_parameters(*self.peak_lines[peak_num - 1].get_all_parameters(string_output=True))
 
+    def _display_message(self, msg, timestamp=True):
+        # Clearing the previously existing text
+        for widget in self.fit_results_tree.winfo_children():
+            widget.destroy()
+        if timestamp:
+            msg = f"{datetime.datetime.now().strftime('%H:%M:%S')} " + msg
+        results_msg = tk.Message(self.fit_results_tree, width=self.winfo_toplevel().winfo_width(), text=msg, anchor=tk.W, bg=BG)
+        results_msg.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+
     def _do_fit_error_func(self):
         fit_parameters = [float(par_str_var.get()) for par_str_var in self.error_func_pars_input]
         fit_res = helpers.fit_fermi_edge(self.region, fit_parameters)
@@ -1451,7 +1479,7 @@ class FitWindow(tk.Toplevel):
             cnt += 1
         if None in initial_guess:
             gui_logger.warning("Please fill in initial values for all parameters. Bounds can stay empty.")
-            self.master.display_message("Please fill in initial values for all parameters. Bounds can stay empty.")
+            self._display_message("Please fill in initial values for all parameters. Bounds can stay empty.")
             return False
         # Fitting
         self.fitter_obj = fitter.Fitter(self.region)
@@ -1527,6 +1555,21 @@ class FitWindow(tk.Toplevel):
                                      legend_features=self.plot_options['legend_features'],
                                      scatter=self.plot_options['scatter'],
                                      font_size=int(service.get_service_parameter("FONT_SIZE")))
+        if self.fitter_obj is not None:
+            peak_colors = []
+            for peak_line in self.peak_lines.values():
+                if not peak_line.use_peak_var.get():
+                    continue
+                peak_colors.append(peak_line.peak_color.get())
+            if self.spectrum_color.get() != "Default color":
+                region_color = self.spectrum_color.get()
+            else:
+                region_color = None
+            self.plot_panel.plot_fit(self.region, self.fitter_obj, region_color=region_color, colors=peak_colors,
+                                     residuals=self.plot_residuals_var.get(), fitline=self.plot_fitline_var.get(),
+                                     legend_feature=self.plot_options['legend_features'],
+                                     title=self.plot_options['title'],
+                                     font_size=int(service.get_service_parameter("FONT_SIZE")))
 
     def _plot_error_func_fit(self, fit_label):
         if self.spectrum_color.get() != "Default color":
@@ -1597,12 +1640,270 @@ class FitWindow(tk.Toplevel):
                 service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
 
 
-class GlobalFitWindow(tk.Toplevel):
+class AdvancedPeakLine(ttk.Frame):
+    def __init__(self, parent, fit_type, remove_func, add_func, id_, data_max=None, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self._id = id_
+        self.fit_type = fit_type
+        self.parameter_vals = {}
+        self.parameter_bounds = {}
+        self.parameter_fix_vals = {}
+        self.parameter_fix_boxes = {}
+        self.parameter_dependence_type = {}
+        self.parameter_dependence_base = {}
+        self.dependence_types = ['Independent', 'Dependent *', 'Dependent +', 'Common +', 'Common *']#, 'Dependent on fixed +', 'Dependent on fixed *']
+        self.data_max = data_max
+
+        title_frame = ttk.Frame(self)
+        self.remove_peak_button = ttk.Button(title_frame, text='-', command=lambda: remove_func(self._id), width=1)
+        self.remove_peak_button.pack(side=tk.RIGHT, expand=False)
+        self.add_peak_button = ttk.Button(title_frame, text='+', command=lambda: add_func(), width=1)
+        self.add_peak_button.pack(side=tk.RIGHT, expand=False)
+        # Choose peak color
+        self.peak_color = tk.StringVar()
+        self.peak_color.set("Default color")
+        # Some colormaps suitable for plotting
+        options = ['Default color'] + COLORS
+        self.opmenu_color = ttk.OptionMenu(title_frame, self.peak_color, self.peak_color.get(), *options)
+        self.opmenu_color.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        self.id_var = tk.StringVar(value=f"Peak {id_}:")
+        self.use_peak_var = tk.StringVar(value="True")
+        use_peak_box = tk.Checkbutton(title_frame, var=self.use_peak_var,
+                                      onvalue="True", offvalue="", background=BG,
+                                      anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                      )
+        use_peak_box.pack(side=tk.LEFT, anchor=tk.W)
+        self.peak_label = ttk.Label(title_frame, textvariable=self.id_var, anchor=tk.W)
+        self.peak_label.pack(side=tk.LEFT, expand=False)
+        title_frame.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self._add_parameter_fields(fit_type)
+
+    def _add_parameter_fields(self, fittype):
+        two_columns = ttk.Frame(self)
+        left_column = ttk.Frame(two_columns)
+        right_column = ttk.Frame(two_columns)
+        # Loop goes over the list of parameters of the current fit type
+        for par_name in fitter.Peak.peak_types[fittype]:
+            name_label = ttk.Label(left_column, text=f"{par_name} / bounds", anchor=tk.E)
+            name_label.pack(side=tk.TOP, expand=True)
+            parameter_entry_frame = ttk.Frame(right_column)
+            if par_name == 'amplitude' and self.data_max is not None:
+                _val = str(round(self.data_max, int(service.service_vars['ROUND_PRECISION'])))
+                _val_bounds = '; '.join(['0', _val])
+            elif par_name == 'l_fwhm':
+                _val = '0.5'
+                _val_bounds = "0; 2"
+            elif par_name == 'g_fwhm':
+                _val = '0.5'
+                _val_bounds = "0; 2"
+            elif par_name == 'fwhm':
+                _val = '0.5'
+                _val_bounds = "0; 2"
+            else:
+                _val = ''
+                _val_bounds = ';'
+            self.parameter_vals[par_name] = tk.StringVar(self, value=_val)
+            parameter_entry = ttk.Entry(parameter_entry_frame, textvariable=self.parameter_vals[par_name], width=8)
+            parameter_entry.pack(side=tk.LEFT, expand=False)
+            slash_label = ttk.Label(parameter_entry_frame, text="/")
+            slash_label.pack(side=tk.LEFT, expand=False)
+            self.parameter_bounds[par_name] = tk.StringVar(self, value=_val_bounds)
+            parameter_bounds_entry = ttk.Entry(parameter_entry_frame, textvariable=self.parameter_bounds[par_name],
+                                               width=8)
+            parameter_bounds_entry.pack(side=tk.LEFT, expand=False)
+            fix_label = ttk.Label(parameter_entry_frame, text="Fix", anchor=tk.W)
+            fix_label.pack(side=tk.LEFT, expand=False)
+            self.parameter_fix_vals[par_name] = tk.StringVar(value="")
+            self.parameter_fix_boxes[par_name] = tk.Checkbutton(parameter_entry_frame,
+                                                                var=self.parameter_fix_vals[par_name],
+                                                                onvalue="True", offvalue="", background=BG,
+                                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                                )
+            self.parameter_fix_boxes[par_name].pack(side=tk.LEFT, anchor=tk.W, expand=False)
+            # Dependent fit
+            self.parameter_dependence_type[par_name] = tk.StringVar(self, value="Independent")
+            options = self.dependence_types
+            self.opmenu_dependence = ttk.OptionMenu(parameter_entry_frame, self.parameter_dependence_type[par_name],
+                                                    self.parameter_dependence_type[par_name].get(), *options)
+            self.opmenu_dependence.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            base_peak_label = ttk.Label(parameter_entry_frame, text="Peak #", anchor=tk.W)
+            base_peak_label.pack(side=tk.LEFT, expand=False)
+            self.parameter_dependence_base[par_name] = tk.StringVar("")
+            self.base_peak_entry = ttk.Entry(parameter_entry_frame,
+                                             textvariable=self.parameter_dependence_base[par_name],
+                                             width=2)
+            self.base_peak_entry.pack(side=tk.LEFT, expand=False)
+            parameter_entry_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        two_columns.pack(side=tk.TOP, fill=tk.X, expand=False)
+
+    def get_id(self):
+        return self._id
+
+    def get_parameter(self, par_name: str, string_output=False):
+        """Returns parameter str value, bounds and whether or not to fix it for the specified parameter
+        :param par_name: str
+        :param string_output: True if type string output required
+        :return: (float, list of floats, bool, str, float) or (str, str, str, str, str) if string_output=True
+        """
+        if par_name in self.parameter_vals.keys():
+            if string_output:
+                return (self.parameter_vals[par_name].get(),
+                        self.parameter_bounds[par_name].get(),
+                        self.parameter_fix_vals[par_name].get(),
+                        self.parameter_dependence_type[par_name].get(),
+                        self.parameter_dependence_base[par_name].get())
+            else:
+                try:
+                    if self.parameter_vals[par_name].get():
+                        val = round(float(self.parameter_vals[par_name].get()), int(service.service_vars['ROUND_PRECISION']))
+                    else:
+                        val = None
+                    if self.parameter_bounds[par_name].get():
+                        bounds = [round(float(s.strip()), int(service.service_vars['ROUND_PRECISION']))
+                                  for s in re.findall(r"[+-]? *(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?",
+                                                      self.parameter_bounds[par_name].get())]
+                        if len(bounds) != 2:
+                            #gui_logger.warning(f"Check parameters bounds entries for Peak {self._id}. Must be two numbers.")
+                            bounds = [None, None]
+                    else:
+                        bounds = [None, None]
+                    if self.parameter_fix_vals[par_name].get():
+                        fix_choise = True
+                    else:
+                        fix_choise = False
+                    if self.parameter_dependence_base[par_name].get():
+                        base = int(self.parameter_dependence_base[par_name].get())
+                    else:
+                        base = None
+                    return val, bounds, fix_choise, self.parameter_dependence_type[par_name].get(), base
+                except ValueError:
+                    gui_logger.warning(f"Check parameter entries for Peak {self._id}. Must be numbers.")
+                    self.winfo_toplevel()._display_message(f"Check parameter entries for Peak {self._id}. Must be numbers.")
+                    return None
+
+    def get_all_parameters(self, string_output=False):
+        """Returns parameter names, values, bounds and whether to fix them for all parameters
+        :return: (list of str,
+                  list of floats,
+                  list of lists (of two floats),
+                  list of bools,
+                  list of str,
+                  list of int)
+                  or
+                  (list of str,
+                  list of str,
+                  list of str,
+                  list of str,
+                  list of str,
+                  list of str) if string_output == True
+        """
+        if string_output:
+            vals = [self.parameter_vals[key].get() for key in self.parameter_vals.keys()]
+            bounds = [self.parameter_bounds[key].get() for key in self.parameter_bounds.keys()]
+            fix_choises = [self.parameter_fix_vals[key].get() for key in self.parameter_fix_vals.keys()]
+            dependence_types = [self.parameter_dependence_type[key].get() for key in self.parameter_dependence_type.keys()]
+            dependence_bases = [self.parameter_dependence_base[key].get() for key in self.parameter_dependence_base.keys()]
+            return self.parameter_vals.keys(), vals, bounds, fix_choises, dependence_types, dependence_bases
+        else:
+            vals, bounds, fix_choises, dependence_types, dependence_bases = [], [], [], [], []
+            for key in self.parameter_vals.keys():
+                par = self.get_parameter(key, string_output=False)
+                if par is None:
+                    vals.append(None)
+                    bounds.append([None, None])
+                    fix_choises.append(False)
+                    dependence_types.append('Independent')
+                    dependence_bases.append(None)
+                else:
+                    vals.append(par[0])
+                    bounds.append(par[1])
+                    fix_choises.append(par[2])
+                    dependence_types.append(par[3])
+                    dependence_bases.append(par[4])
+        return list(self.parameter_vals.keys()), vals, bounds, fix_choises, dependence_types, dependence_bases
+
+    def make_global_fit_dictionary(self):
+        all_parameters = self.get_all_parameters(string_output=False)
+        global_fit_dict = {}
+        for i in range(len(all_parameters[0])):
+            global_fit_dict[all_parameters[0][i]] = {}
+
+            global_fit_dict[all_parameters[0][i]]['value'] = all_parameters[1][i]
+            global_fit_dict[all_parameters[0][i]]['min'] = all_parameters[2][i][0]
+            global_fit_dict[all_parameters[0][i]]['max'] = all_parameters[2][i][1]
+            global_fit_dict[all_parameters[0][i]]['fix'] = all_parameters[3][i]
+            global_fit_dict[all_parameters[0][i]]['dependencetype'] = all_parameters[4][i]
+            global_fit_dict[all_parameters[0][i]]['dependencebase'] = all_parameters[5][i]
+
+        return global_fit_dict
+
+    def set_id(self, new_id):
+        self._id = new_id
+        self.id_var.set(f"Peak {new_id}:")
+
+    def set_parameter(self, par_name, par_value, par_bounds, par_fix, par_dependence_type, par_dependence_base):
+        """Sets parameter value and bounds for the specified parameter
+        :param par_name: str
+        :param par_value: float or str representing a float
+        :param par_bounds: list of two floats or string representing two floats separated with ';'
+        :param par_fix: bool or str representing a bool
+        :param par_dependence_type: str representing the dependence type
+        :param par_dependence_base: int or str representing an int
+        """
+        assert par_fix in ('True', 'False', '', True, False, 0, 1)
+        assert par_dependence_type in self.dependence_types
+        if type(par_value) is str and type(par_bounds) is str and type(par_dependence_base) is str:
+            if par_name in self.parameter_vals.keys():
+                self.parameter_vals[par_name].set(par_value)
+                self.parameter_bounds[par_name].set(par_bounds)
+                if par_fix in ('False', '', False):
+                    self.parameter_fix_vals[par_name].set('')
+                else:
+                    self.parameter_fix_vals[par_name].set('True')
+        else:
+            assert len(par_bounds) == 2
+            if par_name in self.parameter_vals.keys():
+                self.parameter_vals[par_name].set(round(par_value, int(service.service_vars['ROUND_PRECISION'])))
+                self.parameter_bounds[par_name].set(f"{round(par_bounds[0], int(service.service_vars['ROUND_PRECISION']))};"
+                                                    f"{round(par_bounds[1], int(service.service_vars['ROUND_PRECISION']))}")
+                self.parameter_fix_vals[par_name].set(bool(par_fix))
+
+        self.parameter_dependence_base[par_name].set(par_dependence_base)
+        self.parameter_dependence_type[par_name].set(par_dependence_type)
+        return True
+
+    def set_all_parameters(self, par_names: list, par_values: list, par_bounds: list, par_fixes: list,
+                           par_dependence_types: list, par_dependence_bases: list):
+        """Sets parameter values and bounds for all parameters
+        :param par_names: list of str
+        :param par_values: list of str or list of floats
+        :param par_bounds: list of str or list of lists (of two floats)
+        :param par_fixes: list of str or list of bools
+        :param par_dependence_types: list of str
+        :param par_dependence_bases: list of str or list of int
+        """
+        assert len(par_values) == len(par_bounds) == len(par_names) == len(par_fixes) == \
+               len(par_dependence_types) == len(par_dependence_bases)
+        for i, pn in enumerate(par_names):
+            self.set_parameter(pn, par_values[i], par_bounds[i], par_fixes[i], par_dependence_types[i], par_dependence_bases[i])
+
+
+class AdvancedFitWindow(tk.Toplevel):
     def __init__(self, parent, regions, plot_options, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
+        self.currently_plotted = None
         self.wm_title("Advanced fitting")
         self.plot_options = plot_options
-        self.regions = regions
+        if helpers.is_iterable(regions):
+            self.regions = regions
+        else:
+            self.regions = [regions]
+        self.peak_lines = {}
+        self.peaks = {}
+        self.fitter_obj = None
+        self.fittype = 'Pseudo Voigt'
         self.results_txt = None
         self.bg_types = ("constant", "linear", "square", "shirley")
 
@@ -1647,6 +1948,13 @@ class GlobalFitWindow(tk.Toplevel):
                                                onvalue="True", offvalue="", background=BG,
                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
         self.plot_fitline_box.pack(side=tk.LEFT, anchor=tk.W)
+        bg_label = ttk.Label(residuals_frame, text="Plot background", anchor=tk.W)
+        bg_label.pack(side=tk.LEFT, expand=False)
+        self.plot_bg_var = tk.StringVar(value="True")
+        self.plot_bg_box = tk.Checkbutton(residuals_frame, var=self.plot_bg_var,
+                                          onvalue="True", offvalue="", background=BG,
+                                          anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+        self.plot_bg_box.pack(side=tk.LEFT, anchor=tk.W)
         residuals_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
         self.settings.pack(side=tk.TOP, fill=tk.X, expand=False)
         # Choose background settings
@@ -1662,6 +1970,14 @@ class GlobalFitWindow(tk.Toplevel):
         self.buttons_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
         fit_button = ttk.Button(self.buttons_panel, text='Do Fit', command=self._do_fit)
         fit_button.pack(side=tk.TOP, fill=tk.X)
+        sliderbuttons_frame = ttk.Frame(self.buttons_panel)
+        previous_button = ttk.Button(sliderbuttons_frame, text='Previous', command=self._previous, width=4)
+        previous_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        next_button = ttk.Button(sliderbuttons_frame, text='Next', command=self._next, width=4)
+        next_button.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        sliderbuttons_frame.pack(side=tk.TOP, fill=tk.X)
+        replot_button = ttk.Button(self.buttons_panel, text='Replot', command=self._plot, width=8)
+        replot_button.pack(side=tk.TOP, fill=tk.X)
         save_button = ttk.Button(self.buttons_panel, text='Save Fit', command=self._save_fit)
         save_button.pack(side=tk.TOP, fill=tk.X)
         close_window_button = ttk.Button(self.buttons_panel, text='Close Window', command=self.destroy)
@@ -1676,6 +1992,15 @@ class GlobalFitWindow(tk.Toplevel):
         self.fit_results_tree = fit_results_frame.treeview
         fit_results_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         output_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False)
+
+    def _add_peak_line(self):
+        peak_num = len(self.peak_lines.keys())
+        self.peak_lines[peak_num] = AdvancedPeakLine(self.fit_tree, self.fittype, self._remove_peak_line,
+                                                     self._add_peak_line, peak_num, data_max=self._get_all_max())
+        self.peak_lines[peak_num].pack(side=tk.TOP, fill=tk.X, expand=False)
+        self._redraw_add_remove_buttons()
+        if peak_num > 0:
+            self.peak_lines[peak_num].set_all_parameters(*self.peak_lines[peak_num - 1].get_all_parameters(string_output=True))
 
     def _display_message(self, msg, timestamp=True):
         # Clearing the previously existing text
@@ -1698,7 +2023,7 @@ class GlobalFitWindow(tk.Toplevel):
                     bg_params[label_name]['value'] = bg_val
                 else:
                     bg_params[label_name]['value'] = float(bg_val)
-                bg_params[label_name]['fittable'] = not bool(self.bg_values[label_name]['fix'].get())
+                bg_params[label_name]['fix'] = bool(self.bg_values[label_name]['fix'].get())
                 bg_params[label_name]['min'] = float(self.bg_values[label_name]['min'].get())
                 bg_params[label_name]['max'] = float(self.bg_values[label_name]['max'].get())
         except ValueError:
@@ -1707,33 +2032,126 @@ class GlobalFitWindow(tk.Toplevel):
                                   "For constant background, 'min' and 'first' are also allowed for Value parameter.")
             return
 
-        # for region in self.regions:
-        #     fit = GlobalFit(region)
-        #     fit.make_params(peaksInfo, bgParams)
-        #     result = fit.fit()
-        #     raw_fit_result, raw_colums, absolute_fit_result, absolute_columns = fit.collect_fit_data(result)
-        #     if not rawWriter:
-        #         rawFile, rawWriter = fit.make_fits_file(folder, file + '_raw', raw_colums)
-        #     fit.save_fits_line(rawWriter, raw_fit_result)
-        #     if not absoluteWriter:
-        #         absoluteFile, absoluteWriter = fit.make_fits_file(folder, file + '_absolute', absolute_columns)
-        #     fit.save_fits_line(absoluteWriter, absolute_fit_result)
-        #     fit.print_fits(result)
-        #     # plt = fit.plot_residual_interactive(result)
-        #     # plt.show()
-        # rawFile.close()
-        # absoluteFile.close()
-        #
-        # data = select_spec(allData, '{:d}-{:d}'.format(startRegion, endRegion))
-        # fit = fit_global(data)
-        # fit.make_params(peaksInfo, bgParams)
-        # fit.load_fits('{}/{}_raw.csv'.format(folder, file))
-        # plt = fit.plot_residual_interactive()
-        # plt.show()
+        peaks_info = []
+        for peak_name, peak_line in self.peak_lines.items():
+            if not peak_line.use_peak_var.get():
+                continue
+            peak_info = {}
+            peak_info['parameters'] = peak_line.make_global_fit_dictionary()
+            peak_info['fittype'] = peak_line.fit_type
+            peak_info['peakname'] = f"Peak{peak_name}"
+            peaks_info.append(peak_info)
+
+        fit = GlobalFit(self.regions, peaks_info, bg_params)
+        self.fitter_obj = fit.fit()
+        self.currently_plotted = 0
+        self._plot(self.currently_plotted)
+
+        # Showing results
+        round_precision = int(service.get_service_parameter('ROUND_PRECISION'))
+        self.results_txt = ""
+        for region_num in range(len(self.regions)):
+            self.results_txt += f"Region #{region_num} ({self.fitter_obj[region_num].get_id()}):\n" \
+                                f"--------------------------------------------------\n\n"
+            self.results_txt += f"Goodness:\n" \
+                                f"Chi^2 = {self.fitter_obj[region_num].get_chi_squared():.2f}\n" \
+                                f"RMS = {self.fitter_obj[region_num].get_rms():.2f}\n\n"
+            self.results_txt += f"Background parameters:\n"
+            if self.fitter_obj[region_num].get_bg() is not None:
+                for bg_key, bg_val in self.fitter_obj[region_num].get_bg().items():
+                    self.results_txt += f"{bg_key}: {round(bg_val[0], round_precision)} +/- " \
+                                        f"{round(bg_val[1], round_precision)}\n"
+                self.results_txt += "\n"
+            else:
+                self.results_txt += f"None:\n\n"
+            # Here we also fix the numbering for the proper vizualization in GUI
+            pls = list(self.peak_lines.values())
+            cnt = 0
+            for i, peak in enumerate(self.fitter_obj[region_num].get_peaks()):
+                while not pls[cnt].use_peak_var.get():
+                    cnt += 1
+                if peak:
+                    self.results_txt += f"Peak {cnt}\n"
+                    peak_area = round(peak.get_peak_area(), round_precision)
+                    self.results_txt = "  ".join([self.results_txt, f"Area {peak_area}\n"])
+                    peak_pars = [round(par, round_precision) for par in peak.get_parameters()]
+                    peak_errors = [round(err, round_precision) for err in peak.get_fitting_errors()]
+                    for i in range(len(peak_pars)):
+                        par_names = fitter.Peak.peak_types[peak.get_peak_type()]
+                        self.results_txt = "  ".join(
+                            [self.results_txt, f"{par_names[i]}: {peak_pars[i]} +/- {peak_errors[i]}\n"])
+                    self.results_txt += '\n'
+                cnt += 1
+        # Clearing the previously existing text
+        for widget in self.fit_results_tree.winfo_children():
+            widget.destroy()
+        results_msg = tk.Message(self.fit_results_tree, text=self.results_txt, anchor=tk.W, bg=BG)
+        results_msg.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+
+    def _get_all_max(self):
+        """
+        :return: Maximum intensity of all regions
+        """
+        allmax_intensity = 0
+        for region in self.regions:
+            region_max_intensity = np.max(region.get_data('final'))
+            if region_max_intensity > allmax_intensity:
+                allmax_intensity = region_max_intensity
+        return allmax_intensity
+
+    def _get_peak_lines_ids(self):
+        return [k for k, v in self.peak_lines.items() if v]
+
+    def _make_fit_dataframe(self):
+        if self.fitter_obj is not None:
+            data_cols = {}
+            for i, fobj in enumerate(self.fitter_obj):
+                x, fitline = fobj.get_virtual_fitline()
+                data_cols[f"Region{i}_energy"] = x
+                data_cols[f"Region{i}_fitline"] = fitline
+                for peak in fobj.get_peaks():
+                    if peak:
+                        _, data_cols[f"Peak{peak.get_peak_id()}"] = peak.get_virtual_data()
+            return pd.DataFrame(data_cols)
+
+    def _plot(self, num=0):
+        if self.fitter_obj is None:
+            self._display_message("Do fitting first.")
+            return
+        assert num < len(self.regions)
+        if self.spectrum_color.get() != "Default color":
+            region_color = self.spectrum_color.get()
+        else:
+            region_color = None
+        self.plot_panel.plot_regions(self.regions[num],
+                                     color=region_color,
+                                     title=self.plot_options['title'],
+                                     legend=self.plot_options['legend'],
+                                     legend_features=self.plot_options['legend_features'],
+                                     scatter=self.plot_options['scatter'],
+                                     font_size=int(service.get_service_parameter("FONT_SIZE")),
+                                     ymax=self._get_all_max())
+        if self.fitter_obj is not None:
+            peak_colors = []
+            for peak_line in self.peak_lines.values():
+                if not peak_line.use_peak_var.get():
+                    continue
+                peak_colors.append(peak_line.peak_color.get())
+            if self.spectrum_color.get() != "Default color":
+                region_color = self.spectrum_color.get()
+            else:
+                region_color = None
+            self.plot_panel.plot_fit(self.regions[num], self.fitter_obj[num], region_color=region_color, colors=peak_colors,
+                                     residuals=self.plot_residuals_var.get(), fitline=self.plot_fitline_var.get(),
+                                     bg=self.plot_bg_var.get(),
+                                     legend_feature=self.plot_options['legend_features'],
+                                     title=self.plot_options['title'],
+                                     font_size=int(service.get_service_parameter("FONT_SIZE")),
+                                     ymax=self._get_all_max())
 
     def _populate_bg_panel(self):
         self.bg_values = {}
-        bg_label = ttk.Label(self.bg_panel, text="Fitting Background:", anchor=tk.W)
+        bg_label = ttk.Label(self.bg_panel, text="Fitting Background(s):", anchor=tk.W)
         bg_label.pack(side=tk.TOP, expand=False, anchor=tk.W)
         left_panel = ttk.Frame(self.bg_panel)
         middle_panel = ttk.Frame(self.bg_panel)
@@ -1768,9 +2186,6 @@ class GlobalFitWindow(tk.Toplevel):
             label = ttk.Label(middle_panel, text=label_name.capitalize(), anchor=tk.W)
             label.pack(side=tk.TOP, fill=tk.Y, expand=True, anchor=tk.W)
 
-            fix_label = ttk.Label(entry_line, text='Fix', anchor=tk.W)
-            fix_label.pack(side=tk.LEFT, expand=False, anchor=tk.W)
-            self.bg_values[label_name]['fix_cb'].pack(side=tk.LEFT, anchor=tk.W)
             val_label = ttk.Label(entry_line, text='Value', anchor=tk.W)
             val_label.pack(side=tk.LEFT, expand=False, anchor=tk.W)
             self.bg_values[label_name]['value_entry'].pack(side=tk.LEFT, anchor=tk.W)
@@ -1778,17 +2193,73 @@ class GlobalFitWindow(tk.Toplevel):
             bounds_label.pack(side=tk.LEFT, expand=False, anchor=tk.W)
             self.bg_values[label_name]['min_entry'].pack(side=tk.LEFT, anchor=tk.W)
             self.bg_values[label_name]['max_entry'].pack(side=tk.LEFT, anchor=tk.W)
+            fix_label = ttk.Label(entry_line, text='Fix', anchor=tk.W)
+            fix_label.pack(side=tk.LEFT, expand=False, anchor=tk.W)
+            self.bg_values[label_name]['fix_cb'].pack(side=tk.LEFT, anchor=tk.W)
             entry_line.pack(side=tk.TOP, fill=tk.X, expand=True)
 
         left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         middle_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         sep.pack(side=tk.LEFT, fill=tk.Y, expand=True)
-        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
+        right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
 
     def _populate_fit_tree(self):
-        pass
+        peak_num = len(self.peak_lines.keys())
+        self.peak_lines[peak_num] = AdvancedPeakLine(self.fit_tree, self.fittype, self._remove_peak_line,
+                                                     self._add_peak_line, peak_num,
+                                                     data_max=self._get_all_max())
+        self.peak_lines[peak_num].pack(side=tk.TOP, fill=tk.X, expand=False)
+        self._redraw_add_remove_buttons()
+        if peak_num > 0:
+            self.peak_lines[peak_num].set_all_parameters(
+                *self.peak_lines[peak_num - 1].get_all_parameters(string_output=True))
 
-    #TODO finish saving routine
+    def _previous(self):
+        if self.currently_plotted is None:
+            return
+        if self.currently_plotted == 0:
+            return
+        else:
+            self.currently_plotted -= 1
+            self._plot(self.currently_plotted)
+
+    def _next(self):
+        if self.currently_plotted is None:
+            return
+        if self.currently_plotted == len(self.regions) - 1:
+            return
+        else:
+            self.currently_plotted += 1
+            self._plot(self.currently_plotted)
+
+    def _redraw_add_remove_buttons(self):
+        line_ids = self._get_peak_lines_ids()
+        if len(line_ids) == 1:
+            self.peak_lines[line_ids[0]].remove_peak_button.config(state=tk.DISABLED)
+            self.peak_lines[line_ids[0]].add_peak_button.config(state=tk.NORMAL)
+        else:
+            for i, line_id in enumerate(line_ids):
+                if i < len(line_ids) - 1:
+                    self.peak_lines[line_id].add_peak_button.config(state=tk.DISABLED)
+                elif i == len(line_ids) - 1:
+                    self.peak_lines[line_id].add_peak_button.config(state=tk.NORMAL)
+                self.peak_lines[line_id].remove_peak_button.config(state=tk.NORMAL)
+
+    def _remove_peak_line(self, peak_id):
+        self.peak_lines[peak_id].pack_forget()
+        self.peak_lines[peak_id].destroy()
+        self.peak_lines[peak_id] = None
+        # If we remove a peak_line we need to renumber the remaining
+        peak_line_copy = {}
+        cnt = 0
+        for val in self.peak_lines.values():
+            if val:
+                val.set_id(cnt)
+                peak_line_copy[cnt] = val
+                cnt += 1
+        self.peak_lines = peak_line_copy
+        self._redraw_add_remove_buttons()
+
     def _save_fit(self):
         if self.results_txt is not None:
             output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
@@ -1797,11 +2268,14 @@ class GlobalFitWindow(tk.Toplevel):
                                                          title="Save as...",
                                                          filetypes=(("fit files", "*.fit"), ("all files", "*.*")))
             if dat_file_path:
-                df = self._make_fit_dataframe()
+                df = self._make_fit_dataframe().round(decimals=2)
                 try:
                     with open(dat_file_path, 'w') as f:
                         f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                        f.write(f"Fitting {self.region.get_id()} with {len(self.peak_lines)} {self.fittype} peaks\n\n")
+                        f.write(f"Fitting:\n")
+                        for i, region in enumerate(self.regions):
+                            f.write(f"{region.get_id()} with {len(self.peak_lines)} peaks\n")
+                        f.write(f"\n")
                         f.write(self.results_txt)
                         f.write("\n[Data]\n")
                         df.to_csv(f, header=True, index=False, sep='\t')

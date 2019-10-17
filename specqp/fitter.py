@@ -17,24 +17,27 @@ class Peak:
         "Doniach-Sunjic": ["amplitude", "center", "g_fwhm", "l_fwhm"]
     }
 
-    def __init__(self, x_data, y_data, popt, pcov, peak_func, peak_id, peak_type):
+    def __init__(self, x_data, y_data, popt, pcov, peak_func, peak_id, peak_type, lmfit=False):
         """Creates an instance of Peak object with X and Y data for plotting
         and fitting parameters and parameters coavriance.
         """
         self._X = x_data
         self._Y = y_data
         self._Popt = popt
-        self._Pcov = pcov
         self._function = peak_func
         self._id = peak_id
         self._Area = np.trapz(self._Y)
         self._PeakType = peak_type
-        self._FittingErrors = []#np.sqrt(np.diag(pcov))
-        for i in range(len(self._Popt)):
-            try:
-                self._FittingErrors.append(np.absolute(self._Pcov[i][i])**0.5)
-            except RuntimeWarning:
-                self._FittingErrors.append(0.00)
+        self._Pcov = pcov
+        self._FittingErrors = []
+        if not lmfit:
+            for i in range(len(self._Popt)):
+                try:
+                    self._FittingErrors.append(np.absolute(self._Pcov[i][i])**0.5)
+                except RuntimeWarning:
+                    self._FittingErrors.append(0.00)
+        else:
+            self._FittingErrors = pcov
 
     def __str__(self):
         output = f"Type: {self._PeakType}"
@@ -113,7 +116,15 @@ class Peak:
 class Fitter:
     """Provides fitting possibilities for XPS regions
     """
-    def __init__(self, region, y_data='final', gauss_fwhm=None):
+
+    bg_types = (
+        'constant',
+        'linear',
+        'square',
+        'shirley'
+    )
+
+    def __init__(self, region, y_data='final', gauss_fwhm=None, bg=None):
         """Creates an object that contains information about fitting of
         a particular XPS region.
         """
@@ -127,6 +138,7 @@ class Fitter:
         self._Chisquared = 0
         self._RMS = 0
         self._Peaks = []
+        self._Bg = bg
         # The gauss widening is constant due to the equipment used in the experiment. So, if we know it,
         # we should fix this parameter in fitting.
         if gauss_fwhm:
@@ -142,6 +154,153 @@ class Fitter:
             output = new_line.join((output, f"--- Peak #{i+1} ---"))
             output = "\n".join((output, peak.__str__()))
         return output
+
+    @staticmethod
+    def get_model(model, energy, intensity, params):
+        """Returns the function model according to name
+        :param model: str one of specqp.Peak.peak_types
+        :param energy: x axis
+        :param intensity: y axis (optionally used by some models)
+        :param params: parameters dictionary, e.g.
+        {'amplitude': {'value': 200, 'fix': False, 'dependencetype': 'Independent',
+                  'min': 10, 'max': 100000},
+         'center': {'value': 22.35, 'fix': False, 'dependencetype': 'Dependent *',
+                    'min': 10, 'max': 30},
+         'g_fwhm': {'value': 1.15, 'fix': True, 'dependencetype': 'Independent',
+                    'min': 1.1, 'max': 1.2},
+         'l_fwhm': {'value': 0.5, 'fix': True, 'dependencetype': 'Independent',
+                    'min': 0.4, 'max': 0.6}}
+        :return: array
+        """
+        if model in Peak.peak_types:
+            if model == "Gauss":
+                return Fitter.gauss(energy, params[Peak.peak_types[model][0]]['value'],
+                                    params[Peak.peak_types[model][1]]['value'],
+                                    params[Peak.peak_types[model][2]]['value'])
+            if model == "Lorentz":
+                return Fitter.lorentz(energy, params[Peak.peak_types[model][0]]['value'],
+                                      params[Peak.peak_types[model][1]]['value'],
+                                      params[Peak.peak_types[model][2]]['value'])
+            if model == "Pseudo Voigt":
+                return Fitter.pseudo_voigt(energy, params[Peak.peak_types[model][0]]['value'],
+                                           params[Peak.peak_types[model][1]]['value'],
+                                           params[Peak.peak_types[model][2]]['value'],
+                                           params[Peak.peak_types[model][3]]['value'])
+            if model == "Doniach-Sunjic":
+                return Fitter.doniach_sunjic(energy, params[Peak.peak_types[model][0]]['value'],
+                                             params[Peak.peak_types[model][1]]['value'],
+                                             params[Peak.peak_types[model][2]]['value'],
+                                             params[Peak.peak_types[model][3]]['value'])
+        elif model in Fitter.bg_types:
+            if model == 'shirley':
+                return Fitter.shirley(energy, intensity, params['value'])
+            else:
+                return getattr(Fitter, model)(energy, params['value'])
+        else:
+            raise KeyError(f"'{model}' is not a valid fitting model")
+
+    @staticmethod
+    def get_model_func(model):
+        if model in Peak.peak_types:
+            if model == "Gauss":
+                return Fitter.gauss
+            if model == "Lorentz":
+                return Fitter.lorentz
+            if model == "Pseudo Voigt":
+                return Fitter.pseudo_voigt
+            if model == "Doniach-Sunjic":
+                return Fitter.doniach_sunjic
+        elif model in Fitter.bg_types:
+            if model == 'shirley':
+                return Fitter.shirley
+            else:
+                return getattr(Fitter, model)
+        else:
+            raise KeyError(f"'{model}' is not a valid fitting model")
+
+    @staticmethod
+    def constant(energy, value: float):
+        """Calculates constant background for simulated spectrum
+        """
+        return np.ones_like(energy) * value
+
+    @staticmethod
+    def linear(energy, value: float):
+        """Calculates linear background for simulated spectrum
+        """
+        bg = np.zeros_like(energy)
+        if energy[0] < energy[-1]:
+            need_to_reversed = False
+        else:
+            need_to_reversed = True
+            energy = energy[::-1]
+        bg = bg + (energy - energy[0]) * value
+        if need_to_reversed:
+            return bg[::-1]
+        else:
+            return bg
+
+    @staticmethod
+    def square(energy, value: float):
+        """Calculates square background for simulated spectrum
+        """
+        bg = np.zeros_like(energy)
+        if energy[0] < energy[-1]:
+            need_to_reversed = False
+        else:
+            need_to_reversed = True
+            energy = energy[::-1]
+        bg = bg + np.square((energy - energy[0])) * value
+        if need_to_reversed:
+            return bg[::-1]
+        else:
+            return bg
+
+    @staticmethod
+    def shirley(energy, intensity, value: float, tolerance=1e-5, maxiter=50):
+        """Calculates Shirley background for simulated spectrum
+        """
+        # if energy[0] < energy[-1]:
+        #     is_reversed = True
+        #     energy = energy[::-1]
+        #     counts = counts[::-1]
+        # else:
+        #     is_reversed = False
+        # background = np.ones(energy.shape) * counts[-1]
+        # integral = np.zeros(energy.shape)
+        # spacing = (energy[-1] - energy[0]) / (len(energy) - 1)
+        # subtracted = counts - background
+        # ysum = subtracted.sum() - np.cumsum(subtracted)
+        # for i in range(len(energy)):
+        #     integral[i] = spacing * (ysum[i] - 0.5 * (subtracted[i] + subtracted[-1]))
+        # iteration = 0
+        # while iteration < maxiter:
+        #     subtracted = counts - background
+        #     integral = spacing * (subtracted.sum() - np.cumsum(subtracted))
+        #     bnew = ((counts[0] - counts[-1]) * integral / integral[0] + counts[-1])
+        #     if np.linalg.norm((bnew - background) / counts[0]) < tolerance:
+        #         background = bnew.copy()
+        #         break
+        #     else:
+        #         background = bnew.copy()
+        #     iteration += 1
+        # if iteration >= maxiter:
+        #     return None
+        # output = background
+        # if is_reversed:
+        #     output = background[::-1]
+        # return output
+        bg = np.zeros_like(energy)
+        if energy[0] < energy[-1]:
+            need_to_reversed = False
+        else:
+            need_to_reversed = True
+            intensity = intensity[::-1]
+        bg = bg + (np.cumsum(intensity) - intensity) * value
+        if need_to_reversed:
+            return bg[::-1]
+        else:
+            return bg
 
     @staticmethod
     def lorentz(x, amp, cen, l_fwhm):
@@ -480,7 +639,7 @@ class Fitter:
             cnt += 4
         self._make_fit()
 
-    def _make_fit(self):
+    def _make_fit(self, usebg=False):
         """Calculates the total fit line including all peaks and calculates the
         residuals and r-squared.
         """
@@ -488,6 +647,9 @@ class Fitter:
         for peak in self._Peaks:
             if peak:
                 self._FitLine += peak.get_data()[1]
+        if usebg and self._Bg is not None:
+            for key, val in self._Bg.items():
+                self._FitLine += self.get_model(key, self._X_data, self._Y_data, val)
         # Calculate residuals
         self._Residuals = self._Y_data - self._FitLine
         # Calculate R-squared
@@ -499,6 +661,14 @@ class Fitter:
         self._Chisquared = np.sum(((self._Y_data - self._FitLine)/std_d)**2)
         self._RMS = np.sum((self._Y_data - self._FitLine)**2)
 
+    def get_bg(self):
+        if self._Bg is None:
+            return None
+        bg_dict = {}
+        for key, val in self._Bg.items():
+            bg_dict[key] = [val['value'].value, val['value'].stderr]
+        return bg_dict
+
     def get_fit_line(self):
         """Returns x and y coordinates for the fit line based on all fitted peaks
         """
@@ -506,7 +676,33 @@ class Fitter:
             return self._FitLine
         fitter_logger.warning("Can't get Fit Line from a Fitter instance. Do fit first.")
 
-    def get_virtual_fitline(self, num=10, multiply=True):
+    def get_virtual_bg(self, num=10, multiply=True):
+        """Returns the bg (x,y) with more (or less) data points.
+        If multiply==False, value of 'num' is taken as desired number of ponts.
+        If multiply==True, multiplies the existing number of points by value of 'num'. For plotting a smoother curve,
+        for example.
+        :param num: Number of desired points or multiplicator
+        :param multiply: True if num is multiplicator, False if num is absolute number of points
+        :return (ndarray, ndarray) x and y data with desired number of points
+        """
+        if multiply:
+            bg_virtual_x = np.linspace(self._X_data[0], self._X_data[-1], len(self._X_data) * num, endpoint=True)
+        else:
+            bg_virtual_x = np.linspace(self._X_data[0], self._X_data[-1], num, endpoint=True)
+        bg_virtual_y = np.zeros_like(bg_virtual_x)
+
+        if self._Bg is not None:
+            total_bg_y = np.zeros_like(self._Y_data)
+            for key, val in self._Bg.items():
+                total_bg_y += self.get_model(key, self._X_data, self._Y_data, val)
+
+            x = list(range(len(self._X_data)))
+            new_x = np.linspace(0, max(x), len(bg_virtual_x), endpoint=True)
+            bg_virtual_y = np.interp(new_x, x, total_bg_y)
+
+        return bg_virtual_x, bg_virtual_y
+
+    def get_virtual_fitline(self, num=10, multiply=True, usebg=False):
         """Returns the fitline (x,y) with more (or less) data points.
         If multiply==False, value of 'num' is taken as desired number of ponts.
         If multiply==True, multiplies the existing number of points by value of 'num'. For plotting a smoother curve,
@@ -524,6 +720,9 @@ class Fitter:
                 else:
                     _, fy = peak_data
                     fitline_y += fy
+        if usebg:
+            _, bg_y = self.get_virtual_bg(num=num, multiply=multiply)
+            fitline_y += bg_y
         return fitline_x, fitline_y
 
     def get_residuals(self):
