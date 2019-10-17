@@ -65,40 +65,40 @@ The general form of the file is shown below. Lines starting with ## are not nece
 
 | ## Instructions file for SpecQP GUI.
 | ## [name], [/name] - the beginning and the ending of a section
-    | ## # Comments for a section
-    | ## FP - Full (or relative to the current bash folder) data file path
-## FT - File type (scienta or specs)
-## PE - Photon energy used for the measurements
-## ES - Energy shift (Fermi level position or otherwise determined energy shift of the spectra)
-## NC - Normalizatin constant (e.g. mean counts rate at the lowest measured binding energy)
-## CO - Conditions of the measurements (will be used for the comments and plot legends)
-## CROP - Cropping (e.g. 715:703)
-## CBG - remove/preserve Constant background (True/False)
-## SBG - remove/preserve Shirley background (True/False)
-
-[C1s]
-# 4 H2 + 1 CO2 at 75 mbar
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0073.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=; CBG=True; SBG=; CO=150C
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0059.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=; CBG=True; SBG=; CO=200C
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0065.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=; CBG=True; SBG=; CO=250C
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0052.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=; CBG=True; SBG=; CO=300C
-[/C1s]
-
-[O1s]
-# 4 H2 + 1 CO2 at 75 mbar
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0074.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=; CBG=True; SBG=; CO=150C
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0058.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=; CBG=True; SBG=; CO=200C
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0066.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=; CBG=True; SBG=; CO=250C
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0053.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=; CBG=True; SBG=; CO=300C
-[/O1s]
-
-[Fe2p]
-# 4 H2 + 1 CO2 at 75 mbar
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0075.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=715:703; CBG=True; SBG=True; CO=150C
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0061.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=715:703; CBG=True; SBG=True; CO=200C
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0068.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=715:703; CBG=True; SBG=True; CO=250C
-FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0054.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=715:703; CBG=True; SBG=True; CO=300C
-[/Fe2p]
+| ## # Comments for a section
+| ## FP - Full (or relative to the current bash folder) data file path
+| ## FT - File type (scienta or specs)
+| ## PE - Photon energy used for the measurements
+| ## ES - Energy shift (Fermi level position or otherwise determined energy shift of the spectra)
+| ## NC - Normalizatin constant (e.g. mean counts rate at the lowest measured binding energy)
+| ## CO - Conditions of the measurements (will be used for the comments and plot legends)
+| ## CROP - Cropping (e.g. 715:703)
+| ## CBG - remove/preserve Constant background (True/False)
+| ## SBG - remove/preserve Shirley background (True/False)
+|
+| [C1s]
+| # 4 H2 + 1 CO2 at 75 mbar
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0073.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=; CBG=True; SBG=; CO=150C
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0059.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=; CBG=True; SBG=; CO=200C
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0065.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=; CBG=True; SBG=; CO=250C
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0052.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=; CBG=True; SBG=; CO=300C
+| [/C1s]
+|
+| [O1s]
+| # 4 H2 + 1 CO2 at 75 mbar
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0074.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=; CBG=True; SBG=; CO=150C
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0058.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=; CBG=True; SBG=; CO=200C
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0066.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=; CBG=True; SBG=; CO=250C
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0053.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=; CBG=True; SBG=; CO=300C
+| [/O1s]
+|
+| [Fe2p]
+| # 4 H2 + 1 CO2 at 75 mbar
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0075.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=715:703; CBG=True; SBG=True; CO=150C
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0061.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=715:703; CBG=True; SBG=True; CO=200C
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0068.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=715:703; CBG=True; SBG=True; CO=250C
+| FP=/Users/Shipilin/Documents/07_DataAnalysis/2019-03-Fe110/Data/Fe_0054.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=715:703; CBG=True; SBG=True; CO=300C
+| [/Fe2p]
 
 To load all or part of the files specified in the instructions txt file together with predefined conditions type in Terminal
 one of the following lines
