@@ -8,18 +8,18 @@ ____________
 NOTE: Python 3.x.x version and pip library are required for installing and running the specqp software.
 
 NOTE: One certain tkinter (python gui tool) version and one certain MacOS version have a poor compatibility which
-results in rebooting the system upon running the program. This chance is slim but just in case you are "lucky",
+results in rebooting the system upon running the program. This chance is slim but, just in case you are "lucky",
 save your work in other applications before doing the following actions.
 
 NOTE: for some python installations the *python* and *pip* commands can refer to Python 2.x.x version, while *python3*
 and *pip3* commands correspond to Python 3.x.x version. If that is the case for you, use *python3* and *pip3* in all
 steps described below
 
-1. Check *python* and *pip* versions by typing in Terminal (for MacOS):
+Check *python* and *pip* versions by typing in Terminal (for MacOS):
 
     $ which python
 
-    and
+and
 
     $ python -V
 
