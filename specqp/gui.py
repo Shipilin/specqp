@@ -1957,6 +1957,13 @@ class AdvancedFitWindow(tk.Toplevel):
                                           anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
         self.plot_bg_box.pack(side=tk.LEFT, anchor=tk.W)
         residuals_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
+        same_scale_label = ttk.Label(residuals_frame, text="Same Y-scale", anchor=tk.W)
+        same_scale_label.pack(side=tk.LEFT, expand=False)
+        self.same_scale_var = tk.StringVar(value="True")
+        self.same_scale_box = tk.Checkbutton(residuals_frame, var=self.same_scale_var,
+                                               onvalue="True", offvalue="", background=BG,
+                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
+        self.same_scale_box.pack(side=tk.LEFT, anchor=tk.W)
         self.settings.pack(side=tk.TOP, fill=tk.X, expand=False)
         # Choose background settings
         self.bg_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
@@ -2115,11 +2122,18 @@ class AdvancedFitWindow(tk.Toplevel):
                         _, data_cols[f"Peak{peak.get_peak_id()}"] = peak.get_virtual_data()
             return pd.DataFrame(data_cols)
 
-    def _plot(self, num=0):
+    def _plot(self, num=None):
         if self.fitter_obj is None:
             self._display_message("Do fitting first.")
             return
+        if num is None and self.currently_plotted is not None:
+            num = self.currently_plotted
+        elif num is None and self.currently_plotted is None:
+            num = 0
         assert num < len(self.regions)
+        ymax = None
+        if self.same_scale_var.get():
+            ymax = 1.1 * self._get_all_max()
         if self.spectrum_color.get() != "Default color":
             region_color = self.spectrum_color.get()
         else:
@@ -2131,7 +2145,7 @@ class AdvancedFitWindow(tk.Toplevel):
                                      legend_features=self.plot_options['legend_features'],
                                      scatter=self.plot_options['scatter'],
                                      font_size=int(service.get_service_parameter("FONT_SIZE")),
-                                     ymax=self._get_all_max())
+                                     ymax=ymax)
         if self.fitter_obj is not None:
             peak_colors = []
             for peak_line in self.peak_lines.values():
@@ -2148,7 +2162,7 @@ class AdvancedFitWindow(tk.Toplevel):
                                      legend_feature=self.plot_options['legend_features'],
                                      title=self.plot_options['title'],
                                      font_size=int(service.get_service_parameter("FONT_SIZE")),
-                                     ymax=self._get_all_max())
+                                     ymax=ymax)
 
     def _populate_bg_panel(self):
         self.bg_values = {}
