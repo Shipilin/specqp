@@ -63,10 +63,14 @@ ______________
 To be able to load multiple files in a convenient way, one can create a txt file with instructions.
 The general form of the file is shown below. Lines starting with ## are not necessary to include.
 
-## Instructions file for SpecQP GUI.<br/>
-## [name], [/name] - the beginning and the ending of a section<br/>
-## # Comments for a section<br/>
-## FP - Full (or relative to the current bash folder) data file path
+## Instructions file for SpecQP GUI.
+
+## [name], [/name] - the beginning and the ending of a section
+
+    ## # Comments for a section
+
+    ## FP - Full (or relative to the current bash folder) data file path
+
 ## FT - File type (scienta or specs)
 ## PE - Photon energy used for the measurements
 ## ES - Energy shift (Fermi level position or otherwise determined energy shift of the spectra)
