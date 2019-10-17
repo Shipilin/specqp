@@ -5,6 +5,7 @@ import re
 import datetime
 import ntpath
 import logging
+import webbrowser
 
 import pandas as pd
 import numpy as np
@@ -2490,11 +2491,15 @@ class Root(tk.Tk):
             self.display_message("No font size value received. Default font size for plotting was set to 12pt.")
 
     def show_about(self):
-        messagebox.showinfo("About", "SpecQP v1.0\nMikhail Shipilin\nmikhail.shipilin@gmail.com")
+        messagebox.showinfo("About", "SpecQP v1.1\n"
+                                     "Mikhail Shipilin\n"
+                                     "mikhail.shipilin@gmail.com\n\n"
+                                     "https://github.com/Shipilin/specqp")
 
     def show_help(self):
-        pass
-
+        result = messagebox.askquestion("Go to GitHub", "Do you want to look online?", icon='info')
+        if result == 'yes':
+            webbrowser.open('https://github.com/Shipilin/specqp', new=2)
 
 def _parse_batch_parameters(container, params):
     for key, val in params.items():

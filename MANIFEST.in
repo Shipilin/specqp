@@ -4,5 +4,6 @@ include requirements.txt
 recursive-include specqp
 include specqp/assets/specqp_icon.png
 include data
+include dist
 recursive-include docs
 recursive-exclude specqp/__pycache__

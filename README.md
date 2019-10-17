@@ -1,6 +1,15 @@
 ## SPECQP stands for SPECtroscopy Quick Peak
 
-###Installation
+### What for
+
+The package can be used for quick and more advanced plotting and fitting of spectroscopy
+data. In version 1.x it provides functionality for working with X-ray photoelectron spectroscopy
+data. Plotting, normalization, background subtraction, fitting possibilities are included for 
+single and series of curves. 
+GUI interface is also realized providing full interactive functionality for handling single
+and series of curves. GUI
+
+### Installation MacOS
 
 NOTE: Python 3.x.x version and pip library are required for installing and running the specqp software.
 
@@ -42,7 +51,7 @@ Finally you should see similar to the following message in the Terminal
 
     $ Successfully installed specqp-1.1
 
-###Default GUI mode
+### Default GUI mode
 
 To run the default GUI mode run the specqp.launcher module of the package:
 
@@ -53,7 +62,7 @@ if they don't yet exist. After that it will call the main() method of the specqp
 which shows the default GUI window where all the functions can be realized by pressing
 corresponding buttons or calling corresponding menu options.
 
-###Batch GUI mode
+### Batch GUI mode
 
 To be able to load multiple files in a convenient way, one can create a txt file with instructions.
 The general form of the file is shown below. Lines starting with ## are not necessary to include.
@@ -118,3 +127,8 @@ To load several txt files:
 The last option can be combined with *section* and *sections* flags in the same way as shown higher above.
 Every time the program meets the specified section(s) name(s) in each txt file, it loads everything within the section(s).
 If the section name is not found, it is ignored.
+
+### Menu options
+
+Check the window menu for extended functionality.
+For example, it is possible to plot callibration curves and open txt files as text. 
