@@ -63,18 +63,18 @@ ______________
 To be able to load multiple files in a convenient way, one can create a txt file with instructions.
 The general form of the file is shown below. Lines starting with ## are not necessary to include.
 
-## Instructions file for SpecQP GUI.
-## [name], [/name] - the beginning and the ending of a section
-## # Comments for a section
-## FP - Full (or relative to the current bash folder) data file path
-## FT - File type (scienta or specs)
-## PE - Photon energy used for the measurements
-## ES - Energy shift (Fermi level position or otherwise determined energy shift of the spectra)
-## NC - Normalizatin constant (e.g. mean counts rate at the lowest measured binding energy)
-## CO - Conditions of the measurements (will be used for the comments and plot legends)
-## CROP - Cropping (e.g. 715:703)
-## CBG - remove/preserve Constant background (True/False)
-## SBG - remove/preserve Shirley background (True/False)
+|## Instructions file for SpecQP GUI.
+|## [name], [/name] - the beginning and the ending of a section
+|## # Comments for a section
+|## FP - Full (or relative to the current bash folder) data file path
+|## FT - File type (scienta or specs)
+|## PE - Photon energy used for the measurements
+|## ES - Energy shift (Fermi level position or otherwise determined energy shift of the spectra)
+|## NC - Normalizatin constant (e.g. mean counts rate at the lowest measured binding energy)
+|## CO - Conditions of the measurements (will be used for the comments and plot legends)
+|## CROP - Cropping (e.g. 715:703)
+|## CBG - remove/preserve Constant background (True/False)
+|## SBG - remove/preserve Shirley background (True/False)
 
 [C1s]
 # 4 H2 + 1 CO2 at 75 mbar
