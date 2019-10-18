@@ -110,23 +110,23 @@ NOTE: All data corresponding to one file have to be on the same line starting wi
 To load all or part of the files specified in the instructions txt file together with predefined conditions type in Terminal
 one of the following lines
 
-To load all data files specified:
+To load all data files specified in the txt file use *filename* parameter:
 
     $ python -m specqp.launcher -gui filename="/full/path/to/instructions.txt"
 
-To load one section of the txt file:
+To load one section of the txt file use *filename* and *section* parameters:
 
     $ python -m specqp.launcher -gui filename="/full/path/to/instructions.txt" section=Fe2p
 
-To load several sections of the txt file:
+To load several sections of the txt file use *sections* parameters:
 
-    $ python -m specqp.launcher -gui filename="/full/path/to/instructions.txt" section="Fe2p;O1s"
+    $ python -m specqp.launcher -gui filename="/full/path/to/instructions.txt" sections="Fe2p;O1s"
 
-To load several txt files:
+To load several txt files use *filenames* parameter:
 
     $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt;/full/path/to/instructions2.txt"
 
-The last option can be combined with *section* and *sections* flags in the same way as shown higher above.
+The last option can be combined with *section* and *sections* parameters in the same way as shown higher above.
 Every time the program meets the specified section(s) name(s) in each txt file, it loads everything within the section(s).
 If the section name is not found, it is ignored.
 
