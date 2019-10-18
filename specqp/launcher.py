@@ -75,7 +75,7 @@ def main(*args, **kwargs):
         call_gui()
 
     # To load a bunch of regions from files listed in a text file provide flag '-gui' and the filename(s)
-    elif "-gui" in args and ("filename" in kwargs or "filenames" in kwargs):
+    elif "-gui" in args and "filenames" in kwargs:
         instruction_lines = []
         loader_instructions = {
             "FP": [],
@@ -88,23 +88,16 @@ def main(*args, **kwargs):
             "CBG": [],
             "SBG": []
         }
-        if "section" in kwargs or "sections" in kwargs:
+
+        if "sections" in kwargs:
             sections_to_load = []
-            if "section" in kwargs:
-                sections_to_load.append(kwargs["section"])
-            elif "sections" in kwargs:
-                sections_to_load += [sec.strip() for sec in kwargs["sections"].split(";")]
-            if "filename" in kwargs:
-                instruction_lines += parse_batch_file(kwargs["filename"], sections_to_load)
-            elif "filenames" in kwargs:
+            sections_to_load += [sec.strip() for sec in kwargs["sections"].split(";")]
+            if "filenames" in kwargs:
                 for filename in kwargs["filenames"].split(';'):
                     instruction_lines += parse_batch_file(filename.strip(), sections_to_load)
         else:
-            if "filename" in kwargs:
-                instruction_lines += parse_batch_file(kwargs["filename"])
-            elif "filenames" in kwargs:
-                for filename in kwargs["filenames"].split(';'):
-                    instruction_lines += parse_batch_file(filename.strip())
+            for filename in kwargs["filenames"].split(';'):
+                instruction_lines += parse_batch_file(filename.strip())
 
         loaded_files = []
         if len(instruction_lines) > 0:

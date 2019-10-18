@@ -110,25 +110,29 @@ NOTE: All data corresponding to one file have to be on the same line starting wi
 To load all or part of the files specified in the instructions txt file together with predefined conditions type in Terminal
 one of the following lines
 
-To load all data files specified in the txt file use *filename* parameter:
+To load all data files specified in the txt file use *filenames* parameter:
 
-    $ python -m specqp.launcher -gui filename="/full/path/to/instructions.txt"
+    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt"
 
-To load one section of the txt file use *filename* and *section* parameters:
+To load one section of the txt file use *filenames* and *sections* parameters:
 
-    $ python -m specqp.launcher -gui filename="/full/path/to/instructions.txt" section=Fe2p
+    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt" sections=Fe2p
 
-To load several sections of the txt file use *sections* parameters:
+The parameters *filenames* and *sections* can be used together in different combinations:
 
-    $ python -m specqp.launcher -gui filename="/full/path/to/instructions.txt" sections="Fe2p;O1s"
-
-To load several txt files use *filenames* parameter:
-
+    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt" sections="Fe2p;O1s"
     $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt;/full/path/to/instructions2.txt"
+    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt;/full/path/to/instructions2.txt" sections="Fe2p;O1s"
 
-The last option can be combined with *section* and *sections* parameters in the same way as shown higher above.
 Every time the program meets the specified section(s) name(s) in each txt file, it loads everything within the section(s).
 If the section name is not found, it is ignored.
+
+NOTE(for less experienced people): You can type all above mentioned commands in a text file and run it in Terminal by
+
+    $ source /full/or/relative/path/to/file.txt
+
+In such a way you avoid manually typing long commands in Terminal. You can store different command lines in the txt file
+hiding it from Terminal interpreter by placing th '#' sign at the beginning of the line you don't want to use
 
 ### Menu options
 
