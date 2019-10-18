@@ -402,6 +402,37 @@ class PlotPanel(ttk.Frame):
             self.canvas.draw()
             self.toolbar.update()
 
+    def plot_trends(self, x, areas, ax=None, ymin=None, ymax=None, log_scale=False, y_offset=0.0, scatter=False,
+                    labels=None, colors=None, font_size=12, legend=True, legend_pos='best'):
+        if not ax:
+            ax = self.figure_axes
+        ax.clear()
+        if not labels is None or len(labels) == 0:
+            labels = list(range(len(areas)))
+        offset = 0
+        for i, trend in enumerate(areas):
+            if scatter:
+                ax.scatter(x, areas[i] + y_offset, s=7, c=colors[i], label=labels[i])
+            else:
+                ax.plot(x, areas[i] + y_offset, 'o-', color=colors[i], label=labels[i])
+            offset += y_offset
+        ax.set_xlabel(f"Scan number", fontsize=font_size)
+        ax.set_ylabel("Peak area (a.u.)", fontsize=font_size)
+        ax.set_title("Peak areas trends")
+        plotter.stylize_axes(ax)
+        ax.tick_params(axis='both', which='both', labelsize=font_size)
+        ax.set_ylim([ymin, ymax])
+        if legend:
+            ax.legend(fancybox=True, framealpha=0, loc=legend_pos, prop={'size': font_size})
+        if log_scale:
+            ax.set_yscale('log')
+        # Switch to scientific notation when y-axis numbers get bigger than 4 digits
+        if np.max(areas) > 9999:
+            ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+        ax.set_aspect(float(service.get_service_parameter("PLOT_ASPECT_RATIO")) / ax.get_data_ratio())
+        self.canvas.draw()
+        self.toolbar.update()
+
 
 class CorrectionsPanel(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
@@ -432,7 +463,7 @@ class CorrectionsPanel(ttk.Frame):
         # Fit
         self.fit_subframe = ttk.Frame(self)
         self.fit = ttk.Button(self.fit_subframe, text='Fit', command=self._fit)
-        self.fit.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.fit.pack(side=tk.LEFT, fill=tk.X, expand=False)
         self.select_fit_type = tk.StringVar()
         self.select_fit_type.set("Pseudo Voigt")
         options = list(fitter.Peak.peak_types.keys()) + ['Error Func']
@@ -446,13 +477,17 @@ class CorrectionsPanel(ttk.Frame):
         regions_in_work = self._get_regions_in_work(checkbg=True)
         if not self.regions_in_work:
             return
+        if self.select_fit_type.get() not in fitter.Peak.peak_types.keys():
+            self.winfo_toplevel().display_message("There is no advanced fitting routine available for Error Function.")
+            return
         plot_options = {
                         'scatter': bool(self.scatter_var.get()),
                         'legend': bool(self.plot_legend_var.get()),
                         'legend_features': tuple(self._get_legend_features()),
                         'title': bool(self.plot_title_var.get()),
                         }
-        global_fit_window = AdvancedFitWindow(self.winfo_toplevel(), regions_in_work, plot_options=plot_options)
+        global_fit_window = AdvancedFitWindow(self.winfo_toplevel(), regions_in_work,
+                                              fittype=self.select_fit_type.get(), plot_options=plot_options)
         self.winfo_toplevel().update()  # Update to be able to request fit_window parameters
         global_fit_window.wm_minsize(width=global_fit_window.winfo_width(), height=global_fit_window.winfo_height())
         self.winfo_toplevel().fit_windows.append(global_fit_window)
@@ -1892,7 +1927,7 @@ class AdvancedPeakLine(ttk.Frame):
 
 
 class AdvancedFitWindow(tk.Toplevel):
-    def __init__(self, parent, regions, plot_options, *args, **kwargs):
+    def __init__(self, parent, regions, plot_options, fittype, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.currently_plotted = None
         self.wm_title("Advanced fitting")
@@ -1904,7 +1939,7 @@ class AdvancedFitWindow(tk.Toplevel):
         self.peak_lines = {}
         self.peaks = {}
         self.fitter_obj = None
-        self.fittype = 'Pseudo Voigt'
+        self.fittype = fittype
         self.results_txt = None
         self.bg_types = ("constant", "linear", "square", "shirley")
 
@@ -1978,18 +2013,24 @@ class AdvancedFitWindow(tk.Toplevel):
         self.buttons_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
         fit_button = ttk.Button(self.buttons_panel, text='Do Fit', command=self._do_fit)
         fit_button.pack(side=tk.TOP, fill=tk.X)
-        sliderbuttons_frame = ttk.Frame(self.buttons_panel)
-        previous_button = ttk.Button(sliderbuttons_frame, text='Previous', command=self._previous, width=4)
+        after_fit_frame = ttk.Frame(self.buttons_panel)
+        plot_subframe = ttk.Frame(after_fit_frame)
+        plot_trends_button = ttk.Button(plot_subframe, text='Plot trends', command=self._plot_peak_areas)
+        plot_trends_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        replot_button = ttk.Button(plot_subframe, text='Replot', command=self._plot)
+        replot_button.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        plot_subframe.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        slider_subframe = ttk.Frame(after_fit_frame)
+        previous_button = ttk.Button(slider_subframe, text='Previous', command=self._previous)
         previous_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        next_button = ttk.Button(sliderbuttons_frame, text='Next', command=self._next, width=4)
+        next_button = ttk.Button(slider_subframe, text='Next', command=self._next)
         next_button.pack(side=tk.RIGHT, fill=tk.X, expand=True)
-        sliderbuttons_frame.pack(side=tk.TOP, fill=tk.X)
-        replot_button = ttk.Button(self.buttons_panel, text='Replot', command=self._plot, width=8)
-        replot_button.pack(side=tk.TOP, fill=tk.X)
+        slider_subframe.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        after_fit_frame.pack(side=tk.TOP, fill=tk.X)
         save_button = ttk.Button(self.buttons_panel, text='Save Fit', command=self._save_fit)
-        save_button.pack(side=tk.TOP, fill=tk.X)
+        save_button.pack(side=tk.TOP, fill=tk.X, expand=True)
         close_window_button = ttk.Button(self.buttons_panel, text='Close Window', command=self.destroy)
-        close_window_button.pack(side=tk.TOP, fill=tk.X)
+        close_window_button.pack(side=tk.TOP, fill=tk.X, expand=True)
         self.buttons_panel.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
         self.fit_settings_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         toppanel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -2164,6 +2205,38 @@ class AdvancedFitWindow(tk.Toplevel):
                                      font_size=int(service.get_service_parameter("FONT_SIZE")),
                                      ymax=ymax)
 
+    def _plot_peak_areas(self, colors=None):
+        if self.fitter_obj is None:
+            self._display_message("Do fitting first.")
+            return
+        self.areas_plot_window = tk.Toplevel(self)
+        self.areas_plot_window.wm_title("Peak areas")
+        areas_plot_panel = PlotPanel(self.areas_plot_window, label=None, borderwidth=1, relief="groove")
+        areas_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        areas = {}
+        labels = []
+        x_ax = list(range(len(self.fitter_obj)))
+        if colors is None:
+            colors = []
+            for peak_line in self.peak_lines.values():
+                if not peak_line.use_peak_var.get():
+                    continue
+                if peak_line.peak_color.get() != "Default color":
+                    colors.append(peak_line.peak_color.get())
+                else:
+                    colors.append(None)
+        for peak in self.fitter_obj[0].get_peaks():
+            areas[peak.get_peak_id()] = []
+        for fobj in self.fitter_obj:
+            for peak in fobj.get_peaks():
+                areas[peak.get_peak_id()].append(peak.get_peak_area())
+        for key, val in areas.items():
+            labels.append(key)
+            areas[key] = np.array(val)
+        areas_plot_panel.plot_trends(x_ax, list(areas.values()), ax=None, ymin=None, ymax=None, log_scale=False, y_offset=0.0,
+                                     scatter=False, labels=labels, colors=colors, font_size=12, legend=True,
+                                     legend_pos='best')
+
     def _populate_bg_panel(self):
         self.bg_values = {}
         bg_label = ttk.Label(self.bg_panel, text="Fitting Background(s):", anchor=tk.W)
@@ -2230,6 +2303,9 @@ class AdvancedFitWindow(tk.Toplevel):
                 *self.peak_lines[peak_num - 1].get_all_parameters(string_output=True))
 
     def _previous(self):
+        if self.fitter_obj is None:
+            self._display_message("Do fitting first.")
+            return
         if self.currently_plotted is None:
             return
         if self.currently_plotted == 0:
@@ -2239,6 +2315,9 @@ class AdvancedFitWindow(tk.Toplevel):
             self._plot(self.currently_plotted)
 
     def _next(self):
+        if self.fitter_obj is None:
+            self._display_message("Do fitting first.")
+            return
         if self.currently_plotted is None:
             return
         if self.currently_plotted == len(self.regions) - 1:
@@ -2276,6 +2355,9 @@ class AdvancedFitWindow(tk.Toplevel):
         self._redraw_add_remove_buttons()
 
     def _save_fit(self):
+        if self.fitter_obj is None:
+            self._display_message("Do fitting first.")
+            return
         if self.results_txt is not None:
             output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
             dat_file_path = filedialog.asksaveasfilename(initialdir=output_dir,

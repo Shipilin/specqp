@@ -134,3 +134,8 @@ If the section name is not found, it is ignored.
 
 Check the window menu for extended functionality.
 For example, it is possible to plot callibration curves and open txt files as text. 
+
+### Manual
+
+More information on how to use the GUI and package methods can be found in *docs/specqp_manual.rst* file of the github
+repository accessible at *https://github.com/Shipilin/specqp* or via Help... menu.
