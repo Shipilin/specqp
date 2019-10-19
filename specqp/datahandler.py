@@ -789,6 +789,37 @@ class Region:
                 return False
         return True
 
+    @staticmethod
+    def separate_add_dimension(region):
+        """
+        Takes an add-dimension region and returns a list of non-add-dimension regions that are single subdimensions.
+        :param region: add-dimension region
+        :return: list of non-add-dimension regions that are subdimensions of the initial region
+        """
+        separated_regions = []
+        if not region.is_add_dimension():
+            return
+        for i in range(region.get_add_dimension_counter()):
+            dimension = Region(region.get_data('energy'), region.get_data(f'counts{i}'),
+                               add_dimension_flag=False, add_dimension_data=None,
+                               info=region.get_info(), conditions=region.get_conditions(),
+                               excitation_energy=region.get_excitation_energy(),
+                               id_=f"{region.get_id()} : Sweep {i}",
+                               fermi_flag=region.get_flags()[Region.region_flags[2]],
+                               flags=copy.deepcopy(region.get_flags()))
+            dimension._add_dimension_scans_number = 1
+            dimension._applied_corrections = region.get_corrections()
+            dimension._flags_backup = region._flags_backup
+            dimension._flags[Region.region_flags[4]] = False  # Not add-dimension any longer
+            for column in region.get_data_columns():
+                if str(i) in column and 'energy' not in column and 'counts' not in column and 'final' not in column:
+                    col_base_name = ''.join(filter(lambda x: x.isalpha(), column))
+                    if f"{col_base_name}{i}" == column:
+                        dimension.add_column(col_base_name, region.get_data(column))
+            dimension.add_column('final', region.get_data(f'final{i}'), overwrite=True)
+            separated_regions.append(dimension)
+        return separated_regions
+
     def set_conditions(self, conditions, overwrite=False):
         """Set experimental conditions as a dictionary {"Property": Value}. If conditions with the same names
         already exist will skip/overwrite depending on the overwrite value.

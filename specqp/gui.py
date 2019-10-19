@@ -475,6 +475,7 @@ class CorrectionsPanel(ttk.Frame):
 
     def _do_advanced_fit(self):
         regions_in_work = self._get_regions_in_work(checkbg=True)
+        regions_to_fit = []
         if not self.regions_in_work:
             return
         if self.select_fit_type.get() not in fitter.Peak.peak_types.keys():
@@ -486,7 +487,15 @@ class CorrectionsPanel(ttk.Frame):
                         'legend_features': tuple(self._get_legend_features()),
                         'title': bool(self.plot_title_var.get()),
                         }
-        global_fit_window = AdvancedFitWindow(self.winfo_toplevel(), regions_in_work,
+        if self.plot_add_dim_var.get():
+            for region in regions_in_work:
+                if region.is_add_dimension():
+                    regions_to_fit += region.separate_add_dimension(region)
+                else:
+                    regions_to_fit.append(region)
+        else:
+            regions_to_fit = regions_in_work
+        global_fit_window = AdvancedFitWindow(self.winfo_toplevel(), regions_to_fit,
                                               fittype=self.select_fit_type.get(), plot_options=plot_options)
         self.winfo_toplevel().update()  # Update to be able to request fit_window parameters
         global_fit_window.wm_minsize(width=global_fit_window.winfo_width(), height=global_fit_window.winfo_height())
