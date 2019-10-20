@@ -481,11 +481,13 @@ class CorrectionsPanel(ttk.Frame):
         if self.select_fit_type.get() not in fitter.Peak.peak_types.keys():
             self.winfo_toplevel().display_message("There is no advanced fitting routine available for Error Function.")
             return
+        cmap = None if self.select_colormap.get() == "Default colormap" else self.select_colormap.get()
         plot_options = {
                         'scatter': bool(self.scatter_var.get()),
                         'legend': bool(self.plot_legend_var.get()),
                         'legend_features': tuple(self._get_legend_features()),
                         'title': bool(self.plot_title_var.get()),
+                        'colormap': cmap
                         }
         if self.plot_add_dim_var.get():
             for region in regions_in_work:
@@ -1961,6 +1963,7 @@ class AdvancedFitWindow(tk.Toplevel):
                                      legend=plot_options['legend'],
                                      legend_features=plot_options['legend_features'],
                                      scatter=plot_options['scatter'],
+                                     colormap=plot_options['colormap'],
                                      font_size=int(service.get_service_parameter("FONT_SIZE")))
         # Left panel for fitting settings
         self.fit_settings_panel = ttk.Frame(toppanel, borderwidth=1, relief="groove")
@@ -2036,8 +2039,10 @@ class AdvancedFitWindow(tk.Toplevel):
         next_button.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         slider_subframe.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         after_fit_frame.pack(side=tk.TOP, fill=tk.X)
-        save_button = ttk.Button(self.buttons_panel, text='Save Fit', command=self._save_fit)
-        save_button.pack(side=tk.TOP, fill=tk.X, expand=True)
+        save_fit_button = ttk.Button(self.buttons_panel, text='Save Fit', command=self._save_fit)
+        save_fit_button.pack(side=tk.TOP, fill=tk.X, expand=True)
+        save_fig_button = ttk.Button(self.buttons_panel, text='Save Figures', command=self._save_figures)
+        save_fig_button.pack(side=tk.TOP, fill=tk.X, expand=True)
         close_window_button = ttk.Button(self.buttons_panel, text='Close Window', command=self.destroy)
         close_window_button.pack(side=tk.TOP, fill=tk.X, expand=True)
         self.buttons_panel.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
@@ -2391,6 +2396,20 @@ class AdvancedFitWindow(tk.Toplevel):
 
                 output_dir = os.path.dirname(dat_file_path)
                 service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
+
+    def _save_figures(self):
+        if self.fitter_obj is None:
+            self._display_message("Do fitting first.")
+            return
+        output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
+        png_dir_path = filedialog.askdirectory(initialdir=output_dir,
+                                               title='Please select a directory')
+        if png_dir_path:
+            for region_num in range(len(self.regions)):
+                self._plot(region_num)
+                self.plot_panel.figure.savefig(png_dir_path + f'/{region_num}.png')
+            return True
+        self._display_message(".png files were not saved.")
 
 
 class MainWindow(ttk.PanedWindow):
