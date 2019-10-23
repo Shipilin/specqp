@@ -20,6 +20,7 @@ from matplotlib import style
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.backend_bases import key_press_handler
 import matplotlib.image as mpimg
+import matplotlib.animation as manimation
 
 from specqp import service
 from specqp import datahandler
@@ -40,7 +41,6 @@ style.use('ggplot')  # Configuring matplotlib style
 
 logo_img_file = os.path.dirname(os.path.abspath(__file__)) + "/assets/specqp_icon.png"
 BG = "#ececec"
-
 
 class CustomText(tk.Text):
     def __init__(self, *args, **kwargs):
@@ -1688,7 +1688,7 @@ class FitWindow(tk.Toplevel):
 
 
 class AdvancedPeakLine(ttk.Frame):
-    def __init__(self, parent, fit_type, remove_func, add_func, id_, data_max=None, *args, **kwargs):
+    def __init__(self, parent, fit_type, remove_func, add_func, toggle_func, id_, data_max=None, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self._id = id_
         self.fit_type = fit_type
@@ -1713,6 +1713,12 @@ class AdvancedPeakLine(ttk.Frame):
         options = ['Default color'] + COLORS
         self.opmenu_color = ttk.OptionMenu(title_frame, self.peak_color, self.peak_color.get(), *options)
         self.opmenu_color.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        # Choose peak type
+        self.peak_type = tk.StringVar(self, fit_type)
+        options = list(fitter.Peak.peak_types.keys())
+        self.typemenu = ttk.OptionMenu(title_frame, self.peak_type, self.peak_type.get(), *options,
+                                       command=lambda x: toggle_func(self._id, self.peak_type.get()))
+        self.typemenu.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         self.id_var = tk.StringVar(value=f"Peak {id_}:")
         self.use_peak_var = tk.StringVar(value="True")
         use_peak_box = tk.Checkbutton(title_frame, var=self.use_peak_var,
@@ -1901,6 +1907,9 @@ class AdvancedPeakLine(ttk.Frame):
         """
         assert par_fix in ('True', 'False', '', True, False, 0, 1)
         assert par_dependence_type in self.dependence_types
+        for obj in (par_value, par_bounds, par_dependence_base):
+            if obj is None:
+                obj = ''
         if type(par_value) is str and type(par_bounds) is str and type(par_dependence_base) is str:
             if par_name in self.parameter_vals.keys():
                 self.parameter_vals[par_name].set(par_value)
@@ -1912,9 +1921,11 @@ class AdvancedPeakLine(ttk.Frame):
         else:
             assert len(par_bounds) == 2
             if par_name in self.parameter_vals.keys():
-                self.parameter_vals[par_name].set(round(par_value, int(service.service_vars['ROUND_PRECISION'])))
-                self.parameter_bounds[par_name].set(f"{round(par_bounds[0], int(service.service_vars['ROUND_PRECISION']))};"
-                                                    f"{round(par_bounds[1], int(service.service_vars['ROUND_PRECISION']))}")
+                if par_value:
+                    self.parameter_vals[par_name].set(round(par_value, int(service.service_vars['ROUND_PRECISION'])))
+                if par_bounds[0] and par_bounds[1]:
+                    self.parameter_bounds[par_name].set(f"{round(par_bounds[0], int(service.service_vars['ROUND_PRECISION']))};"
+                                                        f"{round(par_bounds[1], int(service.service_vars['ROUND_PRECISION']))}")
                 self.parameter_fix_vals[par_name].set(bool(par_fix))
 
         self.parameter_dependence_base[par_name].set(par_dependence_base)
@@ -2025,6 +2036,7 @@ class AdvancedFitWindow(tk.Toplevel):
         self.buttons_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
         fit_button = ttk.Button(self.buttons_panel, text='Do Fit', command=self._do_fit)
         fit_button.pack(side=tk.TOP, fill=tk.X)
+
         after_fit_frame = ttk.Frame(self.buttons_panel)
         plot_subframe = ttk.Frame(after_fit_frame)
         plot_trends_button = ttk.Button(plot_subframe, text='Plot trends', command=self._plot_peak_areas)
@@ -2039,10 +2051,16 @@ class AdvancedFitWindow(tk.Toplevel):
         next_button.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         slider_subframe.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         after_fit_frame.pack(side=tk.TOP, fill=tk.X)
-        save_fit_button = ttk.Button(self.buttons_panel, text='Save Fit', command=self._save_fit)
-        save_fit_button.pack(side=tk.TOP, fill=tk.X, expand=True)
-        save_fig_button = ttk.Button(self.buttons_panel, text='Save Figures', command=self._save_figures)
-        save_fig_button.pack(side=tk.TOP, fill=tk.X, expand=True)
+
+        save_frame = ttk.Frame(self.buttons_panel)
+        save_fit_button = ttk.Button(save_frame, text='Save Fit', command=self._save_fit)
+        save_fit_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        save_fig_button = ttk.Button(save_frame, text='Save Figures', command=self._save_figures)
+        save_fig_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        save_movie_button = ttk.Button(save_frame, text='Save Movie', command=lambda: self._save_figures(movie=True))
+        save_movie_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        save_frame.pack(side=tk.TOP, fill=tk.X)
+
         close_window_button = ttk.Button(self.buttons_panel, text='Close Window', command=self.destroy)
         close_window_button.pack(side=tk.TOP, fill=tk.X, expand=True)
         self.buttons_panel.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
@@ -2058,12 +2076,46 @@ class AdvancedFitWindow(tk.Toplevel):
 
     def _add_peak_line(self):
         peak_num = len(self.peak_lines.keys())
-        self.peak_lines[peak_num] = AdvancedPeakLine(self.fit_tree, self.fittype, self._remove_peak_line,
-                                                     self._add_peak_line, peak_num, data_max=self._get_all_max())
+        fit = self.fittype
+        if peak_num > 0:
+            fit = self.peak_lines[peak_num - 1].fit_type
+        self.peak_lines[peak_num] = AdvancedPeakLine(self.fit_tree, fit, self._remove_peak_line,
+                                                     self._add_peak_line,
+                                                     self._toggle_fit_type,
+                                                     peak_num, data_max=self._get_all_max())
         self.peak_lines[peak_num].pack(side=tk.TOP, fill=tk.X, expand=False)
         self._redraw_add_remove_buttons()
         if peak_num > 0:
-            self.peak_lines[peak_num].set_all_parameters(*self.peak_lines[peak_num - 1].get_all_parameters(string_output=True))
+            AdvancedFitWindow.convert_peak_types(self.peak_lines[peak_num - 1], self.peak_lines[peak_num])
+
+    @staticmethod
+    def convert_peak_types(peak1, peak2):
+        """
+        Peak1 is already existing peak of certain type and with certain parameters. Peak2 is a new peak of a new type,
+        for which the parameters should be grabbed from Peak1 and put to the corresponding fields.
+        :param peak1: initial peak
+        :param peak2: new peak
+        :return: None
+        """
+        if (peak2.fit_type in ('Pseudo Voigt', 'Doniach-Sunjic') and peak1.fit_type in ('Pseudo Voigt', 'Doniach-Sunjic')) or \
+                (peak2.fit_type in ('Gauss', 'Lorentz') and peak1.fit_type in ('Gauss', 'Lorentz')):
+            peak2.set_all_parameters(*peak1.get_all_parameters(string_output=True))
+        elif peak2.fit_type in ('Gauss', 'Lorentz') and peak1.fit_type in ('Pseudo Voigt', 'Doniach-Sunjic'):
+            for par_name in ('amplitude', 'center', 'g_fwhm', 'l_fwhm'):
+                if peak2.fit_type == 'Gauss' and par_name == 'g_fwhm':
+                    peak2.set_parameter('fwhm',*peak1.get_parameter(par_name, string_output=True))
+                if peak2.fit_type == 'Lorentz' and par_name == 'l_fwhm':
+                    peak2.set_parameter('fwhm', *peak1.get_parameter(par_name, string_output=True))
+                if par_name in ('amplitude', 'center'):
+                    peak2.set_parameter(par_name, *peak1.get_parameter(par_name, string_output=True))
+        elif peak2.fit_type in ('Pseudo Voigt', 'Doniach-Sunjic') and peak1.fit_type in ('Gauss', 'Lorentz'):
+            for par_name in ('amplitude', 'center', 'fwhm'):
+                if peak1.fit_type == 'Gauss' and par_name == 'fwhm':
+                    peak2.set_parameter('g_fwhm', *peak1.get_parameter(par_name, string_output=True))
+                if peak1.fit_type == 'Lorentz' and par_name == 'fwhm':
+                    peak2.set_parameter('l_fwhm', *peak1.get_parameter(par_name, string_output=True))
+                if par_name in ('amplitude', 'center'):
+                    peak2.set_parameter(par_name, *peak1.get_parameter(par_name, string_output=True))
 
     def _display_message(self, msg, timestamp=True):
         # Clearing the previously existing text
@@ -2138,7 +2190,12 @@ class AdvancedFitWindow(tk.Toplevel):
                     peak_area = round(peak.get_peak_area(), round_precision)
                     self.results_txt = "  ".join([self.results_txt, f"Area {peak_area}\n"])
                     peak_pars = [round(par, round_precision) for par in peak.get_parameters()]
-                    peak_errors = [round(err, round_precision) for err in peak.get_fitting_errors()]
+                    peak_errors = peak.get_fitting_errors()
+                    for i in range(len(peak_errors)):
+                        if peak_errors[i] is None:
+                            peak_errors[i] = 'NaN'
+                        else:
+                            peak_errors[i] = round(peak_errors[i], round_precision)
                     for i in range(len(peak_pars)):
                         par_names = fitter.Peak.peak_types[peak.get_peak_type()]
                         self.results_txt = "  ".join(
@@ -2308,7 +2365,8 @@ class AdvancedFitWindow(tk.Toplevel):
     def _populate_fit_tree(self):
         peak_num = len(self.peak_lines.keys())
         self.peak_lines[peak_num] = AdvancedPeakLine(self.fit_tree, self.fittype, self._remove_peak_line,
-                                                     self._add_peak_line, peak_num,
+                                                     self._add_peak_line, self._toggle_fit_type,
+                                                     peak_num,
                                                      data_max=self._get_all_max())
         self.peak_lines[peak_num].pack(side=tk.TOP, fill=tk.X, expand=False)
         self._redraw_add_remove_buttons()
@@ -2397,19 +2455,64 @@ class AdvancedFitWindow(tk.Toplevel):
                 output_dir = os.path.dirname(dat_file_path)
                 service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
 
-    def _save_figures(self):
+    def _save_figures(self, movie=False):
         if self.fitter_obj is None:
             self._display_message("Do fitting first.")
             return
         output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
-        png_dir_path = filedialog.askdirectory(initialdir=output_dir,
-                                               title='Please select a directory')
-        if png_dir_path:
-            for region_num in range(len(self.regions)):
-                self._plot(region_num)
-                self.plot_panel.figure.savefig(png_dir_path + f'/{region_num}.png')
-            return True
-        self._display_message(".png files were not saved.")
+        if movie:
+            movie_file_path = filedialog.asksaveasfilename(
+                initialdir=output_dir,
+                initialfile=f"{self.regions[0].get_info(datahandler.Region.info_entries[0])}.mp4",
+                title="Save movie as...",
+                filetypes=(("mp4 files", "*.mp4"), ("all files", "*.*"))
+            )
+            if movie_file_path:
+                try:
+                    FFMpegWriter = manimation.writers['ffmpeg']
+                    metadata = dict(title=self.regions[0].get_id(), artist='SpecQP')
+                    writer = FFMpegWriter(fps=15, metadata=metadata)
+                    with writer.saving(self.plot_panel.figure, movie_file_path, 1000):
+                        for region_num in range(len(self.regions)):
+                            self._plot(region_num)
+                            writer.grab_frame()
+                    return True
+                except RuntimeError as e:
+                    self._display_message("The video file has not been saved. Most likely you do not have the "
+                                          "'ffmpeg' codec installed on your computer. "
+                                          "For detailed information on the error check the log file.\n"
+                                          "Check ffmpeg installation instructions on-line.\n"
+                                          "Alternatively, save separate images and combine them into a video manually"
+                                          "using a third-party software.")
+                    gui_logger.error("Couldn't save the movie file.", exc_info=True)
+        else:
+            save_dir_path = filedialog.askdirectory(initialdir=output_dir, title='Please select a directory')
+            if save_dir_path:
+                for region_num in range(len(self.regions)):
+                    self._plot(region_num)
+                    self.plot_panel.figure.savefig(save_dir_path + f'/{region_num}.png')
+
+                return True
+        self._display_message(".png/.mp4 files were not saved.")
+
+    def _toggle_fit_type(self, peak_id, new_peak_type):
+        peak_tmp = copy.copy(self.peak_lines[peak_id])
+        self.peak_lines[peak_id].pack_forget()
+        self.peak_lines[peak_id].destroy()
+        self.peak_lines[peak_id] = AdvancedPeakLine(self.fit_tree, new_peak_type, self._remove_peak_line,
+                                                    self._add_peak_line,
+                                                    self._toggle_fit_type,
+                                                    peak_id, data_max=self._get_all_max())
+        AdvancedFitWindow.convert_peak_types(peak_tmp, self.peak_lines[peak_id])
+        peak_tmp.destroy()
+        self.update_peaks()
+
+    def update_peaks(self):
+        for peak_line in self.peak_lines.values():
+            peak_line.pack_forget()
+            peak_line.pack(side=tk.TOP, fill=tk.X, expand=False)
+        self.fit_tree.update()
+        self._redraw_add_remove_buttons()
 
 
 class MainWindow(ttk.PanedWindow):

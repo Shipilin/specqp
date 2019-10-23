@@ -6,8 +6,6 @@
 
 import numpy as np
 import copy
-from matplotlib import pyplot as plt
-from matplotlib.widgets import Slider
 from lmfit import Parameters, minimize
 from specqp import helpers
 from specqp.fitter import Fitter, Peak

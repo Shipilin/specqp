@@ -591,7 +591,7 @@ class Fitter:
         self._make_fit()
 
     def fit_doniach_sunjic(self, initial_params, fix_pars=None, tolerance=0.0001, boundaries=None):
-        """Fits Doniach-Sunjic assimetric function (Formula taken from https://lmfit.github.io/lmfit-py/builtin_models.html)
+        """Fits Doniach-Sunjic assimetric function (Formula taken from https://lmfit.github.io/lmfit- py/builtin_models.html)
         to Region object based on initial values of four parameters (amplitude, center, gauss_fwhm, lorentz_fwhm).
         If list with more than one set of four parameters is given, the function fits more than one peak.
         :param initial_params: list of initial values of parameters: amplitude, center, g_fwhm, l_fwhm. Must contain a
@@ -666,7 +666,10 @@ class Fitter:
             return None
         bg_dict = {}
         for key, val in self._Bg.items():
-            bg_dict[key] = [val['value'].value, val['value'].stderr]
+            if type(val['value']) == float:
+                bg_dict[key] = [val['value'], 0.0]
+            else:
+                bg_dict[key] = [val['value'].value, val['value'].stderr]
         return bg_dict
 
     def get_fit_line(self):
