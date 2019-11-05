@@ -1,8 +1,14 @@
 from setuptools import setup, find_packages
 
-setup(name='specqp',
+with open("README.md", "r") as f:
+    long_description = f.read()
+
+setup(
+      name='specqp',
       version='1.1',
-      description='Quick plotting and correcting of spectroscopic data',
+      description='Quick plotting, correcting and fitting of spectroscopic data',
+      long_description=long_description,
+      long_description_content_type="text/markdown",
       url='https://github.com/Shipilin/specqp.git',
       author='Mikhail Shipilin',
       author_email='mikhail.shipilin@gmail.com',
@@ -13,7 +19,7 @@ setup(name='specqp',
       install_requires=['numpy', 'scipy', 'pandas', 'matplotlib', 'lmfit'],
       classifiers=["Programming Language :: Python :: 3",
                    "License :: OSI Approved :: MIT License",
-                   "Operating System :: Mac OSX"],
-      # package_data={'label': ['assets/specqp_icon.png'],
-      #               'docs': ['FermiLevelFitting.rst', 'Normalization.rst']}
+                   "Operating System :: MacOS :: MacOS X",
+                   "Environment :: MacOS X",
+                   "Development Status :: 5 - Production/Stable"]
       )

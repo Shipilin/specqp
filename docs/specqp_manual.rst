@@ -2,6 +2,19 @@
 SPECQP stands for SPECtroscopy Quick Peak
 =========================================
 
+Default GUI mode
+________________
+
+To run the default GUI mode run the specqp.launcher module of the package:
+
+    $ python -m specqp.launcher
+
+It will automatically call the specqp.service module to create startup files and variables
+if they don't yet exist. After that it will call the main() method of the specqp.gui module,
+which shows the default GUI window where all the functions can be realized by pressing
+corresponding buttons or calling corresponding menu options.
+
+
 Main window
 ____________
 
@@ -186,3 +199,76 @@ One can also save the fitting parameters and tabular data like in regular Fit wi
 
 Buttons *Save Figures* and *Save Movie* saves the visual data as separate .png figures and as .mp4 video with
 spectra and their fit as video frames.
+
+
+Batch GUI mode
+______________
+
+
+To be able to load multiple files in a convenient way, one can create a txt file with instructions.
+The general form of the file is shown below. Lines starting with ## are not necessary to include.
+NOTE: All data corresponding to one file have to be on the same line starting with *FP*
+
+| ## Instructions file for SpecQP GUI.
+| ## [name], [/name] - the beginning and the ending of a section
+| ## # Comments for a section
+| ## FP - Full (or relative to the current bash folder) data file path
+| ## FT - File type (scienta or specs)
+| ## PE - Photon energy used for the measurements
+| ## ES - Energy shift (Fermi level position or otherwise determined energy shift of the spectra)
+| ## NC - Normalizatin constant (e.g. mean counts rate at the lowest measured binding energy)
+| ## CO - Conditions of the measurements (will be used for the comments and plot legends)
+| ## CROP - Cropping (e.g. 715:703)
+| ## CBG - remove/preserve Constant background (True/False)
+| ## SBG - remove/preserve Shirley background (True/False)
+|
+| [C1s]
+| # 4 H2 + 1 CO2 at 75 mbar
+| FP=/Users/Data/Fe_0073.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=; CBG=True; SBG=; CO=150C
+| FP=/Users/Data/Fe_0059.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=; CBG=True; SBG=; CO=200C
+| FP=/Users/Data/Fe_0065.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=; CBG=True; SBG=; CO=250C
+| FP=/Users/Data/Fe_0052.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=; CBG=True; SBG=; CO=300C
+| [/C1s]
+|
+| [O1s]
+| # 4 H2 + 1 CO2 at 75 mbar
+| FP=/Users/Data/Fe_0074.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=; CBG=True; SBG=; CO=150C
+| FP=/Users/Data/Fe_0058.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=; CBG=True; SBG=; CO=200C
+| FP=/Users/Data/Fe_0066.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=; CBG=True; SBG=; CO=250C
+| FP=/Users/Data/Fe_0053.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=; CBG=True; SBG=; CO=300C
+| [/O1s]
+|
+| [Fe2p]
+| # 4 H2 + 1 CO2 at 75 mbar
+| FP=/Users/Data/Fe_0075.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=715:703; CBG=True; SBG=True; CO=150C
+| FP=/Users/Data/Fe_0061.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=715:703; CBG=True; SBG=True; CO=200C
+| FP=/Users/Data/Fe_0068.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=715:703; CBG=True; SBG=True; CO=250C
+| FP=/Users/Data/Fe_0054.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=715:703; CBG=True; SBG=True; CO=300C
+| [/Fe2p]
+|
+To load all or part of the files specified in the instructions txt file together with predefined conditions type in Terminal
+one of the following lines
+
+To load all data files specified in the txt file use *filenames* parameter:
+
+    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt"
+
+To load one section of the txt file use *filenames* and *sections* parameters:
+
+    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt" sections=Fe2p
+
+The parameters *filenames* and *sections* can be used together in different combinations:
+
+    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt" sections="Fe2p;O1s"
+    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt;/full/path/to/instructions2.txt"
+    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt;/full/path/to/instructions2.txt" sections="Fe2p;O1s"
+
+Every time the program meets the specified section(s) name(s) in each txt file, it loads everything within the section(s).
+If the section name is not found, it is ignored.
+
+NOTE: You can type all above mentioned commands in a text file and run it in Terminal by
+
+    $ source /full/or/relative/path/to/file.txt
+
+In such a way you avoid manually typing long commands in Terminal. You can store different command lines in the txt file
+hiding it from Terminal interpreter by placing the '#' sign at the beginning of the line you don't want to use.
