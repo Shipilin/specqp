@@ -3,7 +3,12 @@ include LICENSE
 include requirements.txt
 recursive-include specqp
 include specqp/assets/specqp_icon.png
-include data
-include dist
-recursive-include docs
+include docs/specqp_manual.rst
+include tests/Calibration_CO.dat
+include tests/scienta_fermi_level_1.txt
+include tests/scienta_multiregion_1.txt
+include tests/scienta_multiregion_adddimension_1.txt
+include tests/scienta_single_region_1.txt
+include tests/scienta_single_region_adddimension_1.txt
+include tests/specs_single_region_1.xy
 recursive-exclude specqp/__pycache__
