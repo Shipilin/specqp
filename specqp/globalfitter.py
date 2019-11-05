@@ -1,14 +1,13 @@
-## Module globalfitter.py originally written by
-# Yury Matveev yury.matveev@desy.de
-# Patrick Loemker patrick.loemker@desy.de
-# Adopted by
-# Mikhail Shipilin mikhail.shipilin@fysik.su.se
+import copy
+import logging
 
 import numpy as np
-import copy
 from lmfit import Parameters, minimize
+
 from specqp import helpers
 from specqp.fitter import Fitter, Peak
+
+globalfitter_logger = logging.getLogger("specqp.globalfitter")  # Creating child logger
 
 
 class GlobalFit:
@@ -30,85 +29,41 @@ class GlobalFit:
         self._FitParams = Parameters()
         self._PeaksInfo = copy.deepcopy(peaks_info)
         self._BgParams = copy.deepcopy(bg_params)
+        for bgpar in self._BgParams.values():
+            if bgpar['min'] is None or bgpar['min'] == "":
+                bgpar['min'] = -np.inf
+            if bgpar['max'] is None or bgpar['max'] == "":
+                bgpar['max'] = np.inf
         self._BaseValues = {}
 
-        self.make_params()
+        self.bindingscale = True
+        if not self._Regions[0].is_binding():
+            self.bindingscale = False
 
-    def get_param_value(self, peak_name, param_data, param_name, fit_params, spectra_ind):
-        if not param_data['fix']:
-            if param_data['dependencetype'] == 'Independent':
-                return 0 + fit_params['{}_{}_{}'.format(peak_name, param_name, spectra_ind)]
-            elif param_data['dependencetype'] == 'Common +':
-                return param_data['value'] + fit_params['{}_{}'.format(peak_name, param_name)]
-            elif param_data['dependencetype'] == 'Common *':
-                return param_data['value'] * fit_params['{}_{}'.format(peak_name, param_name)]
-            elif param_data['dependencetype'] == 'Dependent +':
-                return fit_params['Peak{}_{}_{}'.format(param_data['dependencebase'], param_name, spectra_ind)] + \
-                       fit_params['{}_{}_{}'.format(peak_name, param_name, spectra_ind)]
-            elif param_data['dependencetype'] == 'Dependent *':
-                return fit_params['Peak{}_{}_{}'.format(param_data['dependencebase'], param_name, spectra_ind)] * \
-                       fit_params['{}_{}_{}'.format(peak_name, param_name, spectra_ind)]
-            elif param_data['dependencetype'] == 'Dependent on fixed +':
-                return self._BaseValues['{}_{}_{}'.format(peak_name, param_name, spectra_ind)] + \
-                       fit_params['{}_{}_{}'.format(peak_name, param_name, spectra_ind)]
-            elif param_data['dependencetype'] == 'Dependent on fixed *':
-                return self._BaseValues['{}_{}_{}'.format(peak_name, param_name, spectra_ind)] * \
-                       fit_params['{}_{}_{}'.format(peak_name, param_name, spectra_ind)]
-            else:
-                raise RuntimeError('Unknown model')
+        self.make_initial_params()
+
+    @staticmethod
+    def get_param_error(peak_name, param_data, param_name, fit_params, spectra_ind):
+        if param_data['dependencetype'] == 'Dependent +':
+            return (fit_params[f"{param_data['dependencebase']}_{param_name}_{spectra_ind}"].stderr ** 2 +
+                    fit_params[f'{peak_name}_{param_name}_{spectra_ind}'].stderr ** 2) ** 0.5
+        elif param_data['dependencetype'] == 'Dependent *':
+            return ((fit_params[f"{param_data['dependencebase']}_{param_name}_{spectra_ind}"].stderr /
+                     fit_params[f"{param_data['dependencebase']}_{param_name}_{spectra_ind}"].value) ** 2 +
+                    (fit_params[f'{peak_name}_{param_name}_{spectra_ind}'].stderr /
+                     fit_params[f'{peak_name}_{param_name}_{spectra_ind}'].value) ** 2) ** 0.5
         else:
-            if param_data['dependencetype'] == 'Dependent +':
-                return fit_params['Peak{}_{}_{}'.format(param_data['dependencebase'], param_name, spectra_ind)] + \
-                       param_data['value']
-            elif param_data['dependencetype'] == 'Dependent *':
-                return fit_params['Peak{}_{}_{}'.format(param_data['dependencebase'], param_name, spectra_ind)] * \
-                       param_data['value']
-            else:
-                return param_data['value']
-
-    def get_param_error(self, peak_name, param_data, param_name, fit_params, spectra_ind):
-        try:
-            if not param_data['fix']:
-                if param_data['dependencetype'] == 'Independent':
-                    return 0 + fit_params['{}_{}_{}'.format(peak_name, param_name, spectra_ind)].stderr
-                elif param_data['dependencetype'] == 'Common +':
-                    return 0 + fit_params['{}_{}'.format(peak_name, param_name)].stderr
-                elif param_data['dependencetype'] == 'Common *':
-                    return param_data['value'] * fit_params['{}_{}'.format(peak_name, param_name)].stderr
-                elif param_data['dependencetype'] in ('Dependent +', 'Dependent *'):
-                    return fit_params['Peak{}_{}_{}'.format(param_data['dependencebase'], param_name, spectra_ind)].stderr + \
-                           fit_params['{}_{}_{}'.format(peak_name, param_name, spectra_ind)].stderr
-                else:
-                    raise RuntimeError('Unknown model')
-            else:
-                if param_data['dependencetype'] in ('Dependent +', 'Dependent *'):
-                    return fit_params['Peak{}_{}_{}'.format(param_data['dependencebase'], param_name, spectra_ind)].stderr * \
-                           param_data['value']
-                else:
-                    return 0
-        except:
-            return 0
+            return fit_params[f'{peak_name}_{param_name}_{spectra_ind}'].stderr
 
     def get_bg_values(self, fit_params, spectra_ind):
-
         local_bg = copy.deepcopy(self._BgParams)
-
         if fit_params:
             for bg_type, params in local_bg.items():
-                if not params['fix']:
-                    params['value'] = fit_params['bg_{}_{}'.format(bg_type, spectra_ind)]
-                if bg_type == 'constant':
-                    if params['value'] == 'first':
-                        if self._Data[spectra_ind]['energy'][0] < self._Data[spectra_ind]['energy'][-1]:
-                            params['value'] = self._Data[spectra_ind]['intensity'][0]
-                        else:
-                            params['value'] = self._Data[spectra_ind]['intensity'][-1]
-                    elif params['value'] == 'min':
-                        params['value'] = np.min(self._Data[spectra_ind]['intensity'])
+                params['value'] = fit_params[f'bg_{bg_type}_{spectra_ind}']
         return local_bg
 
-    def sim_spectra(self, spectra_ind, fit_params):
-        """Defines the model for the fit (doniachs, voigts, shirley bg, linear bg
+    def sim_spectra(self, fit_params, spectra_ind):
+        """Defines the model for the fit (doniach, voigt, shirley bg, linear bg
         """
         line = np.zeros_like(self._Data[spectra_ind]['intensity'])
         bg = np.zeros_like(self._Data[spectra_ind]['intensity'])
@@ -117,10 +72,10 @@ class GlobalFit:
         for peak in peaks:
             if fit_params:
                 for param_name, param_data in peak['parameters'].items():
-                    param_data['value'] = self.get_param_value(peak['peakname'], param_data,
-                                                            param_name, fit_params, spectra_ind)
+                    param_data['value'] = fit_params[f"{peak['peakname']}_{param_name}_{spectra_ind}"]
             line += Fitter.get_model(peak['fittype'], self._Data[spectra_ind]['energy'],
-                                     self._Data[spectra_ind]['intensity'], peak['parameters'])
+                                     self._Data[spectra_ind]['intensity'], peak['parameters'],
+                                     bindingscale=self.bindingscale)
         for fittype, params in local_bg.items():
             bg += Fitter.get_model(fittype, self._Data[spectra_ind]['energy'], line, params)
         line += bg
@@ -129,114 +84,127 @@ class GlobalFit:
     def err_func(self, fit_params):
         """ calculate total residual for fits to several data sets held
         in a 2-D array, and modeled by model function"""
-        self._Residuals = []
+        residuals = []
         for ind in range(len(self._Regions)):
-            spectra, _ = self.sim_spectra(ind, fit_params)
-            self._Residuals.append(self._Data[ind]['intensity'] - spectra)
-        return [item for innerlist in self._Residuals for item in innerlist]
+            spectra, _ = self.sim_spectra(fit_params, ind)
+            residuals.append(self._Data[ind]['intensity'] - spectra)
+        return [item for innerlist in residuals for item in innerlist]
 
-    def get_start_value_back(self, index, fittype):
-        if fittype == 'first':
-            if self._Data[index]['energy'][0] > self._Data[index]['energy'][1]:
-                return self._Data[index]['intensity'][-1]
-            else:
-                return self._Data[index]['intensity'][0]
-        elif fittype == 'min':
-            return np.min(self._Data[index]['intensity'])
-
-    def make_params(self):
-        """Uses the starting values for the first peak to construct
-        free variable voigts and doniachs for peak 0
-        and dependent centers, sigmas and gammas for all other peaks
-        amplitude is only free parameter
+    def make_initial_params(self):
         """
-        for fittype, params in self._BgParams.items():
-            if not params['fix']:
-                for ind in range(len(self._Regions)):
-                    if fittype == 'constant':
-                        if params['value'] in ['first', 'min']:
-                            value = self.get_start_value_back(ind, params['value'])
-                        else:
-                            value = float(params['value'])
-                        if params['min'] in ['first', 'min']:
-                            min_ = self.get_start_value_back(ind, params['value'])
-                        else:
-                            min_ = float(params['min'])
-                        if params['max'] in ['first', 'min']:
-                            max_ = self.get_start_value_back(ind, params['value'])
-                        else:
-                            max_ = float(params['max'])
-                    else:
-                        value = float(params['value'])
-                        min_ = float(params['min'])
-                        max_ = float(params['max'])
-                    self._FitParams.add('bg_{}_{}'.format(fittype, ind), value=value, min=min_, max=max_)
+        Creates a dictionary of parameters based on initially provided values
+        :return: Dictionary of parameters for lmfit.minimize method
+        """
+        def get_min_first(region, pos):
+            if pos == 'first':
+                if region['energy'][0] > region['energy'][1]:
+                    return region['intensity'][-1]
+                else:
+                    return region['intensity'][0]
+            elif pos == 'min':
+                return np.min(region['intensity'])
 
-        for peak_info in self._PeaksInfo:
-            for param_name, param_data in peak_info['parameters'].items():
-                if not param_data['fix']:
-                    if param_data['dependencetype'] in ['Independent', 'Dependent +', 'Dependent *']:
-                        for ind in range(len(self._Regions)):
-                            self._FitParams.add('{}_{}_{}'.format(peak_info['peakname'], param_name, ind),
-                                                value=param_data['value'], min=param_data['min'], max=param_data['max'])
-                            if param_data['dependencetype'] in ('Dependent +', 'Dependent *'):
-                                for sub_peak in self._PeaksInfo:
-                                    if sub_peak['peakname'] == param_data['dependencebase']:
-                                        if sub_peak['parameters'][param_name]['fix']:
-                                            self._BaseValues['{}_{}_{}'.format(peak_info['peakname'], param_name, ind)] = \
-                                                sub_peak['parameters'][param_name]['value']
-                                            #TODO: make sure that the line below is correct
-                                            param_data['dependencetype'] = 'Dependent_on_fixed *'
-                    elif param_data['dependencetype'] in ('Common +', 'Common *'):
-                        self._FitParams.add('{}_{}'.format(peak_info['name'], param_name),
-                                            value=0,
-                                            min=param_data['min'] - param_data['value'],
-                                            max=param_data['max'] - param_data['value'])
-                elif param_data['dependencetype'] in ('Dependent +', 'Dependent *'):
-                    for sub_peak in self._PeaksInfo:
-                        if sub_peak['peakname'] == param_data['dependencebase']:
-                            if sub_peak['parameters'][param_name]['fix']:
-                                if param_data['dependencetype'] == 'Dependent +':
-                                    param_data['value'] = sub_peak['parameters'][param_name]['value'] + param_data['value']
-                                elif param_data['dependencetype'] == 'Dependent *':
-                                    param_data['value'] = sub_peak['parameters'][param_name]['value'] * param_data['value']
-                                else:
-                                    raise RuntimeError('Unknown link type')
-                                #TODO: check the line below
-                                param_data['dependencetype'] = 'Fixed'
+        # Adding background parameters to the dictionary
+        try:
+            for bgtype, bg_params in self._BgParams.items():
+                vary = True
+                if bg_params['fix']:
+                    vary = False
+                for ind in range(len(self._Regions)):
+                    if bgtype == 'constant':
+                        if bg_params['value'] in ['first', 'min']:
+                            value = get_min_first(self._Data[ind], bg_params['value'])
+                        else:
+                            value = float(bg_params['value'])
+                        if bg_params['min'] in ['first', 'min']:
+                            min_ = get_min_first(self._Data[ind], bg_params['value'])
+                        else:
+                            min_ = float(bg_params['min'])
+                        if bg_params['max'] in ['first', 'min']:
+                            max_ = get_min_first(self._Data[ind], bg_params['value'])
+                        else:
+                            max_ = float(bg_params['max'])
+                    else:
+                        value = float(bg_params['value'])
+                        min_ = float(bg_params['min'])
+                        max_ = float(bg_params['max'])
+                    self._FitParams.add(f'bg_{bgtype}_{ind}', value=value, min=min_, max=max_, vary=vary)
+        except ValueError:
+            self._FitParams.add(f'bg_{bgtype}_{ind}', value=0.0, min=0.0, max=0.0, vary=False)
+            globalfitter_logger.warning("Check background values.")
+
+        # Adding peak parameters to the dictionary
+        common = {}
+        for peak in self._PeaksInfo:
+            for param_name, param_data in peak['parameters'].items():
+                if param_data['min'] is None or param_data['min'] == "":
+                    param_data['min'] = -np.inf
+                if param_data['max'] is None or param_data['max'] == "":
+                    param_data['max'] = np.inf
+                vary = True
+                if param_data['fix']:
+                    vary = False
+                for ind in range(len(self._Regions)):
+                    if param_data['dependencetype'] == 'Independent':
+                        self._FitParams.add(f"{peak['peakname']}_{param_name}_{ind}", value=param_data['value'],
+                                            min=param_data['min'], max=param_data['max'], vary=vary)
+                    elif param_data['dependencetype'] == 'Dependent +':
+                        self._FitParams.add(f"{peak['peakname']}_{param_name}_{ind}_base", value=param_data['value'],
+                                            min=param_data['min'],
+                                            max=param_data['max'],
+                                            vary=vary)
+                        self._FitParams.add(f"{peak['peakname']}_{param_name}_{ind}",
+                                            value=self._FitParams[f"Peak{param_data['dependencebase']}_{param_name}_{ind}"].value + param_data['value'],
+                                            min=self._FitParams[f"Peak{param_data['dependencebase']}_{param_name}_{ind}"].min + param_data['min'],
+                                            max=self._FitParams[f"Peak{param_data['dependencebase']}_{param_name}_{ind}"].max + param_data['max'],
+                                            vary=vary,
+                                            expr=f"Peak{param_data['dependencebase']}_{param_name}_{ind} + {peak['peakname']}_{param_name}_{ind}_base")
+                    elif param_data['dependencetype'] == 'Dependent *':
+                        self._FitParams.add(f"{peak['peakname']}_{param_name}_{ind}_base", value=param_data['value'],
+                                            min=param_data['min'],
+                                            max=param_data['max'],
+                                            vary=vary)
+                        self._FitParams.add(f"{peak['peakname']}_{param_name}_{ind}",
+                                            value=self._FitParams[f"Peak{param_data['dependencebase']}_{param_name}_{ind}"].value * param_data['value'],
+                                            min=self._FitParams[f"Peak{param_data['dependencebase']}_{param_name}_{ind}"].min * param_data['min'],
+                                            max=self._FitParams[f"Peak{param_data['dependencebase']}_{param_name}_{ind}"].max * param_data['max'],
+                                            vary=vary,
+                                            expr=f"Peak{param_data['dependencebase']}_{param_name}_{ind} * {peak['peakname']}_{param_name}_{ind}_base")
+                    elif param_data['dependencetype'] == 'Common':
+                        if not ind == 0:
+                            common[f"{peak['peakname']}_{param_name}_{ind}"] = f"{peak['peakname']}_{param_name}_{0}"
+                        self._FitParams.add(f"{peak['peakname']}_{param_name}_{ind}", value=param_data['value'],
+                                            min=param_data['min'], max=param_data['max'], vary=vary)
+
+        if len(common) > 0:
+            for key, val in common.items():
+                self._FitParams[key].expr = val
 
     def fit(self):
         """Calls minimize from lmfit using the objective function and the parameters
         """
         result = minimize(self.err_func, self._FitParams, method='least_squares')
         for i, fitterobj in enumerate(self._Fitters):
-            for peak_info in self._PeaksInfo:
+            for peak in self._PeaksInfo:
                 peak_pars = {}
                 peak_errs = {}
-                for key, val in peak_info['parameters'].items():
-                    if val['fix']:
-                        if val['dependencetype'] == "Independent":
-                            peak_pars[key] = val['value']
-                        if val['dependencetype'] in ("Dependent *", "Dependent +"):
-                            for pi in self._PeaksInfo:
-                                if pi['peakname'] == f"Peak{val['dependencebase']}":
-                                    if val['dependencetype'] == "Dependent *":
-                                        peak_pars[key] = val['value'] * pi['parameters'][key]['value']
-                                    else:
-                                        peak_pars[key] = val['value'] + pi['parameters'][key]['value']
-                                    break
-                        peak_errs[key] = 0.0
-                    else:
-                        peak_pars[key] = result.params[f"{peak_info['peakname']}_{key}_{i}"].value
-                        peak_errs[key] = result.params[f"{peak_info['peakname']}_{key}_{i}"].stderr
-                peak_y = Fitter.get_model_func(peak_info['fittype'])(fitterobj._X_data, *peak_pars.values())
-                peak = Peak(fitterobj._X_data, peak_y, [*peak_pars.values()], [*peak_errs.values()],
-                            peak_func=Fitter.get_model_func(peak_info['fittype']),
-                            peak_id=peak_info['peakname'], peak_type=peak_info['fittype'], lmfit=True)
-                fitterobj._Peaks.append(peak)
+                for key, val in peak['parameters'].items():
+                    peak_pars[key] = result.params[f"{peak['peakname']}_{key}_{i}"].value
+                    peak_errs[key] = result.params[f"{peak['peakname']}_{key}_{i}"].stderr
+                asymmetry = 'higher'
+                if not self.bindingscale:
+                    asymmetry = 'lower'
+                peak_y = Fitter.get_model_func(peak['fittype'])(fitterobj.get_data()[0], *peak_pars.values(),
+                                                                asymmetry=asymmetry)
+                peak = Peak(fitterobj.get_data()[0], peak_y, [*peak_pars.values()], [*peak_errs.values()],
+                            peak_func=Fitter.get_model_func(peak['fittype']),
+                            peak_id=peak['peakname'], peak_type=peak['fittype'],
+                            bindingscale=self.bindingscale,
+                            lmfit=True)
+                fitterobj.add_peak(peak)
             if len(self._BgParams) > 0:
                 fitterobj._Bg = self.get_bg_values(result.params, i)
-                fitterobj._make_fit(usebg=True)
+                fitterobj.make_fitline(usebg=True)
             else:
-                fitterobj._make_fit(usebg=False)
+                fitterobj.make_fitline(usebg=False)
         return self._Fitters

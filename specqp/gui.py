@@ -313,8 +313,8 @@ class PlotPanel(ttk.Frame):
     #     gui_logger.debug(f"{event.button} pressed on plot canvas")
     #     key_press_handler(event, self.canvas, self.toolbar)
 
-    def plot_fit(self, reg, fobj, ymin=None, ymax=None, region_color=None, colors=None, residuals=None, fitline="True", bg="", ax=None,
-                 legend_feature=("ID",), legend_pos='best', title=False, font_size=12):
+    def plot_fit(self, reg, fobj, ymin=None, ymax=None, region_color=None, colors=None, fill=True, residuals=None,
+                 fitline="True", bg="", ax=None, legend_feature=("ID",), legend_pos='best', title=False, font_size=12):
         """Plots region data with fit line, fitted peaks and residuals
         :param reg: region object
         :param fobj: fitter object
@@ -324,7 +324,15 @@ class PlotPanel(ttk.Frame):
             ax = self.figure_axes
         ax.clear()
 
-        for i, peak in enumerate(fobj.get_peaks()):
+        peaks = fobj.get_peaks()
+        if helpers.is_iterable(fill):
+            assert len(fill) == len(peaks)
+        else:
+            fill = [fill]
+            for _ in range(len(peaks)):
+                fill.append(fill[0])
+
+        for i, peak in enumerate(peaks):
             if peak:
                 peak_data = peak.get_virtual_data()
                 baseline = None
@@ -333,16 +341,19 @@ class PlotPanel(ttk.Frame):
                     baseline=bg_y
                 if colors is not None and colors[i] != "Default color":
                     plotter.plot_peak_xy(peak_data[0], peak_data[1] + bg_y, ax, baseline=baseline,
-                                         legend_pos=legend_pos, font_size=font_size,
+                                         legend_pos=legend_pos, font_size=font_size, fill=fill[i],
                                          label=f"{peak.get_parameters('center'):.2f}", color=colors[i])
                 else:
                     plotter.plot_peak_xy(peak_data[0], peak_data[1] + bg_y, ax, baseline=baseline,
-                                         legend_pos=legend_pos, font_size=font_size,
+                                         legend_pos=legend_pos, font_size=font_size, fill=fill[i],
                                          label=f"{peak.get_parameters('center'):.2f}")
 
         if region_color is None:
             region_color = 'red'
-        plotter.plot_region(reg, ax, color=region_color, scatter=True, font_size=font_size,
+        invert_x = True
+        if not reg.is_binding():
+            invert_x = False
+        plotter.plot_region(reg, ax, color=region_color, scatter=True, font_size=font_size, invert_x=invert_x,
                             legend_features=legend_feature, legend_pos=legend_pos, title=title)
 
         if bg is not None and bg != "":
@@ -360,8 +371,7 @@ class PlotPanel(ttk.Frame):
         self.canvas.draw()
         self.toolbar.update()
 
-    def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', ymin=None, ymax=None, invert_x=True,
-                     log_scale=False,
+    def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', ymin=None, ymax=None, log_scale=False,
                      y_offset=0.0, scatter=False, label=None, color=None, title=True, font_size=12, legend=True,
                      legend_features=("ID", ), legend_pos='best', add_dimension=False, colormap=None):
         if regions:
@@ -381,6 +391,9 @@ class PlotPanel(ttk.Frame):
                 ax.set_prop_cycle('color', [cmap(1. * i / num_colors) for i in range(num_colors)])
 
             offset = 0
+            invert_x = True
+            if not regions[0].is_binding():
+                invert_x = False
             for region in regions:
                 if not add_dimension or not region.is_add_dimension():
                     plotter.plot_region(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
@@ -736,8 +749,8 @@ class CorrectionsPanel(ttk.Frame):
         self.offset_slider = ttk.Scale(self.offset_subframe, from_=0, to=100, orient=tk.HORIZONTAL,
                                        command=lambda x: self.offset_value_var.set(int(float(x))))
         self.offset_slider.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.offset_value_entry.pack(side=tk.RIGHT, expand=False)
-        self.offset_subframe.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.offset_value_entry.pack(side=tk.LEFT, expand=False)
+        self.offset_subframe.pack(side=tk.TOP, fill=tk.X, expand=False)
         # Scatter
         self.scatter_label = ttk.Label(self.plotting_left_column, text="Plot scatter", anchor=tk.W)
         self.scatter_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -1698,7 +1711,7 @@ class AdvancedPeakLine(ttk.Frame):
         self.parameter_fix_boxes = {}
         self.parameter_dependence_type = {}
         self.parameter_dependence_base = {}
-        self.dependence_types = ['Independent', 'Dependent *', 'Dependent +', 'Common +', 'Common *']#, 'Dependent on fixed +', 'Dependent on fixed *']
+        self.dependence_types = ['Independent', 'Dependent *', 'Dependent +', 'Common']
         self.data_max = data_max
 
         title_frame = ttk.Frame(self)
@@ -1706,6 +1719,15 @@ class AdvancedPeakLine(ttk.Frame):
         self.remove_peak_button.pack(side=tk.RIGHT, expand=False)
         self.add_peak_button = ttk.Button(title_frame, text='+', command=lambda: add_func(), width=1)
         self.add_peak_button.pack(side=tk.RIGHT, expand=False)
+        # Fill with color
+        self.fill_color_var = tk.StringVar(value="True")
+        fill_color_box = tk.Checkbutton(title_frame, var=self.fill_color_var,
+                                        onvalue="True", offvalue="", background=BG,
+                                        anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                        )
+        fill_color_box.pack(side=tk.RIGHT, anchor=tk.W)
+        fill_label = ttk.Label(title_frame, text=f"Fill", anchor=tk.W)
+        fill_label.pack(side=tk.RIGHT, expand=False)
         # Choose peak color
         self.peak_color = tk.StringVar()
         self.peak_color.set("Default color")
@@ -1779,8 +1801,8 @@ class AdvancedPeakLine(ttk.Frame):
             self.opmenu_dependence = ttk.OptionMenu(parameter_entry_frame, self.parameter_dependence_type[par_name],
                                                     self.parameter_dependence_type[par_name].get(), *options)
             self.opmenu_dependence.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            base_peak_label = ttk.Label(parameter_entry_frame, text="Peak #", anchor=tk.W)
-            base_peak_label.pack(side=tk.LEFT, expand=False)
+            self.base_peak_label = ttk.Label(parameter_entry_frame, text="Base #", anchor=tk.W)
+            self.base_peak_label.pack(side=tk.LEFT, expand=False)
             self.parameter_dependence_base[par_name] = tk.StringVar("")
             self.base_peak_entry = ttk.Entry(parameter_entry_frame,
                                              textvariable=self.parameter_dependence_base[par_name],
@@ -1888,7 +1910,10 @@ class AdvancedPeakLine(ttk.Frame):
             global_fit_dict[all_parameters[0][i]]['max'] = all_parameters[2][i][1]
             global_fit_dict[all_parameters[0][i]]['fix'] = all_parameters[3][i]
             global_fit_dict[all_parameters[0][i]]['dependencetype'] = all_parameters[4][i]
-            global_fit_dict[all_parameters[0][i]]['dependencebase'] = all_parameters[5][i]
+            if all_parameters[5][i] is not None:
+                global_fit_dict[all_parameters[0][i]]['dependencebase'] = all_parameters[5][i]
+            else:
+                global_fit_dict[all_parameters[0][i]]['dependencebase'] = None
 
         return global_fit_dict
 
@@ -1960,10 +1985,9 @@ class AdvancedFitWindow(tk.Toplevel):
             self.regions = [regions]
         self.peak_lines = {}
         self.peaks = {}
-        self.fitter_obj = None
+        self.fitter_objs = None
         self.fittype = fittype
         self.results_txt = None
-        self.bg_types = ("constant", "linear", "square", "shirley")
 
         toppanel = ttk.Frame(self, borderwidth=1, relief="groove")
         # Right panel for plotting
@@ -1978,6 +2002,8 @@ class AdvancedFitWindow(tk.Toplevel):
                                      font_size=int(service.get_service_parameter("FONT_SIZE")))
         # Left panel for fitting settings
         self.fit_settings_panel = ttk.Frame(toppanel, borderwidth=1, relief="groove")
+        fit_button = ttk.Button(self.fit_settings_panel, text='Do Fit', command=self._do_fit)
+        fit_button.pack(side=tk.TOP, fill=tk.X, padx=4, pady=4)
         self.settings = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
         # Choose spectrum color
         spectrum_color_frame = ttk.Frame(self.settings)
@@ -2034,8 +2060,6 @@ class AdvancedFitWindow(tk.Toplevel):
         self.fit_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         # Action buttons
         self.buttons_panel = ttk.Frame(self.fit_settings_panel, borderwidth=1, relief="groove")
-        fit_button = ttk.Button(self.buttons_panel, text='Do Fit', command=self._do_fit)
-        fit_button.pack(side=tk.TOP, fill=tk.X)
 
         after_fit_frame = ttk.Frame(self.buttons_panel)
         plot_subframe = ttk.Frame(after_fit_frame)
@@ -2129,7 +2153,7 @@ class AdvancedFitWindow(tk.Toplevel):
     def _do_fit(self):
         bg_params = {}
         try:
-            for label_name in self.bg_types:
+            for label_name in fitter.Fitter.bg_types:
                 if not bool(self.bg_values[label_name]['use'].get()):
                     continue
                 bg_params[label_name] = {}
@@ -2139,8 +2163,8 @@ class AdvancedFitWindow(tk.Toplevel):
                 else:
                     bg_params[label_name]['value'] = float(bg_val)
                 bg_params[label_name]['fix'] = bool(self.bg_values[label_name]['fix'].get())
-                bg_params[label_name]['min'] = float(self.bg_values[label_name]['min'].get())
-                bg_params[label_name]['max'] = float(self.bg_values[label_name]['max'].get())
+                bg_params[label_name]['min'] = self.bg_values[label_name]['min'].get()
+                bg_params[label_name]['max'] = self.bg_values[label_name]['max'].get()
         except ValueError:
             self._display_message("Check the values of background parameters. "
                                   "Should be numbers.\n"
@@ -2158,7 +2182,7 @@ class AdvancedFitWindow(tk.Toplevel):
             peaks_info.append(peak_info)
 
         fit = GlobalFit(self.regions, peaks_info, bg_params)
-        self.fitter_obj = fit.fit()
+        self.fitter_objs = fit.fit()
         self.currently_plotted = 0
         self._plot(self.currently_plotted)
 
@@ -2166,14 +2190,14 @@ class AdvancedFitWindow(tk.Toplevel):
         round_precision = int(service.get_service_parameter('ROUND_PRECISION'))
         self.results_txt = ""
         for region_num in range(len(self.regions)):
-            self.results_txt += f"Region #{region_num} ({self.fitter_obj[region_num].get_id()}):\n" \
+            self.results_txt += f"Region #{region_num} ({self.fitter_objs[region_num].get_id()}):\n" \
                                 f"--------------------------------------------------\n\n"
             self.results_txt += f"Goodness:\n" \
-                                f"Chi^2 = {self.fitter_obj[region_num].get_chi_squared():.2f}\n" \
-                                f"RMS = {self.fitter_obj[region_num].get_rms():.2f}\n\n"
+                                f"Chi^2 = {self.fitter_objs[region_num].get_chi_squared():.2f}\n" \
+                                f"RMS = {self.fitter_objs[region_num].get_rms():.2f}\n\n"
             self.results_txt += f"Background parameters:\n"
-            if self.fitter_obj[region_num].get_bg() is not None:
-                for bg_key, bg_val in self.fitter_obj[region_num].get_bg().items():
+            if self.fitter_objs[region_num].get_bg() is not None:
+                for bg_key, bg_val in self.fitter_objs[region_num].get_bg().items():
                     self.results_txt += f"{bg_key}: {round(bg_val[0], round_precision)} +/- " \
                                         f"{round(bg_val[1], round_precision)}\n"
                 self.results_txt += "\n"
@@ -2182,7 +2206,7 @@ class AdvancedFitWindow(tk.Toplevel):
             # Here we also fix the numbering for the proper vizualization in GUI
             pls = list(self.peak_lines.values())
             cnt = 0
-            for i, peak in enumerate(self.fitter_obj[region_num].get_peaks()):
+            for i, peak in enumerate(self.fitter_objs[region_num].get_peaks()):
                 while not pls[cnt].use_peak_var.get():
                     cnt += 1
                 if peak:
@@ -2223,9 +2247,9 @@ class AdvancedFitWindow(tk.Toplevel):
         return [k for k, v in self.peak_lines.items() if v]
 
     def _make_fit_dataframe(self):
-        if self.fitter_obj is not None:
+        if self.fitter_objs is not None:
             data_cols = {}
-            for i, fobj in enumerate(self.fitter_obj):
+            for i, fobj in enumerate(self.fitter_objs):
                 x, fitline = fobj.get_virtual_fitline()
                 data_cols[f"Region{i}_energy"] = x
                 data_cols[f"Region{i}_fitline"] = fitline
@@ -2235,7 +2259,7 @@ class AdvancedFitWindow(tk.Toplevel):
             return pd.DataFrame(data_cols)
 
     def _plot(self, num=None):
-        if self.fitter_obj is None:
+        if self.fitter_objs is None:
             self._display_message("Do fitting first.")
             return
         if num is None and self.currently_plotted is not None:
@@ -2258,26 +2282,28 @@ class AdvancedFitWindow(tk.Toplevel):
                                      scatter=self.plot_options['scatter'],
                                      font_size=int(service.get_service_parameter("FONT_SIZE")),
                                      ymax=ymax)
-        if self.fitter_obj is not None:
+        if self.fitter_objs is not None:
             peak_colors = []
+            peak_fill = []
             for peak_line in self.peak_lines.values():
                 if not peak_line.use_peak_var.get():
                     continue
                 peak_colors.append(peak_line.peak_color.get())
+                peak_fill.append(bool(peak_line.fill_color_var.get()))
             if self.spectrum_color.get() != "Default color":
                 region_color = self.spectrum_color.get()
             else:
                 region_color = None
-            self.plot_panel.plot_fit(self.regions[num], self.fitter_obj[num], region_color=region_color, colors=peak_colors,
+            self.plot_panel.plot_fit(self.regions[num], self.fitter_objs[num], region_color=region_color, colors=peak_colors,
                                      residuals=self.plot_residuals_var.get(), fitline=self.plot_fitline_var.get(),
-                                     bg=self.plot_bg_var.get(),
+                                     bg=self.plot_bg_var.get(), fill=peak_fill,
                                      legend_feature=self.plot_options['legend_features'],
                                      title=self.plot_options['title'],
                                      font_size=int(service.get_service_parameter("FONT_SIZE")),
                                      ymax=ymax)
 
     def _plot_peak_areas(self, colors=None):
-        if self.fitter_obj is None:
+        if self.fitter_objs is None:
             self._display_message("Do fitting first.")
             return
         self.areas_plot_window = tk.Toplevel(self)
@@ -2286,7 +2312,7 @@ class AdvancedFitWindow(tk.Toplevel):
         areas_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         areas = {}
         labels = []
-        x_ax = list(range(len(self.fitter_obj)))
+        x_ax = list(range(len(self.fitter_objs)))
         if colors is None:
             colors = []
             for peak_line in self.peak_lines.values():
@@ -2296,9 +2322,9 @@ class AdvancedFitWindow(tk.Toplevel):
                     colors.append(peak_line.peak_color.get())
                 else:
                     colors.append(None)
-        for peak in self.fitter_obj[0].get_peaks():
+        for peak in self.fitter_objs[0].get_peaks():
             areas[peak.get_peak_id()] = []
-        for fobj in self.fitter_obj:
+        for fobj in self.fitter_objs:
             for peak in fobj.get_peaks():
                 areas[peak.get_peak_id()].append(peak.get_peak_area())
         for key, val in areas.items():
@@ -2316,7 +2342,7 @@ class AdvancedFitWindow(tk.Toplevel):
         middle_panel = ttk.Frame(self.bg_panel)
         sep = ttk.Separator(self.bg_panel, orient=tk.VERTICAL)
         right_panel = ttk.Frame(self.bg_panel)
-        for label_name in self.bg_types:
+        for label_name in fitter.Fitter.bg_types:
             entry_line = ttk.Frame(right_panel)
             # Collecting all values in one dictionary
             self.bg_values[label_name] = {}
@@ -2332,11 +2358,11 @@ class AdvancedFitWindow(tk.Toplevel):
             self.bg_values[label_name]['fix_cb'] = tk.Checkbutton(entry_line, var=self.bg_values[label_name]['fix'],
                                                                   onvalue="True", offvalue="", background=BG,
                                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0)
-            self.bg_values[label_name]['min'] = tk.StringVar(self, value="0.0")
+            self.bg_values[label_name]['min'] = tk.StringVar(self, value="")
             self.bg_values[label_name]['min_entry'] = ttk.Entry(entry_line,
                                                                 textvariable=self.bg_values[label_name]['min'],
                                                                 width=5)
-            self.bg_values[label_name]['max'] = tk.StringVar(self, value="0.0")
+            self.bg_values[label_name]['max'] = tk.StringVar(self, value="")
             self.bg_values[label_name]['max_entry'] = ttk.Entry(entry_line,
                                                                 textvariable=self.bg_values[label_name]['max'],
                                                                 width=5)
@@ -2375,7 +2401,7 @@ class AdvancedFitWindow(tk.Toplevel):
                 *self.peak_lines[peak_num - 1].get_all_parameters(string_output=True))
 
     def _previous(self):
-        if self.fitter_obj is None:
+        if self.fitter_objs is None:
             self._display_message("Do fitting first.")
             return
         if self.currently_plotted is None:
@@ -2387,7 +2413,7 @@ class AdvancedFitWindow(tk.Toplevel):
             self._plot(self.currently_plotted)
 
     def _next(self):
-        if self.fitter_obj is None:
+        if self.fitter_objs is None:
             self._display_message("Do fitting first.")
             return
         if self.currently_plotted is None:
@@ -2427,7 +2453,7 @@ class AdvancedFitWindow(tk.Toplevel):
         self._redraw_add_remove_buttons()
 
     def _save_fit(self):
-        if self.fitter_obj is None:
+        if self.fitter_objs is None:
             self._display_message("Do fitting first.")
             return
         if self.results_txt is not None:
@@ -2456,7 +2482,7 @@ class AdvancedFitWindow(tk.Toplevel):
                 service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
 
     def _save_figures(self, movie=False):
-        if self.fitter_obj is None:
+        if self.fitter_objs is None:
             self._display_message("Do fitting first.")
             return
         output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
@@ -2548,14 +2574,22 @@ class Root(tk.Tk):
         self.generate_main_menu()
 
         tk.Tk.wm_title(self, "SpecQP")
-        self.general_outlay_manager = ttk.PanedWindow(self, orient=tk.VERTICAL)
-        self.main_window = MainWindow(self.general_outlay_manager, orient=tk.HORIZONTAL)
-        self.general_outlay_manager.add(self.main_window)
-        self.log_window = ttk.PanedWindow(self, orient=tk.HORIZONTAL, height=50)
-        self.log_panel = BrowserTreeView(self, label=None, borderwidth=1, relief="groove")
-        self.log_window.add(self.log_panel)
-        self.general_outlay_manager.add(self.log_window)
-        self.general_outlay_manager.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.main_window = MainWindow(self, orient=tk.HORIZONTAL)
+        self.main_window.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # Bottom panel for output
+        output_panel = ttk.Frame(self, borderwidth=1, relief="groove")
+        self.log_panel = BrowserTreeView(output_panel, label=None, borderwidth=1, relief="groove")
+        self.log_panel.pack(side=tk.TOP, fill=tk.X, expand=False)
+        output_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False)
+
+        # self.general_outlay_manager = ttk.PanedWindow(self, orient=tk.VERTICAL)
+        # self.main_window = MainWindow(self.general_outlay_manager, orient=tk.HORIZONTAL)
+        # self.general_outlay_manager.add(self.main_window)
+        # self.log_window = ttk.PanedWindow(self, orient=tk.HORIZONTAL, height=50)
+        # self.log_panel = BrowserTreeView(self, label=None, borderwidth=1, relief="groove")
+        # self.log_window.add(self.log_panel)
+        # self.general_outlay_manager.add(self.log_window)
+        # self.general_outlay_manager.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     def _configure_style(self):
         # Setting GUI color style
@@ -2566,7 +2600,7 @@ class Root(tk.Tk):
         # self.style.configure('default.TFrame', background=BG)
 
     def display_message(self, msg, timestamp=True):
-        if self.results_msg:
+        if self.results_msg is not None:
             self.results_msg.destroy()
         if timestamp:
             msg = f"{datetime.datetime.now().strftime('%H:%M:%S')} " + msg
@@ -2579,10 +2613,11 @@ class Root(tk.Tk):
         """Configuring the app menu
         """
         # File menu
-        self.file_menu.add_command(label="Load SCIENTA Files", command=self.load_file)
-        self.file_menu.add_command(label="Load SPECS Files", command=self.load_specs_file)
-        self.file_menu.add_command(label="Open pressure calibration", command=self.load_pressure_calibration)
-        self.file_menu.add_command(label="Open File as Text", command=self._open_file_as_text)
+        self.file_menu.add_command(label="Load SCIENTA files", command=self.load_file)
+        self.file_menu.add_command(label="Load SPECS files", command=self.load_specs_file)
+        self.file_menu.add_command(label="Load other file type", command=self.load_csv_file)
+        self.file_menu.add_command(label="Open pressure calibration file", command=self.load_pressure_calibration)
+        self.file_menu.add_command(label="Open file as text", command=self._open_file_as_text)
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Quit", command=self.quit)
         self.main_menu_bar.add_cascade(label="File", menu=self.file_menu)
@@ -2601,6 +2636,18 @@ class Root(tk.Tk):
         self.main_menu_bar.add_cascade(label="Help", menu=self.help_menu)
 
         self.config(menu=self.main_menu_bar)
+
+    def load_csv_file(self):
+        file_names = filedialog.askopenfilenames(filetypes=[("Tabular text", ".txt .TXT .csv .CSV .dat .DAT"), ("All files", ".*")],
+                                                 parent=self,
+                                                 title="Choose tabular data files to load",
+                                                 initialdir=service.get_service_parameter("DEFAULT_DATA_FOLDER"),
+                                                 multiple=True)
+        if file_names:
+            self.load_file_list(file_names, datahandler.DATA_FILE_TYPES[2])
+        else:
+            gui_logger.warning("Couldn't get the file path from the load_file dialog in Root class")
+            return
 
     def load_pressure_calibration(self):
         """Load and show pressure calibration file with a button allowing to plot certain column vs another column

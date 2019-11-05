@@ -1,0 +1,84 @@
+# Created by:        SpecsLab Prodigy, Version 4.34.1-r66167 
+#
+# XY-Serializer Export Settings:
+#   Comment Prefix:           #
+#   Output meta data:         yes
+#   Energy Axis:              Kinetic Energy
+#   Count Rate:               Counts per Second
+#   Separate Scan Data:       no
+#   Separate Channel Data:    no
+#   External Channel Data:    yes
+#   Transmission Function:    no
+#   ErrorBar:                 no
+#   Operation Results:        yes
+#   Time Zone Format:         UTC
+#
+# Region:            C 1s 60deg (145K)
+# Acquisition Date:  11/08/18 16:46:22 UTC
+# Analysis Method:   XPS
+# Analyzer:          Phoibos
+# Analyzer Lens:     MediumArea:1.5kV
+# Analyzer Slit:     5:7x20\B:open
+# Scan Mode:         FixedAnalyzerTransmission
+# Curves/Scan:       1
+# Values/Curve:      41
+# Dwell Time:        0.1
+# Excitation Energy: 1486.61
+# Kinetic Energy:    1198.61
+# Pass Energy:       20
+# Bias Voltage:      0
+# Detector Voltage:  2070
+# Eff. Workfunction: 4.397
+# Source:            XR50 Dummy
+# Comment:           
+# OrdinateRange:     [-8.260000, 8.260000]
+#
+# Cycle: 0
+# Number of Scans: 50
+#
+# Cycle: 0, Curve: 0
+#
+# ColumnLabels: energy counts/s
+#
+1198.61  545.16204
+1198.71  538.26996
+1198.81  550.8534
+1198.91  551.84173
+1199.01  553.46376
+1199.11  555.59099
+1199.21  541.46937
+1199.31  552.41153
+1199.41  552.8625
+1199.51  559.00077
+1199.61  566.71994
+1199.71  565.97099
+1199.81  570.37437
+1199.91  582.78387
+1200.01  587.96446
+1200.11  609.2333
+1200.21  638.37916
+1200.31  678.41969
+1200.41  718.41871
+1200.51  723.60059
+1200.61  766.82621
+1200.71  788.22766
+1200.81  781.40232
+1200.91  762.24949
+1201.01  741.38073
+1201.11  724.7811
+1201.21  685.69855
+1201.31  650.0628
+1201.41  636.25367
+1201.51  607.58388
+1201.61  583.47396
+1201.71  544.05421
+1201.81  539.97902
+1201.91  541.70639
+1202.01  530.24178
+1202.11  519.87235
+1202.21  518.131
+1202.31  532.19722
+1202.41  520.90318
+1202.51  519.96948
+1202.61  549.48208
+

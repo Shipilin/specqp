@@ -16,7 +16,8 @@ datahandler_logger = logging.getLogger("specqp.datahandler")  # Creating child l
 
 DATA_FILE_TYPES = (
     "scienta",
-    "specs"
+    "specs",
+    "csv"
 )
 
 
@@ -39,6 +40,40 @@ def load_calibration_curves(filenames):
                 datahandler_logger.error(f"Couldn't access the file: {filename}", exc_info=True)
                 continue
     return calibration_data
+
+
+def load_csv(filename, sep=None, header=None):
+    """Opens and parses provided csv file returning the data and info for all regions
+    as a list of Region objects. Since no experimental information is provided in the free-form text file,
+    The experimental properties are set to physically miningless defaults.
+    The functions assumes that the first column gives x-values and the others are y-values.
+    The functions doesn't do any internal checks for file format, file access, file errors etc. and, therefore,
+    should be wrapped with error handler when in use.
+    """
+    regions = []
+    add_dimension_flag = False
+    add_dimension_data = None
+    df = pd.read_csv(filename, sep=sep, header=header)
+    df.dropna(axis=1, inplace=True)
+    for i in range(1, len(df.columns)):
+        info_lines = {Region.info_entries[0]: f"Column{i}",
+                              Region.info_entries[1]: "0",
+                              Region.info_entries[2]: "1",
+                              Region.info_entries[3]: "0",
+                              Region.info_entries[4]: "Kinetic",
+                              Region.info_entries[5]: str(abs(df.iat[0, 0] - df.iat[1, 0])),
+                              Region.info_entries[6]: "1",
+                              Region.info_entries[7]: filename.rpartition('/')[2],
+                              Region.info_entries[8]: ""}
+
+        region_conditions = {"Comments": ""}
+        # Create a Region object for the current region
+        region_id = f"{info_lines[Region.info_entries[7]]} : {info_lines[Region.info_entries[0]]}"
+        regions.append(Region(df.iloc[:, 0].to_numpy(), df.iloc[:, i].to_numpy(), id_=region_id,
+                              add_dimension_flag=add_dimension_flag, add_dimension_data=add_dimension_data,
+                              info=info_lines, conditions=region_conditions))
+
+    return regions
 
 
 def load_scienta_txt(filename, regions_number_line=1, first_region_number=1):
@@ -891,6 +926,8 @@ class RegionsCollection:
                 ids = self.add_regions(load_scienta_txt(file_path))
             elif file_type == DATA_FILE_TYPES[1]:
                 ids = self.add_regions(load_specs_xy(file_path))
+            elif file_type == DATA_FILE_TYPES[2]:
+                ids = self.add_regions(load_csv(file_path))
         except OSError:
             datahandler_logger.error(f"Couldn't access the file {file_path}", exc_info=True)
             return None

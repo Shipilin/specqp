@@ -15,11 +15,11 @@ specqp_logger = logging.getLogger("specqp")
 def initialize_logging():
     """Setting up the main logger for the app
     """
-    specqp_logger.setLevel(logging.DEBUG)  # Main level filter for log messages (with DEBUG all messages are evaluated)
+    specqp_logger.setLevel(logging.ERROR)  # Main level filter for log messages (with DEBUG all messages are evaluated)
 
     # Setting up console output with more information to be logged
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)  # Secondary level filter for log messages in console
+    console_handler.setLevel(logging.ERROR)  # Secondary level filter for log messages in console
 
     # Create the log directory if doesn't exist
     directory = os.path.dirname(service.service_vars["LOG_FILE_NAME"])

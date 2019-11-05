@@ -17,7 +17,7 @@ class Peak:
         "Doniach-Sunjic": ["amplitude", "center", "g_fwhm", "l_fwhm"]
     }
 
-    def __init__(self, x_data, y_data, popt, pcov, peak_func, peak_id, peak_type, lmfit=False):
+    def __init__(self, x_data, y_data, popt, pcov, peak_func, peak_id, peak_type, bindingscale=True, lmfit=False):
         """Creates an instance of Peak object with X and Y data for plotting
         and fitting parameters and parameters coavriance.
         """
@@ -25,6 +25,7 @@ class Peak:
         self._Y = y_data
         self._Popt = popt
         self._function = peak_func
+        self._bindingscale = bindingscale
         self._id = peak_id
         self._Area = np.trapz(self._Y)
         self._PeakType = peak_type
@@ -106,7 +107,10 @@ class Peak:
             peak_virtual_x = np.linspace(self._X[0], self._X[-1], len(self._X) * num, endpoint=True)
         else:
             peak_virtual_x = np.linspace(self._X[0], self._X[-1], num, endpoint=True)
-        peak_virtual_y = self._function(peak_virtual_x, *self._Popt)
+        asymmetry = 'higher'
+        if not self._bindingscale:
+            asymmetry = 'lower'
+        peak_virtual_y = self._function(peak_virtual_x, *self._Popt, asymmetry=asymmetry)
         return peak_virtual_x, peak_virtual_y
 
     def set_peak_id(self, new_id):
@@ -137,7 +141,7 @@ class Fitter:
         self._Rsquared = 0
         self._Chisquared = 0
         self._RMS = 0
-        self._Peaks = []
+        self._Peaks = {}
         self._Bg = bg
         # The gauss widening is constant due to the equipment used in the experiment. So, if we know it,
         # we should fix this parameter in fitting.
@@ -147,7 +151,7 @@ class Fitter:
 
     def __str__(self):
         output = ""
-        for i, peak in enumerate(self._Peaks):
+        for i, peak in enumerate(self._Peaks.values()):
             new_line = "\n"
             if i == 0:
                 new_line = ""
@@ -155,8 +159,21 @@ class Fitter:
             output = "\n".join((output, peak.__str__()))
         return output
 
+    def add_peak(self, peak):
+        peak_id = peak.get_peak_id()
+        if peak_id not in self._Peaks:
+            self._Peaks[peak_id] = peak
+            return True
+        else:
+            fitter_logger.warning(f"Peak '{peak_id}' already exists in fitter object {self._ID}.")
+            return False
+
+    def delete_peak(self, peak_id):
+        if peak_id in self._Peaks:
+            del self._Peaks[peak_id]
+
     @staticmethod
-    def get_model(model, energy, intensity, params):
+    def get_model(model, energy, intensity, params, bindingscale=True):
         """Returns the function model according to name
         :param model: str one of specqp.Peak.peak_types
         :param energy: x axis
@@ -187,13 +204,18 @@ class Fitter:
                                            params[Peak.peak_types[model][2]]['value'],
                                            params[Peak.peak_types[model][3]]['value'])
             if model == "Doniach-Sunjic":
+                asymmetry = 'higher'
+                if not bindingscale:
+                    asymmetry = 'lower'
                 return Fitter.doniach_sunjic(energy, params[Peak.peak_types[model][0]]['value'],
                                              params[Peak.peak_types[model][1]]['value'],
                                              params[Peak.peak_types[model][2]]['value'],
-                                             params[Peak.peak_types[model][3]]['value'])
+                                             params[Peak.peak_types[model][3]]['value'],
+                                             asymmetry=asymmetry)
         elif model in Fitter.bg_types:
             if model == 'shirley':
-                return Fitter.shirley(energy, intensity, params['value'])
+                return getattr(Fitter, model)(energy, intensity, params['value'])
+                #return Fitter.shirley(energy, intensity, params['value'].value)
             else:
                 return getattr(Fitter, model)(energy, params['value'])
         else:
@@ -219,13 +241,13 @@ class Fitter:
             raise KeyError(f"'{model}' is not a valid fitting model")
 
     @staticmethod
-    def constant(energy, value: float):
+    def constant(energy, value: float, asymmetry=None):
         """Calculates constant background for simulated spectrum
         """
         return np.ones_like(energy) * value
 
     @staticmethod
-    def linear(energy, value: float):
+    def linear(energy, value: float, asymmetry=None):
         """Calculates linear background for simulated spectrum
         """
         bg = np.zeros_like(energy)
@@ -241,7 +263,7 @@ class Fitter:
             return bg
 
     @staticmethod
-    def square(energy, value: float):
+    def square(energy, value: float, asymmetry=None):
         """Calculates square background for simulated spectrum
         """
         bg = np.zeros_like(energy)
@@ -257,63 +279,45 @@ class Fitter:
             return bg
 
     @staticmethod
-    def shirley(energy, intensity, value: float, tolerance=1e-5, maxiter=50):
+    def shirley(energy, intensity, value: float, asymmetry=None):
         """Calculates Shirley background for simulated spectrum
         """
-        # if energy[0] < energy[-1]:
-        #     is_reversed = True
-        #     energy = energy[::-1]
-        #     counts = counts[::-1]
-        # else:
-        #     is_reversed = False
-        # background = np.ones(energy.shape) * counts[-1]
-        # integral = np.zeros(energy.shape)
-        # spacing = (energy[-1] - energy[0]) / (len(energy) - 1)
-        # subtracted = counts - background
-        # ysum = subtracted.sum() - np.cumsum(subtracted)
-        # for i in range(len(energy)):
-        #     integral[i] = spacing * (ysum[i] - 0.5 * (subtracted[i] + subtracted[-1]))
-        # iteration = 0
-        # while iteration < maxiter:
-        #     subtracted = counts - background
-        #     integral = spacing * (subtracted.sum() - np.cumsum(subtracted))
-        #     bnew = ((counts[0] - counts[-1]) * integral / integral[0] + counts[-1])
-        #     if np.linalg.norm((bnew - background) / counts[0]) < tolerance:
-        #         background = bnew.copy()
-        #         break
-        #     else:
-        #         background = bnew.copy()
-        #     iteration += 1
-        # if iteration >= maxiter:
-        #     return None
-        # output = background
-        # if is_reversed:
-        #     output = background[::-1]
-        # return output
-        bg = np.zeros_like(energy)
         if energy[0] < energy[-1]:
-            need_to_reversed = False
-        else:
-            need_to_reversed = True
+            is_reversed = True
+            energy = energy[::-1]
             intensity = intensity[::-1]
-        bg = bg + (np.cumsum(intensity) - intensity) * value
-        if need_to_reversed:
-            return bg[::-1]
         else:
-            return bg
+            is_reversed = False
+        spacing = (energy[-1] - energy[0]) / (len(energy) - 1)
+        output = value * spacing * (np.cumsum(intensity) - intensity.sum())
+        if is_reversed:
+            return output[::-1]
+        return output
+
+        # bg = np.zeros_like(energy)
+        # if energy[0] < energy[-1]:
+        #     need_to_reversed = False
+        # else:
+        #     need_to_reversed = True
+        #     intensity = intensity[::-1]
+        # bg = bg + (np.cumsum(intensity) - intensity) * value
+        # if need_to_reversed:
+        #     return bg[::-1]
+        # else:
+        #     return bg
 
     @staticmethod
-    def lorentz(x, amp, cen, l_fwhm):
+    def lorentz(x, amp, cen, l_fwhm, asymmetry=None):
         gamma = l_fwhm / 2
         return amp * 1. / (np.pi * gamma * (1 + ((x - cen) / gamma) ** 2))
 
     @staticmethod
-    def gauss(x, amp, cen, g_fwhm):
+    def gauss(x, amp, cen, g_fwhm, asymmetry=None):
         sigma = g_fwhm / (2 * np.sqrt(2 * np.log(2)))
         return amp * 1. / np.sqrt(2 * np.pi * sigma ** 2) * np.exp(-(x - cen) ** 2 / (2 * sigma ** 2))
 
     @staticmethod
-    def pseudo_voigt(x, amp, cen, g_fwhm, l_fwhm):
+    def pseudo_voigt(x, amp, cen, g_fwhm, l_fwhm, asymmetry=None):
         """Returns a pseudo Voigt lineshape, used for photo-emission.
         :param x: X data
         :param amp: amplitude
@@ -329,7 +333,7 @@ class Fitter:
         return amp * pv_func / np.amax(pv_func)  # Normalizing to 1
 
     @staticmethod
-    def doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm, reversed=True):
+    def doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm, asymmetry='higher'):
         """Returns a Doniach Sunjic asymmetric lineshape, used for photo-emission.
         Formula taken from https://lmfit.github.io/lmfit-py/builtin_models.html
         :param x: X data
@@ -337,14 +341,32 @@ class Fitter:
         :param cen: center
         :param g_fwhm: Gauss FWHM
         :param l_fwhm: Lorentz FWHM
+        :param asymmetry: one of ('higher', 'lower') defines whether the secondary electrons background shall be added
+        towards higher energy values (the case of binding energy representation) or lower energy values (the case
+        of kinetic energy representation)
         :return: Doniach-Sunjic assimetric line shape
         """
+        assert asymmetry in ('higher', 'lower')
+        if x[0] > x[1]:
+            reverse = True
+        else:
+            reverse = False
+        if reverse:
+            x = x[::-1]
+        if asymmetry == 'higher':
+            asymmetry = cen - x
+        elif asymmetry == 'lower':
+            asymmetry = x - cen
+        else:
+            fitter_logger.warning("Only 'higher' or 'lower' values are possible for asymmetry parameter.")
+
         sigma = g_fwhm / (2 * np.sqrt(2 * np.log(2)))
         gamma = l_fwhm / 2
-        func_numerator = np.cos(np.pi * gamma / 2 + (1.0 - gamma) * np.arctan((x - cen) / sigma))
-        func_denominator = (1 + ((x - cen) / sigma) ** 2) ** ((1.0 - gamma) / 2)
+        func_numerator = np.cos(np.pi * gamma / 2 + (1.0 - gamma) * np.arctan((asymmetry) / sigma))
+        func_denominator = (1 + ((asymmetry) / sigma) ** 2) ** ((1.0 - gamma) / 2)
         ds_func = (amp / sigma ** (1.0 - gamma)) * func_numerator / func_denominator
-        if reversed:
+
+        if reverse:
             return ds_func[::-1]
         return ds_func
 
@@ -482,16 +504,16 @@ class Fitter:
         while cnt < len(initial_params):
             peak_y = _multi_gaussian(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
             if type(peak_y) == int:
-                self._Peaks.append(None)
+                self._Peaks[cnt // 3] = None
             else:
-                self._Peaks.append(Peak(self._X_data, peak_y,
-                                        [popt[cnt], popt[cnt+1], popt[cnt+2]],
-                                        [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
-                                        peak_func=_multi_gaussian,
-                                        peak_id=cnt//3, peak_type=list(Peak.peak_types.keys())[0]))
+                self._Peaks[cnt // 3] = Peak(self._X_data, peak_y,
+                                           [popt[cnt], popt[cnt+1], popt[cnt+2]],
+                                           [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
+                                           peak_func=_multi_gaussian,
+                                           peak_id=cnt // 3, peak_type=list(Peak.peak_types.keys())[0])
             cnt += 3
 
-        self._make_fit()
+        self.make_fitline()
 
     def fit_lorentzian(self, initial_params, fix_pars=None, tolerance=0.0001, boundaries=None):
         """Fits Lorentzian (Cauchy) function to Region object based on initial values
@@ -531,15 +553,15 @@ class Fitter:
         while cnt < len(initial_params):
             peak_y = _multi_lorentzian(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2])
             if type(peak_y) == int:
-                self._Peaks.append(None)
+                self._Peaks[cnt // 3] = None
             else:
-                self._Peaks.append(Peak(self._X_data, peak_y,
-                                        [popt[cnt], popt[cnt+1], popt[cnt+2]],
-                                        [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
-                                        peak_func=_multi_lorentzian,
-                                        peak_id=cnt//3, peak_type=list(Peak.peak_types.keys())[1]))
+                self._Peaks[cnt // 3] = Peak(self._X_data, peak_y,
+                                             [popt[cnt], popt[cnt+1], popt[cnt+2]],
+                                             [pcov[cnt], pcov[cnt+1], pcov[cnt+2]],
+                                             peak_func=_multi_lorentzian,
+                                             peak_id=cnt // 3, peak_type=list(Peak.peak_types.keys())[1])
             cnt += 3
-        self._make_fit()
+        self.make_fitline()
 
     def fit_pseudo_voigt(self, initial_params, fix_pars=None, tolerance=0.0001, boundaries=None):
         """Fits Pseudo-Voigt function to Region object based on initial values
@@ -580,15 +602,15 @@ class Fitter:
         while cnt < len(initial_params):
             peak_y = _multi_voigt(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2], popt[cnt + 3])
             if type(peak_y) == int:
-                self._Peaks.append(None)
+                self._Peaks[cnt // 4] = None
             else:
-                self._Peaks.append(Peak(self._X_data, peak_y,
-                                        [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
-                                        [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
-                                        peak_func=_multi_voigt,
-                                        peak_id=cnt//4, peak_type=list(Peak.peak_types.keys())[2]))
+                self._Peaks[cnt // 4] = Peak(self._X_data, peak_y,
+                                             [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
+                                             [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
+                                             peak_func=_multi_voigt,
+                                             peak_id=cnt // 4, peak_type=list(Peak.peak_types.keys())[2])
             cnt += 4
-        self._make_fit()
+        self.make_fitline()
 
     def fit_doniach_sunjic(self, initial_params, fix_pars=None, tolerance=0.0001, boundaries=None):
         """Fits Doniach-Sunjic assimetric function (Formula taken from https://lmfit.github.io/lmfit- py/builtin_models.html)
@@ -612,7 +634,7 @@ class Fitter:
                 cen = args[cnt + 1]
                 g_fwhm = args[cnt + 2]
                 l_fwhm = args[cnt + 3]
-                func += Fitter.doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm, reversed=self.region.is_binding())
+                func += Fitter.doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm, reverse=self.region.is_binding())
                 cnt += 4
             return func
 
@@ -629,22 +651,22 @@ class Fitter:
         while cnt < len(initial_params):
             peak_y = _multi_doniach_sunjic(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2], popt[cnt + 3])
             if type(peak_y) == int:
-                self._Peaks.append(None)
+                self._Peaks[cnt // 4] = None
             else:
-                self._Peaks.append(Peak(self._X_data, peak_y,
-                                        [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
-                                        [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
-                                        peak_func=_multi_doniach_sunjic,
-                                        peak_id=cnt//4, peak_type=list(Peak.peak_types.keys())[3]))
+                self._Peaks[cnt // 4] = Peak(self._X_data, peak_y,
+                                             [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
+                                             [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
+                                             peak_func=_multi_doniach_sunjic,
+                                             peak_id=cnt // 4, peak_type=list(Peak.peak_types.keys())[3])
             cnt += 4
-        self._make_fit()
+        self.make_fitline()
 
-    def _make_fit(self, usebg=False):
+    def make_fitline(self, usebg=False):
         """Calculates the total fit line including all peaks and calculates the
         residuals and r-squared.
         """
         # Calculate fit line
-        for peak in self._Peaks:
+        for peak in self._Peaks.values():
             if peak:
                 self._FitLine += peak.get_data()[1]
         if usebg and self._Bg is not None:
@@ -715,7 +737,7 @@ class Fitter:
         :return (ndarray, ndarray) x and y data with desired number of points
         """
         fitline_x, fitline_y = None, None
-        for i, peak in enumerate(self._Peaks):
+        for i, peak in enumerate(self._Peaks.values()):
             if peak:
                 peak_data = peak.get_virtual_data(num=num, multiply=multiply)
                 if i == 0:
@@ -749,14 +771,18 @@ class Fitter:
         fitter_logger.warning("Can't get RMS from a Fitter instance. Do fit first.")
 
     # TODO add peak ID
-    def get_peaks(self, peak_num=None):
-        if not self._Peaks:
+    def get_peaks(self, peak_id=None):
+        if len(self._Peaks) == 0:
             fitter_logger.warning("Can't get peaks from a Fitter instance. Do fit first.")
             return
-        if not peak_num:
-            return self._Peaks
+        if peak_id is None:
+            return list(self._Peaks.values())
         else:
-            return self._Peaks[peak_num]
+            if peak_id in self._Peaks:
+                return self._Peaks[peak_id]
+            else:
+                fitter_logger.warning(f"Fitter {self._ID} does not contain peak {peak_id}.")
+                return
 
     def get_data(self):
         return [self._X_data, self._Y_data]

@@ -10,7 +10,7 @@ service_vars = {
     "LOG_FILE_NAME": os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/data/log/app.log",
     "INIT_FILE_NAME": os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/data/specqp.init",
     "DEFAULT_OUTPUT_FOLDER": os.path.expanduser("~") + "/Documents/specqp_output",
-    "ROUND_PRECISION": "2",
+    "ROUND_PRECISION": "5",
     "PLOT_ASPECT_RATIO": "0.75",
     "FONT_SIZE": "12",
     "PHOTON_ENERGY": "",

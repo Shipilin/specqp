@@ -2,128 +2,143 @@
 SPECQP stands for SPECtroscopy Quick Peak
 =========================================
 
-Installation
+Main window
 ____________
 
-NOTE: Python 3.x.x version and pip library are required for installing and running the specqp software.
 
-NOTE: One certain tkinter (python gui tool) version and one certain MacOS version have a poor compatibility which
-results in rebooting the system upon running the program. This chance is slim but, just in case you are "lucky",
-save your work in other applications before doing the following actions.
+*OPENING FILES*
 
-NOTE: for some python installations the *python* and *pip* commands can refer to Python 2.x.x version, while *python3*
-and *pip3* commands correspond to Python 3.x.x version. If that is the case for you, use *python3* and *pip3* in all
-steps described below
 
-Check *python* and *pip* versions by typing in Terminal (for MacOS):
+Files can be loaded in a batch mode (see specqp_installation_launching.rst file for details) or manually. To load a
+scienta (.txt) or a specs (.xy) file (examples can be found in the *test* folder of the project) manually one
+can use either *load SCIENTA* or *load SPECS* buttons of the main window. It is possible to load both single and
+multiple files. The same functionality is available in the *File* menu.
 
-    $ which python
+In the *File* menu one can find the option *Load other file type*, which one can use to load just tabular data from
+file to plot it (NOTE: in this case no info about the experiment is available and therefore some corrections can
+fail to work, just disable corrections if it happens).
 
-and
+From the *Open pressure calibration file* menu option one can also open a file (example in *test* folder of the
+project), which is more specific to POLARIS setup at P22 beamline of Petra III synchrotron at DESY. Such a file has
+the '.dat' extension and contains a header and tabular data received from several sensors of POLARIS. The menu option
+allows to open and plot the data in such a file (works for multiple files of the same type as well).
 
-    $ python -V
+The *Open file as text* menu option allows to open any text containing file for view (like in a text editor).
 
-The first command shows the path to active python environment, the second shows the version (should be 3.x.x).
 
-To check pip, type
+*PLOT MENU*
 
-    $ pip --version
 
-If this command shows some version of pip, you're good to go.
-Otherwise install pip (should be easy, check Google for instructions)
+Here one can set some properties to change the appearance of the plots. Will be extended over time.
 
-After you've done the check, put the .whl file from the dist subdirectory in any place on your hard drive,
-and, being in this directory in Terminal, type
 
-    $ pip install *name of the .whl file*
+*HELP MENU*
 
-NOTE: If you already had it installed type first
 
-    $ pip uninstall specqp
+Here one can check the information about the program choosing the option *About*. The option *Help...* redirects the
+user to the GitHub repository, where the latest versions of the source python files, manuals and test data files
+can be viewed.
 
-Finally you should see similar to the following message in the Terminal
+The *Export log* option allows to save the program log to a chosen location for reading or sending to the developer.
 
-    $ Successfully installed specqp-1.1
 
-Default GUI mode
-________________
+*CHOOSING DATA*
 
-To run the default GUI mode run the specqp.launcher module of the package:
 
-    $ python -m specqp.launcher
+The left vertical panel of the main window contains the list of regions loaded in the current session.
 
-It will automatically call the specqp.service module to create startup files and variables
-if they don't yet exist. After that it will call the main() method of the specqp.gui module,
-which shows the default GUI window where all the functions can be realized by pressing
-corresponding buttons or calling corresponding menu options.
+NOTE: The data lines correspond to XPS regions and not to files. In case a file contains several regions, its name
+will be shown as a label, below which all the regions will be listed. The further work will be performed with the
+regions.
 
-Batch GUI mode
-______________
+*Check all* check box that allows to enable and disable all regions.
 
-To be able to load multiple files in a convenient way, one can create a txt file with instructions.
-The general form of the file is shown below. Lines starting with ## are not necessary to include.
-NOTE: All data corresponding to one file have to be on the same line starting with *FP*
+The regions with enabled checkboxes will be used for the further processing.
 
-| ## Instructions file for SpecQP GUI.
-| ## [name], [/name] - the beginning and the ending of a section
-| ## # Comments for a section
-| ## FP - Full (or relative to the current bash folder) data file path
-| ## FT - File type (scienta or specs)
-| ## PE - Photon energy used for the measurements
-| ## ES - Energy shift (Fermi level position or otherwise determined energy shift of the spectra)
-| ## NC - Normalizatin constant (e.g. mean counts rate at the lowest measured binding energy)
-| ## CO - Conditions of the measurements (will be used for the comments and plot legends)
-| ## CROP - Cropping (e.g. 715:703)
-| ## CBG - remove/preserve Constant background (True/False)
-| ## SBG - remove/preserve Shirley background (True/False)
-|
-| [C1s]
-| # 4 H2 + 1 CO2 at 75 mbar
-| FP=/Users/Data/Fe_0073.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=; CBG=True; SBG=; CO=150C
-| FP=/Users/Data/Fe_0059.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=; CBG=True; SBG=; CO=200C
-| FP=/Users/Data/Fe_0065.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=; CBG=True; SBG=; CO=250C
-| FP=/Users/Data/Fe_0052.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=; CBG=True; SBG=; CO=300C
-| [/C1s]
-|
-| [O1s]
-| # 4 H2 + 1 CO2 at 75 mbar
-| FP=/Users/Data/Fe_0074.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=; CBG=True; SBG=; CO=150C
-| FP=/Users/Data/Fe_0058.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=; CBG=True; SBG=; CO=200C
-| FP=/Users/Data/Fe_0066.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=; CBG=True; SBG=; CO=250C
-| FP=/Users/Data/Fe_0053.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=; CBG=True; SBG=; CO=300C
-| [/O1s]
-|
-| [Fe2p]
-| # 4 H2 + 1 CO2 at 75 mbar
-| FP=/Users/Data/Fe_0075.txt; FT=scienta; PE=4600; ES=3.64; NC=76; CROP=715:703; CBG=True; SBG=True; CO=150C
-| FP=/Users/Data/Fe_0061.txt; FT=scienta; PE=4600; ES=3.67; NC=37; CROP=715:703; CBG=True; SBG=True; CO=200C
-| FP=/Users/Data/Fe_0068.txt; FT=scienta; PE=4600; ES=3.64; NC=87; CROP=715:703; CBG=True; SBG=True; CO=250C
-| FP=/Users/Data/Fe_0054.txt; FT=scienta; PE=4600; ES=3.68; NC=85; CROP=715:703; CBG=True; SBG=True; CO=300C
-| [/Fe2p]
-|
-To load all or part of the files specified in the instructions txt file together with predefined conditions type in Terminal
-one of the following lines
+NOTE: Good news! The originally loaded regions are never changed and all further corrections and adjustments are done to
+the original data. Every time one changes the desired corrections the whole process is repeated from the start.
+Therefore no residual data changes are transferred to the new iterations.
 
-To load all data files specified in the txt file use *filenames* parameter:
 
-    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt"
+*DATA CORRECTIONS*
 
-To load one section of the txt file use *filenames* and *sections* parameters:
 
-    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt" sections=Fe2p
+In the middle section of the main widow one can set different values and preferences for the data corrections.
 
-The parameters *filenames* and *sections* can be used together in different combinations:
+*Photon energy* will be used to convert the data Kinetic energy scale to Binding energy scale and back if necessary.
+The value can be given as a single number or as a sequence of numbers separated by semicolon. In the former case,
+the value will be used for all chosen regions. In the latter case the number of entries should be equal to the number of
+chosen regions, then every region will receive its own value. If the number of entries is not equal to the number of
+regions, the first value will be used for all regions.
 
-    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt" sections="Fe2p;O1s"
-    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt;/full/path/to/instructions2.txt"
-    $ python -m specqp.launcher -gui filenames="/full/path/to/instructions.txt;/full/path/to/instructions2.txt" sections="Fe2p;O1s"
+*Energy shift(s)* follows the same rules as *Photon energy* and shifts the data by the given amount. This value can be
+found by, e.g. fitting a Fermi level with Error function (available in the fitting part of the main window).
 
-Every time the program meets the specified section(s) name(s) in each txt file, it loads everything within the section(s).
-If the section name is not found, it is ignored.
+*Normilize by sweeps* checkbox divides the intensity data by the number of sweeps and by the dwell time, thus,
+normalizing the data. For add-dimension data works properly for separate measurements.
 
-NOTE(for less experienced people): You can type all above mentioned commands in a text file and run it in Terminal by
+*Normalize by const* normalizes by a number that one can give, e.g. based on the background height. Follows the same
+rules as *Photon energy*
 
-    $ source /full/or/relative/path/to/file.txt
+*Crop from:to* crops the data on the X (energy) axis. Same values are taken for all chosen regions. Does not care
+about the sequential order of left and right boundaries. Needs both numbers to be entered.
 
-In such a way you avoid manually typing long commands in Terminal. You can store different command lines in the txt file
-hiding it from Terminal interpreter by placing th '#' sign at the beginning of the line you don't want to use.
+*Subtract constant background* removes the constant background based on the average of 10 lowest data points.
+
+*Subtract Shirley bg* iteratively calculates the shirley background and removes it.
+
+
+*PLOTTING DATA*
+
+
+Here one can change the visual representation of the corrected data. The options are self explanatory and are
+applied on pressing the *Plot* button.
+
+
+*SAVING DATA*
+
+
+Buttons *Save* and *Save as...* allows to save the data in the chosen location. Both options save two files. One '.dat'
+with two columns energy (left) and corrected intensity (right). Second is '.sqr' file with the list of all corrections
+and tabular data containing energy, and intensity columns with original numbers of the region, intermediate and final
+numbers obtained after all corrections. The difference between *Save* and *Save as...* is that the *Save* asks only for
+the directory and takes the name of the region as the name of the file while *Save as...* allows to choose the file
+name.
+
+
+*FITTING DATA*
+
+
+To do the fitting, one needs to press either *Fit* button for a "quick" fit or "Advanced fit" button for more extensive
+fitting capabilities.
+For more details see the following sections.
+NOTE: The *Fit* buttons makes separate fit window for every chosen region, while *Advanced fit* options work with all
+chosen regions as a connected set and treats them together.
+NOTE: The current look of the data shown in the plot panel of the main window is the one that will be fitted in the
+fit windows. So, if you want to have/not have them in the fit, remove or add corrections in the main window.
+
+
+Fit window
+____________
+
+
+
+
+Advanced Fit window
+____________
+
+This window shows up when the "Advanced Fit" button of the main window has been pressed.
+
+In the right pannel the same plot that was earlier obtained in the main window is presented (note that
+if you changed some settings in the "Settings" or "Plotting" panels of teh main windows and pressed the "Advanced Fit"
+button without pressing "Plot" button of the main window, the advanced fit window may show a differently looking plot).
+
+
+
+
+
+...
+
+*Common* option when chosen makes sure that the parameter value will be kept the same for different
+spectra with the resulting value that gives the best fit over all spectra. The chosen "fix" parameter makes the *Common*
+option useless, while the "Base #" value is meaningless in this case and is ignored.
