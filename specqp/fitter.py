@@ -107,10 +107,14 @@ class Peak:
             peak_virtual_x = np.linspace(self._X[0], self._X[-1], len(self._X) * num, endpoint=True)
         else:
             peak_virtual_x = np.linspace(self._X[0], self._X[-1], num, endpoint=True)
-        asymmetry = 'higher'
-        if not self._bindingscale:
-            asymmetry = 'lower'
-        peak_virtual_y = self._function(peak_virtual_x, *self._Popt, asymmetry=asymmetry)
+
+        if self._function.__name__ == "doniach_sunjic":
+            asymmetry = 'higher'
+            if not self._bindingscale:
+                asymmetry = 'lower'
+            peak_virtual_y = self._function(peak_virtual_x, *self._Popt, asymmetry=asymmetry)
+        else:
+            peak_virtual_y = self._function(peak_virtual_x, *self._Popt)
         return peak_virtual_x, peak_virtual_y
 
     def set_peak_id(self, new_id):
@@ -215,7 +219,6 @@ class Fitter:
         elif model in Fitter.bg_types:
             if model == 'shirley':
                 return getattr(Fitter, model)(energy, intensity, params['value'])
-                #return Fitter.shirley(energy, intensity, params['value'].value)
             else:
                 return getattr(Fitter, model)(energy, params['value'])
         else:
@@ -624,7 +627,8 @@ class Fitter:
         :param boundaries: dictionary with names of parameters as keys and a dictionary containing lower and upper
         boundaries for the corresponding peak. Ex: {"cen": {1: [34,35], 2: [35,36]}}
         """
-        def _multi_doniach_sunjic(x, *args):
+
+        def _multi_doniach_sunjic_higher(x, *args):
             """Creates a single or multiple Voigt shape taking amplitude, Center, g_FWHM and l_FWHM parameters
             """
             cnt = 0
@@ -634,9 +638,27 @@ class Fitter:
                 cen = args[cnt + 1]
                 g_fwhm = args[cnt + 2]
                 l_fwhm = args[cnt + 3]
-                func += Fitter.doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm, reverse=self.region.is_binding())
+                func += Fitter.doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm, asymmetry='higher')
                 cnt += 4
             return func
+
+        def _multi_doniach_sunjic_lower(x, *args):
+            """Creates a single or multiple Voigt shape taking amplitude, Center, g_FWHM and l_FWHM parameters
+            """
+            cnt = 0
+            func = 0
+            while cnt < len(args):
+                amp = args[cnt]
+                cen = args[cnt + 1]
+                g_fwhm = args[cnt + 2]
+                l_fwhm = args[cnt + 3]
+                func += Fitter.doniach_sunjic(x, amp, cen, g_fwhm, l_fwhm, asymmetry='lower')
+                cnt += 4
+            return func
+
+        fitfunc = _multi_doniach_sunjic_higher
+        if not self.region.is_binding():
+            fitfunc = _multi_doniach_sunjic_lower
 
         if len(initial_params) % 4 != 0:
             fitter_logger.debug(f"Check the number of initial parameters in fit_doniach_sunjic method."
@@ -644,19 +666,19 @@ class Fitter:
             return
         bounds_low, bounds_high = self._get_fitting_restrains(initial_params, fix_pars, tolerance, boundaries)
         # Parameters and parameters covariance of the fit
-        popt, pcov = curve_fit(_multi_doniach_sunjic, self._X_data, self._Y_data, p0=initial_params,
+        popt, pcov = curve_fit(fitfunc, self._X_data, self._Y_data, p0=initial_params,
                                bounds=(bounds_low, bounds_high))
 
         cnt = 0
         while cnt < len(initial_params):
-            peak_y = _multi_doniach_sunjic(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2], popt[cnt + 3])
+            peak_y = fitfunc(self._X_data, popt[cnt], popt[cnt + 1], popt[cnt + 2], popt[cnt + 3])
             if type(peak_y) == int:
                 self._Peaks[cnt // 4] = None
             else:
                 self._Peaks[cnt // 4] = Peak(self._X_data, peak_y,
                                              [popt[cnt], popt[cnt+1], popt[cnt+2], popt[cnt+3]],
                                              [pcov[cnt], pcov[cnt+1], pcov[cnt+2], pcov[cnt+3]],
-                                             peak_func=_multi_doniach_sunjic,
+                                             peak_func=fitfunc,
                                              peak_id=cnt // 4, peak_type=list(Peak.peak_types.keys())[3])
             cnt += 4
         self.make_fitline()
