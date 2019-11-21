@@ -11,6 +11,9 @@ GUI interface is also realized providing full interactive functionality for hand
 and series of curves. In versions 1.1 only *.xy* files from SPECS instruments and *.txt* files
 from SCIENTA instruments are handled within GUI.
 
+NOTE: The package was developed for Mac OS, but it works on Windows as well, although some GUI features may become
+less pretty.
+
 ## Installation MacOS
 
 **Remember to always save your current work before experimenting with new applications**

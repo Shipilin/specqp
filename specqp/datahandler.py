@@ -21,23 +21,37 @@ DATA_FILE_TYPES = (
 )
 
 
-def load_calibration_curves(filenames):
+def load_calibration_curves(filenames, columnx='Press_03_value', columny='Press_05_value'):
     """Reads file or files using provided name(s). Checks for file existance etc.
     :param filenames: str or sequence: filepath(s)
+    :param columns: str or sequence: columns to plot on y-axis
     :return:
     """
     calibration_data = {}
-    if not type(filenames) == str and not helpers.is_iterable(filenames):
+    if type(filenames) == str or (not type(filenames) == str and not helpers.is_iterable(filenames)):
         filenames = [filenames]
-    for filename in filenames:
+    if type(columnx) == str or (not type(columnx) == str and not helpers.is_iterable(columnx)):
+        columnx = [columnx]
+    if type(columny) == str or (not type(columny) == str and not helpers.is_iterable(columny)):
+        columny = [columny]
+
+    if len(columnx) != len(filenames):
+        columnx = [columnx[0]] * len(filenames)
+    if len(columny) != len(filenames):
+        columny = [columny[0]] * len(filenames)
+
+    for i, filename in enumerate(filenames):
         if os.path.isfile(filename):
             try:
                 with open(filename, 'r') as f:
                     df = pd.read_csv(f, sep='\t')
                     calibration_data[os.path.basename(filename).rpartition(',')[2]] = \
-                        (df['Press_03_value'].to_numpy(), df['Press_05_value'].to_numpy())
+                        (df[columnx[i]].to_numpy(), df[columny[i]].to_numpy())
             except (IOError, OSError):
                 datahandler_logger.error(f"Couldn't access the file: {filename}", exc_info=True)
+                continue
+            except KeyError:
+                datahandler_logger.error(f"The column for plotting is absent in: {filename}", exc_info=True)
                 continue
     return calibration_data
 
@@ -460,6 +474,70 @@ class Region:
                                                        int(regions[i].get_info(Region.info_entries[2])))
         return region
 
+    @staticmethod
+    def bin_add_dimension(region, nbins, drop_remainder=False):
+        """
+        Takes an add-dimension region and returns a list of non-add-dimension regions that are binned
+        subdimensions.
+        :param region: add-dimension region
+        :param nbins: number of bins
+        :param drop_remainder: if the last bin is not full, drop it
+        :return: add-dimension region with binned subdimensions of the initial region
+        """
+        if not region.is_add_dimension():
+            return region
+        if region.is_add_dimension() and region.get_add_dimension_counter() < nbins:
+            return region
+        scans_per_bin = region.get_add_dimension_counter() // nbins
+        bincnt = 0
+        binned_add_dimension_data = []
+        binned_add_dimension_columns = {}
+        for column in region.get_data_columns():
+            if 'energy' not in column and 'counts' not in column and 'final' not in column:
+                col_base_name = ''.join(filter(lambda x: x.isalpha(), column))
+                if col_base_name not in binned_add_dimension_columns:
+                    binned_add_dimension_columns[col_base_name] = region.get_data(col_base_name)
+
+        column_names = list(binned_add_dimension_columns.keys())
+        for i in range(region.get_add_dimension_counter()):
+            if i == nbins * scans_per_bin and drop_remainder:
+                break
+            if i == bincnt * scans_per_bin:
+                bin_intensity = region.get_data(f'counts{i}')
+                for column_name in column_names:
+                    if f'{column_name}{i}' in region.get_data_columns():
+                        binned_add_dimension_columns[f'{column_name}{i}'] = region.get_data(f'{column_name}{i}')
+            else:
+                bin_intensity += region.get_data(f'counts{i}')
+                for column_name in column_names:
+                    if f'{column_name}{i}' in region.get_data_columns():
+                        binned_add_dimension_columns[f'{column_name}{i}'] += region.get_data(f'{column_name}{i}')
+            if i == (bincnt + 1) * scans_per_bin - 1 or i == region.get_add_dimension_counter() - 1:
+                if i == region.get_add_dimension_counter() - 1 and region.get_add_dimension_counter() % nbins != 0:
+                    # If we don't wont to drop non-full lust bin, we need to scale it to the same number of
+                    # sweeps as for other bins
+                    bin_intensity *= scans_per_bin / (region.get_add_dimension_counter() % nbins)
+                binned_add_dimension_data.append(bin_intensity)
+                bin_intensity = None
+                bincnt += 1
+        binned_region_info = copy.deepcopy(region.get_info())
+        binned_region_info['Sweeps Number'] = int(binned_region_info['Sweeps Number']) * scans_per_bin
+        binned_region = Region(region.get_data('energy'), region.get_data('counts'),
+                               add_dimension_flag=True, add_dimension_data=binned_add_dimension_data,
+                               info=binned_region_info, conditions=region.get_conditions(),
+                               excitation_energy=region.get_excitation_energy(),
+                               id_=f"{region.get_id()}",
+                               fermi_flag=region.get_flags()[Region.region_flags[2]],
+                               flags=copy.deepcopy(region.get_flags()))
+        binned_region._add_dimension_scans_number = len(binned_add_dimension_data)
+        binned_region._applied_corrections = region.get_corrections()
+        binned_region._flags_backup = region._flags_backup
+        binned_region._flags[Region.region_flags[4]] = True  # Add-dimension flag
+        for key, val in binned_add_dimension_columns.items():
+            binned_region.add_column(key, val)
+        binned_region.add_column('final', region.get_data('final'), overwrite=True)
+        return binned_region
+
     def correct_energy_shift(self, shift):
         if not self._flags[Region.region_flags[0]]:  # If not already corrected
             self._data['energy'] += shift
@@ -833,7 +911,7 @@ class Region:
         """
         separated_regions = []
         if not region.is_add_dimension():
-            return
+            return region
         for i in range(region.get_add_dimension_counter()):
             dimension = Region(region.get_data('energy'), region.get_data(f'counts{i}'),
                                add_dimension_flag=False, add_dimension_data=None,

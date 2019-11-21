@@ -465,6 +465,9 @@ class CorrectionsPanel(ttk.Frame):
         # Plot button
         self.plot = ttk.Button(self, text='Plot', command=self._plot)
         self.plot.pack(side=tk.TOP, fill=tk.X)
+        # Show regions info
+        self.show_info = ttk.Button(self, text='Show Regions Info', command=self._show_info)
+        self.show_info.pack(side=tk.TOP, fill=tk.X)
         # Save buttons
         self.save = ttk.Button(self, text='Save', command=self._save)
         self.save.pack(side=tk.TOP, fill=tk.X)
@@ -615,6 +618,23 @@ class CorrectionsPanel(ttk.Frame):
                     self.winfo_toplevel().display_message(msg)
 
                 for i, region in enumerate(regions_in_work):
+                    if self.bin_add_dim_var.get():
+                        if region.is_add_dimension() and int(self.bins_number_entry.get()) < region.get_add_dimension_counter():
+                            drop_last_bin = False
+                            if self.drop_last_bin_var.get():
+                                drop_last_bin = True
+                            try:
+                                region = datahandler.Region.bin_add_dimension(region,
+                                                                              nbins=int(self.bins_number_entry.get()),
+                                                                              drop_remainder=drop_last_bin)
+                            except ValueError:
+                                self.winfo_toplevel().display_message("Check the number of bins. Must be integer.\n"
+                                                                      "No binning done.")
+                        elif not region.is_add_dimension():
+                            self.winfo_toplevel().display_message(f"Not possible to bin non add-dimension region {region.get_id()}")
+                        elif int(self.bins_number_entry.get()) > region.get_add_dimension_counter():
+                            self.winfo_toplevel().display_message(f"Too many bins required for {region.get_id()}")
+
                     # Read Photon Energy value from the GUI and set it for the region
                     if len(pe) == 1:
                         region.set_excitation_energy(pe[0])
@@ -690,6 +710,11 @@ class CorrectionsPanel(ttk.Frame):
                             helpers.subtract_shirley(region)
                             region.make_final_column("no_shirley", overwrite=True)
                             region.add_correction("Shirley background subtracted")
+
+                        # If we were working on the copy of the region (e.g. after binning),
+                        # we want to make it the member of regions_in_work list
+                        if region is not regions_in_work[i]:
+                            regions_in_work[i] = region
         return regions_in_work
 
     def _make_plotting_settings_subframe(self):
@@ -708,7 +733,7 @@ class CorrectionsPanel(ttk.Frame):
                                                 onvalue="True", offvalue="", background=BG,
                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                 )
-        self.plot_separate_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.plot_separate_box.pack(side=tk.TOP, anchor=tk.W)
         # Plot add-dimension if possible checkbox
         self.plot_add_dim_label = ttk.Label(self.plotting_left_column, text="Plot add-dimension", anchor=tk.W)
         self.plot_add_dim_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -717,7 +742,31 @@ class CorrectionsPanel(ttk.Frame):
                                                onvalue="True", offvalue="", background=BG,
                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                )
-        self.plot_add_dim_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.plot_add_dim_box.pack(side=tk.TOP, anchor=tk.W)
+        # Bin add-dimension if possible checkbox
+        bin_add_dim_label = ttk.Label(self.plotting_left_column, text="Bin add-dimension to", anchor=tk.W)
+        bin_add_dim_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        bins_panel = ttk.Frame(self.plotting_right_column)
+        self.bin_add_dim_var = tk.StringVar(value="")
+        self.bin_add_dim_box = tk.Checkbutton(bins_panel, var=self.bin_add_dim_var,
+                                              onvalue="True", offvalue="", background=BG,
+                                              anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                              )
+        self.bin_add_dim_box.pack(side=tk.LEFT, anchor=tk.W)
+        self.bins_number = tk.StringVar(self, value=1)
+        self.bins_number_entry = ttk.Entry(bins_panel, textvariable=self.bins_number, width=3)
+        self.bins_number_entry.pack(side=tk.LEFT, anchor=tk.W, expand=False)
+        bins_number_label = ttk.Label(bins_panel, text="bins", anchor=tk.W)
+        bins_number_label.pack(side=tk.LEFT, anchor=tk.W, expand=False)
+        self.drop_last_bin_var = tk.StringVar(value="True")
+        self.drop_last_bin_box = tk.Checkbutton(bins_panel, var=self.drop_last_bin_var,
+                                              onvalue="True", offvalue="", background=BG,
+                                              anchor=tk.E, relief=tk.FLAT, highlightthickness=0
+                                              )
+        self.drop_last_bin_box.pack(side=tk.RIGHT, anchor=tk.E)
+        drop_last_label = ttk.Label(bins_panel, text="Drop tail", anchor=tk.W)
+        drop_last_label.pack(side=tk.RIGHT, anchor=tk.E, expand=False)
+        bins_panel.pack(side=tk.TOP, anchor=tk.W, fill=tk.X, expand=True)
         # Use settings
         self.plot_use_settings_label = ttk.Label(self.plotting_left_column, text="Use settings", anchor=tk.W)
         self.plot_use_settings_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -726,7 +775,7 @@ class CorrectionsPanel(ttk.Frame):
                                                     onvalue="True", offvalue="", background=BG,
                                                     anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
                                                     command=self._toggle_settings)
-        self.plot_use_settings_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.plot_use_settings_box.pack(side=tk.TOP, anchor=tk.W)
         # Binding energy axis
         self.plot_binding_label = ttk.Label(self.plotting_left_column, text="Binding energy axis", anchor=tk.W)
         self.plot_binding_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -738,7 +787,7 @@ class CorrectionsPanel(ttk.Frame):
                                                onvalue="True", offvalue="", background=BG,
                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                )
-        self.plot_binding_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.plot_binding_box.pack(side=tk.TOP, anchor=tk.W)
         # Offset
         self.offset_label = ttk.Label(self.plotting_left_column, text="Offset (% of max)", anchor=tk.W)
         self.offset_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -759,7 +808,7 @@ class CorrectionsPanel(ttk.Frame):
                                           onvalue="True", offvalue="", background=BG,
                                           anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                           )
-        self.scatter_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.scatter_box.pack(side=tk.TOP, anchor=tk.W)
         # Legend
         self.plot_legend_label = ttk.Label(self.plotting_left_column, text="Add legend", anchor=tk.W)
         self.plot_legend_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -770,7 +819,7 @@ class CorrectionsPanel(ttk.Frame):
                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
                                               command=self._toggle_legend_settings
                                               )
-        self.plot_legend_box.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        self.plot_legend_box.pack(side=tk.LEFT, anchor=tk.W)
         init_legend_settings = service.get_service_parameter("LEGEND").split(';')
             # File name in the legend
         fn_label = ttk.Label(legend_boxes, text="FN", anchor=tk.W)
@@ -780,7 +829,7 @@ class CorrectionsPanel(ttk.Frame):
                                               onvalue="True", offvalue="", background=BG,
                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                               )
-        self.plot_legend_fn_box.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        self.plot_legend_fn_box.pack(side=tk.LEFT, anchor=tk.W)
             # Region name in the legend
         rn_label = ttk.Label(legend_boxes, text="RN", anchor=tk.W)
         rn_label.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
@@ -789,7 +838,7 @@ class CorrectionsPanel(ttk.Frame):
                                               onvalue="True", offvalue="", background=BG,
                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                               )
-        self.plot_legend_rn_box.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        self.plot_legend_rn_box.pack(side=tk.LEFT, anchor=tk.W)
             # Conditions in the legend
         con_label = ttk.Label(legend_boxes, text="CON", anchor=tk.W)
         con_label.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
@@ -798,7 +847,7 @@ class CorrectionsPanel(ttk.Frame):
                                               onvalue="True", offvalue="", background=BG,
                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                               )
-        self.plot_legend_con_box.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        self.plot_legend_con_box.pack(side=tk.LEFT, anchor=tk.W)
         legend_boxes.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
         # Title
         self.plot_title_label = ttk.Label(self.plotting_left_column, text="Add title", anchor=tk.W)
@@ -808,7 +857,7 @@ class CorrectionsPanel(ttk.Frame):
                                              onvalue="True", offvalue="", background=BG,
                                              anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                              )
-        self.plot_title_box.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        self.plot_title_box.pack(side=tk.TOP, anchor=tk.W)
         #Pack plotting setting
         self.plotting_left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         self.plotting_right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
@@ -1011,6 +1060,29 @@ class CorrectionsPanel(ttk.Frame):
 
                 output_dir = os.path.dirname(dat_file_path)
             service.set_init_parameters("DEFAULT_OUTPUT_FOLDER", output_dir)
+
+    def _show_info(self):
+        if self.regions_in_work:
+            info_message = ""
+            for i, region in enumerate(self.regions_in_work):
+                if i > 0:
+                    info_message += "-" * 10 + "\n"
+                info_message += f"{region.get_id()}\n\n"
+                info_message += "Info:\n" + region.get_info_string() + "\n"
+                info_message += f"Add-dimension mode: {region.is_add_dimension()}\n"
+                if region.is_add_dimension():
+                    info_message += f"Add-dimension scans number : {region.get_add_dimension_counter()}"
+                info_message += "\n\n"
+                info_message += "Conditions:\n" + region.get_conditions(as_string=True) + "\n\n"
+                info_message += "Corrections:\n" + region.get_corrections(as_string=True) + "\n"
+            text_view = tk.Toplevel(self)
+            text_view.wm_title("Regions info")
+            output_panel = ttk.Frame(text_view, borderwidth=1, relief="groove")
+            info_panel = BrowserTreeView(output_panel, label=None, borderwidth=1, relief="groove")
+            msg = tk.Message(info_panel.treeview, text=info_message, anchor=tk.W, bg=BG)
+            msg.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
+            info_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+            output_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     def _toggle_legend_settings(self):
         legend_sub_widgets = (
@@ -2558,7 +2630,7 @@ class Root(tk.Tk):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._configure_style()
+        # self._configure_style()
         # Dictionary of all widgets of the main window
         self.gui_widgets = {}
         # List of all toplevel windows with fits of the app (MainWindow is not included)
@@ -2652,6 +2724,21 @@ class Root(tk.Tk):
     def load_pressure_calibration(self):
         """Load and show pressure calibration file with a button allowing to plot certain column vs another column
         """
+        def stylize_pc_ax(ax):
+            ax.legend(fancybox=True, framealpha=0, loc='best')
+            ax.ticklabel_format(axis='both', style='sci', scilimits=(0, 0))
+            ax.set_aspect('auto')
+            ax.set_facecolor('None')
+            ax.grid(which='both', axis='both', color='grey', linestyle=':')
+            ax.spines['bottom'].set_color('black')
+            ax.spines['left'].set_color('black')
+            ax.tick_params(axis='x', colors='black')
+            ax.tick_params(axis='y', colors='black')
+            ax.yaxis.label.set_color('black')
+            ax.xaxis.label.set_color('black')
+            ax.set_xlim(left=0)
+
+
         file_names = filedialog.askopenfilenames(filetypes=[("calibration", ".dat .DAT .txt .TXT"), ("All files", ".*")],
                                                  parent=self,
                                                  title="Choose calibration data files to load",
@@ -2659,25 +2746,29 @@ class Root(tk.Tk):
                                                  multiple=True)
         if file_names:
             service.set_init_parameters("DEFAULT_DATA_FOLDER", os.path.dirname(file_names[0]))
-            calibration_data = datahandler.load_calibration_curves(file_names)
-            new_plot_window = tk.Toplevel(self.winfo_toplevel())
-            new_plot_window.wm_title("Calibration data")
-            new_plot_panel = PlotPanel(new_plot_window, label=None)
-            new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-            for key, val in calibration_data.items():
-                new_plot_panel.figure_axes.scatter(val[0], val[1], label=key, s=6)
-            new_plot_panel.figure_axes.legend(fancybox=True, framealpha=0, loc='best')
-            new_plot_panel.figure_axes.ticklabel_format(axis='both', style='sci', scilimits=(0, 0))
-            new_plot_panel.figure_axes.set_aspect('auto')
-            new_plot_panel.figure_axes.set_facecolor('None')
-            new_plot_panel.figure_axes.grid(which='both', axis='both', color='grey', linestyle=':')
-            new_plot_panel.figure_axes.spines['bottom'].set_color('black')
-            new_plot_panel.figure_axes.spines['left'].set_color('black')
-            new_plot_panel.figure_axes.tick_params(axis='x', colors='black')
-            new_plot_panel.figure_axes.tick_params(axis='y', colors='black')
-            new_plot_panel.figure_axes.yaxis.label.set_color('black')
-            new_plot_panel.figure_axes.xaxis.label.set_color('black')
-            new_plot_panel.figure_axes.set_xlim(left=0)
+            calibration_data = datahandler.load_calibration_curves(file_names,
+                                                                   columnx='Press_03_value',
+                                                                   columny='Press_05_value')
+            if len(calibration_data) > 0:
+                press03vs05 = tk.Toplevel(self.winfo_toplevel())
+                press03vs05.wm_title("Calibration data Press05(Press03)")
+                plot_panel_03vs05 = PlotPanel(press03vs05, label=None)
+                plot_panel_03vs05.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+                for key, val in calibration_data.items():
+                    plot_panel_03vs05.figure_axes.scatter(val[0], val[1], label=key, s=6)
+                stylize_pc_ax(plot_panel_03vs05.figure_axes)
+
+            calibration_data = datahandler.load_calibration_curves(file_names,
+                                                                   columnx='DualGauge_01_value',
+                                                                   columny='Press_05_value')
+            if len(calibration_data) > 0:
+                pressDualvs05 = tk.Toplevel(self.winfo_toplevel())
+                pressDualvs05.wm_title("Calibration data Press05(PressDual01)")
+                plot_panel_Dualvs05 = PlotPanel(pressDualvs05, label=None)
+                plot_panel_Dualvs05.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+                for key, val in calibration_data.items():
+                    plot_panel_Dualvs05.figure_axes.scatter(val[0], val[1], label=key, s=6)
+                stylize_pc_ax(plot_panel_Dualvs05.figure_axes)
         else:
             gui_logger.warning("Couldn't get calibration data files from askopenfiles dialog.")
             self.winfo_toplevel().display_message("Couldn't get calibration data files")

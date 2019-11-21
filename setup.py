@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
       name='specqp',
-      version='1.1.1',
+      version='1.1.2',
       description='Quick plotting, correcting and fitting of spectroscopic data',
       long_description=long_description,
       long_description_content_type="text/markdown",
@@ -19,7 +19,10 @@ setup(
       install_requires=['numpy', 'scipy', 'pandas', 'matplotlib', 'lmfit'],
       classifiers=["Programming Language :: Python :: 3",
                    "License :: OSI Approved :: MIT License",
+                   "Intended Audience :: Science/Research",
+                   "Natural Language :: English",
                    "Operating System :: MacOS :: MacOS X",
+                   "Operating System :: Microsoft :: Windows",
                    "Environment :: MacOS X",
                    "Development Status :: 5 - Production/Stable"]
       )
