@@ -1,5 +1,6 @@
 import logging
 from matplotlib.figure import Figure
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from specqp import helpers
 from specqp.datahandler import Region
@@ -55,7 +56,7 @@ def _make_label(region, legend_features=None):
 
 def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=True, log_scale=False, y_offset=0.0,
                        global_y_offset=0.0, scatter=False, label=None, color=None, title=False, font_size=12,
-                       legend=True, legend_features=None, legend_pos='best'):
+                       legend=True, legend_features=None, legend_pos='best', plot2D=False, colormap=None):
     """
 
     :param region: region object
@@ -75,6 +76,7 @@ def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=Tr
     :param legend_features: What info to add to the labels from the region's infp section.
     For example, legend_features=('Temperature',)
     :param legend_pos: Legend position according to matplotlib rules. For example, 'best'
+    :param plot2D: 2D plot
     :return: None
     """
     if not region.is_add_dimension():
@@ -85,6 +87,40 @@ def plot_add_dimension(region, axs, x_data='energy', y_data='final', invert_x=Tr
         return
 
     n_curves = region.get_add_dimension_counter()
+
+    if plot2D:
+        x, _ = _get_arrays(region, x_data=f'{x_data}')
+        y = list(range(1, n_curves + 1))
+        z = [_get_arrays(region, y_data=f'{y_data}{i}')[1] for i in range(n_curves)]
+        cs = axs.contourf(x, y, z, cmap=colormap)
+        # divider = make_axes_locatable(axs)
+        # cax = divider.append_axes("right", size="5%", pad=0.05)
+        # axs.get_figure().colorbar(cs, cax=cax, fraction=0.15)
+        cbar = axs.get_figure().colorbar(cs, fraction=0.15)
+        axs.tick_params(axis='both', which='both', labelsize=font_size)
+        if title:
+            if region.is_sweeps_normalized():
+                title_str = f"Pass: {region.get_info('Pass Energy')} | File: {region.get_info('File Name')}"
+            else:
+                if region.is_add_dimension():
+                    title_str = f"Pass: {region.get_info('Pass Energy')} " \
+                                f" | Sweeps: {int(region.get_info('Sweeps Number')) * region.get_add_dimension_counter()}" \
+                                f" | File: {region.get_info('File Name')}"
+                else:
+                    title_str = f"Pass: {region.get_info('Pass Energy')} | Sweeps: {region.get_info('Sweeps Number')}" \
+                                f" | File: {region.get_info('File Name')}"
+            axs.set_title(title_str, fontsize=font_size)
+        #   Stiling axes
+        x_label_prefix = "Binding"
+        if region.get_info("Energy Scale") == "Kinetic":
+            x_label_prefix = "Kinetic"
+        axs.set_xlabel(f"{x_label_prefix} energy (eV)", fontsize=font_size)
+        axs.set_ylabel("Scan number", fontsize=font_size)
+        # Inverting x-axis if desired and not yet inverted
+        if invert_x and not axs.xaxis_inverted():
+            axs.invert_xaxis()
+        return
+
     if label and not helpers.is_iterable(label):
         label = [f'{label} : sweep {i}' for i in range(1, n_curves + 1)]
     elif (label and len(label) != n_curves) or not label:

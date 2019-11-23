@@ -105,7 +105,7 @@ about the sequential order of left and right boundaries. Needs both numbers to b
 
 
 Here one can change the visual representation of the corrected data. The options are self explanatory and are
-applied on pressing the *Plot* button.
+applied upon pressing the *Plot* button.
 
 
 *SAVING DATA*
@@ -198,7 +198,9 @@ between different spectra in the set using *Previous* and *Next* buttons.
 One can also save the fitting parameters and tabular data like in regular Fit window by pressing *Save Fit*
 
 Buttons *Save Figures* and *Save Movie* saves the visual data as separate .png figures and as .mp4 video with
-spectra and their fit as video frames.
+spectra and their fit as video frames. NOTE: For saving of video SpecQP uses 'ffmpeg' codec that has to be installed
+on your computer. The path to ffmpeg executable can be either added to the PATH of your system or chosen manually upon
+a request from the SpecQP dialog.
 
 
 Batch GUI mode

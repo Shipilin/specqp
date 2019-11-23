@@ -15,12 +15,13 @@ from tkinter import ttk
 from tkinter import filedialog, simpledialog, messagebox
 
 import matplotlib
+from matplotlib import pyplot as plt
 from matplotlib import cm
 from matplotlib import style
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.backend_bases import key_press_handler
 import matplotlib.image as mpimg
-import matplotlib.animation as manimation
+import matplotlib.animation as animation
 
 from specqp import service
 from specqp import datahandler
@@ -41,6 +42,7 @@ style.use('ggplot')  # Configuring matplotlib style
 
 logo_img_file = os.path.dirname(os.path.abspath(__file__)) + "/assets/specqp_icon.png"
 BG = "#ececec"
+
 
 class CustomText(tk.Text):
     def __init__(self, *args, **kwargs):
@@ -372,8 +374,8 @@ class PlotPanel(ttk.Frame):
         self.toolbar.update()
 
     def plot_regions(self, regions, ax=None, x_data='energy', y_data='final', ymin=None, ymax=None, log_scale=False,
-                     y_offset=0.0, scatter=False, label=None, color=None, title=True, font_size=12, legend=True,
-                     legend_features=("ID", ), legend_pos='best', add_dimension=False, colormap=None):
+                     y_offset=0.0, scatter=False, plot2D=False, label=None, color=None, title=True, font_size=12,
+                     legend=True, legend_features=("ID", ), legend_pos='best', add_dimension=False, colormap=None):
         if regions:
             if not helpers.is_iterable(regions):
                 regions = [regions]
@@ -405,7 +407,8 @@ class PlotPanel(ttk.Frame):
                     plotter.plot_add_dimension(region, ax, x_data=x_data, y_data=y_data, invert_x=invert_x, log_scale=log_scale,
                                                y_offset=y_offset, global_y_offset=offset, scatter=scatter, label=label,
                                                color=color, title=title, font_size=font_size, legend=legend,
-                                               legend_features=legend_features, legend_pos=legend_pos)
+                                               legend_features=legend_features, legend_pos=legend_pos, plot2D=plot2D,
+                                               colormap=cm.get_cmap(colormap))
                     offset += y_offset * region.get_add_dimension_counter()
             if len(regions) > 1:
                 ax.set_title(None)
@@ -445,6 +448,10 @@ class PlotPanel(ttk.Frame):
         ax.set_aspect(float(service.get_service_parameter("PLOT_ASPECT_RATIO")) / ax.get_data_ratio())
         self.canvas.draw()
         self.toolbar.update()
+
+    def clear_figure(self):
+        self.figure.clf()
+        self.figure_axes = self.figure.add_subplot(111)
 
 
 class CorrectionsPanel(ttk.Frame):
@@ -737,14 +744,24 @@ class CorrectionsPanel(ttk.Frame):
         # Plot add-dimension if possible checkbox
         self.plot_add_dim_label = ttk.Label(self.plotting_left_column, text="Plot add-dimension", anchor=tk.W)
         self.plot_add_dim_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        add_dim_panel = ttk.Frame(self.plotting_right_column)
         self.plot_add_dim_var = tk.StringVar(value="")
-        self.plot_add_dim_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_add_dim_var,
+        self.plot_add_dim_box = tk.Checkbutton(add_dim_panel, var=self.plot_add_dim_var,
                                                onvalue="True", offvalue="", background=BG,
                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                                )
-        self.plot_add_dim_box.pack(side=tk.TOP, anchor=tk.W)
+        self.plot_add_dim_box.pack(side=tk.LEFT, anchor=tk.W)
+        plot2D_label = ttk.Label(add_dim_panel, text="Plot 2D", anchor=tk.W)
+        plot2D_label.pack(side=tk.LEFT, anchor=tk.W, expand=False)
+        self.plot_2D_var = tk.StringVar(value="")
+        self.plot_2D_box = tk.Checkbutton(add_dim_panel, var=self.plot_2D_var,
+                                          onvalue="True", offvalue="", background=BG,
+                                          anchor=tk.E, relief=tk.FLAT, highlightthickness=0
+                                          )
+        self.plot_2D_box.pack(side=tk.LEFT, anchor=tk.W)
+        add_dim_panel.pack(side=tk.TOP, anchor=tk.W, fill=tk.X, expand=True)
         # Bin add-dimension if possible checkbox
-        bin_add_dim_label = ttk.Label(self.plotting_left_column, text="Bin add-dimension to", anchor=tk.W)
+        bin_add_dim_label = ttk.Label(self.plotting_left_column, text="Bin add-dimension", anchor=tk.W)
         bin_add_dim_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         bins_panel = ttk.Frame(self.plotting_right_column)
         self.bin_add_dim_var = tk.StringVar(value="")
@@ -753,19 +770,19 @@ class CorrectionsPanel(ttk.Frame):
                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
                                               )
         self.bin_add_dim_box.pack(side=tk.LEFT, anchor=tk.W)
+        bins_number_label = ttk.Label(bins_panel, text="to N bins", anchor=tk.W)
+        bins_number_label.pack(side=tk.LEFT, anchor=tk.W, expand=False)
         self.bins_number = tk.StringVar(self, value=1)
         self.bins_number_entry = ttk.Entry(bins_panel, textvariable=self.bins_number, width=3)
         self.bins_number_entry.pack(side=tk.LEFT, anchor=tk.W, expand=False)
-        bins_number_label = ttk.Label(bins_panel, text="bins", anchor=tk.W)
-        bins_number_label.pack(side=tk.LEFT, anchor=tk.W, expand=False)
+        drop_last_label = ttk.Label(bins_panel, text="Drop tail", anchor=tk.W)
+        drop_last_label.pack(side=tk.LEFT, anchor=tk.W, expand=False)
         self.drop_last_bin_var = tk.StringVar(value="True")
         self.drop_last_bin_box = tk.Checkbutton(bins_panel, var=self.drop_last_bin_var,
-                                              onvalue="True", offvalue="", background=BG,
-                                              anchor=tk.E, relief=tk.FLAT, highlightthickness=0
-                                              )
-        self.drop_last_bin_box.pack(side=tk.RIGHT, anchor=tk.E)
-        drop_last_label = ttk.Label(bins_panel, text="Drop tail", anchor=tk.W)
-        drop_last_label.pack(side=tk.RIGHT, anchor=tk.E, expand=False)
+                                                onvalue="True", offvalue="", background=BG,
+                                                anchor=tk.E, relief=tk.FLAT, highlightthickness=0
+                                                )
+        self.drop_last_bin_box.pack(side=tk.LEFT, anchor=tk.W)
         bins_panel.pack(side=tk.TOP, anchor=tk.W, fill=tk.X, expand=True)
         # Use settings
         self.plot_use_settings_label = ttk.Label(self.plotting_left_column, text="Use settings", anchor=tk.W)
@@ -973,23 +990,40 @@ class CorrectionsPanel(ttk.Frame):
                                                          len(region.get_data(column='final')) > 0])
         cmap = None if self.select_colormap.get() == "Default colormap" else self.select_colormap.get()
         legend_features = self._get_legend_features()
+
+        plot_add_dim = bool(self.plot_add_dim_var.get())
+        plot_2D = bool(self.plot_2D_var.get())
+        plot_scatter = bool(self.scatter_var.get())
+        if plot_scatter and plot_2D and plot_add_dim and len(self.regions_in_work) == 1:
+            self.winfo_toplevel().display_message("Choose either 'scatter' or '2D plot' mode.")
+            return
+        elif plot_scatter and plot_2D and (not plot_add_dim or len(self.regions_in_work) > 1):
+            plot_2D = False
+        elif plot_add_dim and plot_2D and len(self.regions_in_work) > 1:
+            self.winfo_toplevel().display_message("Can't make 2D plot for more than 1 scan at the same time.")
+            plot_2D = False
+        elif not plot_add_dim:
+            plot_2D = False
         if bool(self.plot_separate_var.get()):
             new_plot_window = tk.Toplevel(self.winfo_toplevel())
             new_plot_window.wm_title("Raw data")
             new_plot_panel = PlotPanel(new_plot_window, label=None, borderwidth=1, relief="groove")
             new_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
             new_plot_panel.plot_regions(self.regions_in_work,
-                                        add_dimension=bool(self.plot_add_dim_var.get()),
-                                        scatter=bool(self.scatter_var.get()),
+                                        add_dimension=plot_add_dim,
+                                        scatter=plot_scatter,
+                                        plot2D=plot_2D,
                                         legend=bool(self.plot_legend_var.get()),
                                         legend_features=tuple(legend_features),
                                         title=bool(self.plot_title_var.get()),
                                         y_offset=offset, colormap=cmap,
                                         font_size=int(service.get_service_parameter("FONT_SIZE")))
         else:
+            self.winfo_toplevel().gui_widgets["PlotPanel"].clear_figure()
             self.winfo_toplevel().gui_widgets["PlotPanel"].plot_regions(self.regions_in_work,
-                                                                        add_dimension=bool(self.plot_add_dim_var.get()),
-                                                                        scatter=bool(self.scatter_var.get()),
+                                                                        add_dimension=plot_add_dim,
+                                                                        scatter=plot_scatter,
+                                                                        plot2D=plot_2D,
                                                                         legend=bool(self.plot_legend_var.get()),
                                                                         legend_features=tuple(legend_features),
                                                                         title=bool(self.plot_title_var.get()),
@@ -2566,23 +2600,47 @@ class AdvancedFitWindow(tk.Toplevel):
                 filetypes=(("mp4 files", "*.mp4"), ("all files", "*.*"))
             )
             if movie_file_path:
-                try:
-                    FFMpegWriter = manimation.writers['ffmpeg']
-                    metadata = dict(title=self.regions[0].get_id(), artist='SpecQP')
-                    writer = FFMpegWriter(fps=15, metadata=metadata)
-                    with writer.saving(self.plot_panel.figure, movie_file_path, 1000):
-                        for region_num in range(len(self.regions)):
-                            self._plot(region_num)
-                            writer.grab_frame()
-                    return True
-                except RuntimeError as e:
-                    self._display_message("The video file has not been saved. Most likely you do not have the "
-                                          "'ffmpeg' codec installed on your computer. "
-                                          "For detailed information on the error check the log file.\n"
-                                          "Check ffmpeg installation instructions on-line.\n"
-                                          "Alternatively, save separate images and combine them into a video manually"
-                                          "using a third-party software.")
-                    gui_logger.error("Couldn't save the movie file.", exc_info=True)
+                while True:
+                    try:
+                        FFMpegWriter = animation.writers['ffmpeg']
+                        metadata = dict(title=self.regions[0].get_id(), artist='SpecQP')
+                        writer = FFMpegWriter(fps=15, metadata=metadata)
+                        with writer.saving(self.plot_panel.figure, movie_file_path, 1000):
+                            for region_num in range(len(self.regions)):
+                                self._plot(region_num)
+                                writer.grab_frame()
+                        return True
+                    except (RuntimeError, KeyError):
+                        if plt.rcParams['animation.ffmpeg_path'] != service.get_service_parameter("FFMPEG_PATH"):
+                            plt.rcParams['animation.ffmpeg_path'] = service.get_service_parameter("FFMPEG_PATH")
+                            continue
+                        if plt.rcParams['animation.ffmpeg_path'] == service.get_service_parameter("FFMPEG_PATH"):
+                            ffmpeg_file_path = filedialog.askopenfilename(
+                                initialdir="/",
+                                parent=self,
+                                title="The 'ffmpeg' codec is required for saving movie files.\n"
+                                      "Choose the codec location manually if you have it installed,\n "
+                                      "if not - check ffmpeg installation instructions for 'ffmpeg codec' on-line first.\n")
+                            if ffmpeg_file_path and os.path.isfile(ffmpeg_file_path):
+                                plt.rcParams['animation.ffmpeg_path'] = ffmpeg_file_path
+                                service.set_init_parameters("FFMPEG_PATH", ffmpeg_file_path)
+                                continue
+                            elif ffmpeg_file_path and not os.path.isfile(ffmpeg_file_path):
+                                self._display_message("\nNot a file. Choose ffmpeg executable.\n")
+                                continue
+                            elif not ffmpeg_file_path:
+                                self._display_message("\nMovie file has not been saved.\n"
+                                                      "The 'ffmpeg' codec installed on your computer is required.\n"
+                                                      "Choose the codec location manually"
+                                                      "if you have it installed, if not - "
+                                                      "check ffmpeg installation instructions"
+                                                      "for 'ffmpeg codec' on-line first.\n"
+                                                      "Alternatively, save separate images"
+                                                      " and combine them into a video manually "
+                                                      "using a third-party software.\n"
+                                                      )
+                                gui_logger.error("Couldn't save the movie file.", exc_info=True)
+                                return False
         else:
             save_dir_path = filedialog.askdirectory(initialdir=output_dir, title='Please select a directory')
             if save_dir_path:

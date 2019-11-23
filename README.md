@@ -12,7 +12,7 @@ and series of curves. In versions 1.1 only *.xy* files from SPECS instruments an
 from SCIENTA instruments are handled within GUI.
 
 NOTE: The package was developed for Mac OS, but it works on Windows as well, although some GUI features may become
-less pretty.
+less pretty. 
 
 ## Installation MacOS
 
