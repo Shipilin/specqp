@@ -18,8 +18,12 @@ service_vars = {
     "ENERGY_SHIFT": "",
     "FERMI_FIT_PARAMETERS": "1.00;0.00;0.10;0.00",
     "NORMALIZATION_CONSTANT": "1",
+    "NORMALIZE_BY_CONSTANT": "",
     "CROP": ";",
+    "DO_CROP": "",
     "NORMALIZE_SWEEPS": "True",
+    "NORMALIZE_DWELL": "True",
+    "SUBTRACT_CONSTANT": "",
     "SUBTRACT_SHIRLEY": "",
     "LEGEND": ";True;True"
 }

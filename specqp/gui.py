@@ -672,7 +672,11 @@ class CorrectionsPanel(ttk.Frame):
                     if self.normalize_sweeps_var.get():
                         region.normalize_by_sweeps()
                         region.make_final_column("sweepsNormalized", overwrite=True)
-                        region.add_correction("Normalized by sweeps and dwell time")
+                        region.add_correction(f"Normalized by {region.get_info('Sweeps Number')} sweeps")
+                    if self.normalize_dwell_var.get():
+                        region.normalize_by_dwell_time()
+                        region.make_final_column("dwellNormalized", overwrite=True)
+                        region.add_correction(f"Normalized by {region.get_info('Dwell Time')} dwell time")
                     if self.do_const_norm_var.get():
                         if len(nc) == 1:
                             helpers.normalize(region, y_data='final', const=nc[0], add_column=True)
@@ -838,7 +842,7 @@ class CorrectionsPanel(ttk.Frame):
                                               )
         self.plot_legend_box.pack(side=tk.LEFT, anchor=tk.W)
         init_legend_settings = service.get_service_parameter("LEGEND").split(';')
-            # File name in the legend
+        # File name in the legend
         fn_label = ttk.Label(legend_boxes, text="FN", anchor=tk.W)
         fn_label.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
         self.plot_legend_fn_var = tk.StringVar(value=init_legend_settings[0].strip())
@@ -915,13 +919,24 @@ class CorrectionsPanel(ttk.Frame):
         # Normalize by sweeps
         self.normalize_sweeps_label = ttk.Label(self.settings_left_column, text="Normalize by sweeps", anchor=tk.W)
         self.normalize_sweeps_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        normalize_frame = ttk.Frame(self.settings_right_column)
         self.normalize_sweeps_var = tk.StringVar(value="True")
-        self.normalize_sweeps_box = tk.Checkbutton(self.settings_right_column, var=self.normalize_sweeps_var,
+        self.normalize_sweeps_box = tk.Checkbutton(normalize_frame, var=self.normalize_sweeps_var,
                                                    onvalue="True", offvalue="", background=BG,
                                                    anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
                                                    command=self._toggle_normalize_sweeps
                                                    )
-        self.normalize_sweeps_box.pack(side=tk.TOP, anchor=tk.W)
+        self.normalize_sweeps_box.pack(side=tk.LEFT, anchor=tk.W)
+        self.normalize_dwell_label = ttk.Label(normalize_frame, text="by dwell time", anchor=tk.W)
+        self.normalize_dwell_label.pack(side=tk.LEFT, expand=False)
+        self.normalize_dwell_var = tk.StringVar(value="True")
+        self.normalize_dwell_box = tk.Checkbutton(normalize_frame, var=self.normalize_dwell_var,
+                                                   onvalue="True", offvalue="", background=BG,
+                                                   anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                                   command=self._toggle_normalize_dwell
+                                                   )
+        self.normalize_dwell_box.pack(side=tk.LEFT, anchor=tk.W)
+        normalize_frame.pack(side=tk.TOP, expand=False, anchor=tk.W)
         # Normalize by a constant
         self.const_norm_label = ttk.Label(self.settings_left_column, text="Normalize by const(s)", anchor=tk.W)
         self.const_norm_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -930,7 +945,7 @@ class CorrectionsPanel(ttk.Frame):
         self.do_const_norm_box = tk.Checkbutton(norm_entrie_frame, var=self.do_const_norm_var,
                                                 onvalue="True", offvalue="", background=BG,
                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
-                                                command=self._read_const_norm_value
+                                                command=self._toggle_const_norm
                                                 )
         self.do_const_norm_box.pack(side=tk.LEFT, anchor=tk.W)
         self.const_norm_var = tk.StringVar(self, value="")
@@ -945,7 +960,7 @@ class CorrectionsPanel(ttk.Frame):
         self.do_crop_box = tk.Checkbutton(crop_entries_frame, var=self.do_crop_var,
                                           onvalue="True", offvalue="", background=BG,
                                           anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
-                                          command=self._read_crop_values
+                                          command=self._toggle_crop
                                           )
         self.do_crop_box.pack(side=tk.LEFT, anchor=tk.W)
         self.crop_left_var = tk.StringVar(self, value="")
@@ -958,10 +973,11 @@ class CorrectionsPanel(ttk.Frame):
         # Subtract constant background
         self.subtract_const_label = ttk.Label(self.settings_left_column, text="Subtract constant bg", anchor=tk.W)
         self.subtract_const_label.pack(side=tk.TOP, fill=tk.X, expand=True)
-        self.subtract_const_var = tk.StringVar(value="True")
+        self.subtract_const_var = tk.StringVar(value="")
         self.subtract_const_box = tk.Checkbutton(self.settings_right_column, var=self.subtract_const_var,
                                                  onvalue="True", offvalue="", background=BG,
-                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                 anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                                 command=self._toggle_subtract_bg
                                                  )
         self.subtract_const_box.pack(side=tk.TOP, anchor=tk.W)
         # Subtract Shirley background
@@ -1030,21 +1046,6 @@ class CorrectionsPanel(ttk.Frame):
                                                                         y_offset=offset, colormap=cmap,
                                                                         font_size=int(service.get_service_parameter("FONT_SIZE")))
 
-    def _read_crop_values(self):
-        if self.crop_left_var.get() or self.crop_right_var.get():
-            return
-        if service.get_service_parameter("CROP"):
-            crop_vals = service.get_service_parameter("CROP").split(';')
-            self.crop_left_var.set(crop_vals[0])
-            self.crop_right_var.set(crop_vals[1])
-
-    def _read_const_norm_value(self):
-        if self.const_norm_var.get():
-            return
-        nc = service.get_service_parameter("NORMALIZATION_CONSTANT").split(';')[0]
-        if nc:
-            self.const_norm_var.set(nc)
-
     def _save(self):
         if self.regions_in_work:
             output_dir = filedialog.askdirectory(title="Choose directory for saving",
@@ -1108,7 +1109,10 @@ class CorrectionsPanel(ttk.Frame):
                     info_message += f"Add-dimension scans number : {region.get_add_dimension_counter()}"
                 info_message += "\n\n"
                 info_message += "Conditions:\n" + region.get_conditions(as_string=True) + "\n\n"
-                info_message += "Corrections:\n" + region.get_corrections(as_string=True) + "\n"
+                info_message += "Corrections:\n"
+                corrections_entries = [cor.strip() + '\n' for cor in region.get_corrections(as_string=True).split(';')]
+                for cor_entry in corrections_entries:
+                    info_message += cor_entry
             text_view = tk.Toplevel(self)
             text_view.wm_title("Regions info")
             output_panel = ttk.Frame(text_view, borderwidth=1, relief="groove")
@@ -1117,6 +1121,29 @@ class CorrectionsPanel(ttk.Frame):
             msg.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
             info_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
             output_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    def _toggle_const_norm(self):
+        if not bool(self.do_const_norm_var.get()):
+            service.set_init_parameters("NORMALIZE_BY_CONSTANT", "")
+        else:
+            service.set_init_parameters("NORMALIZE_BY_CONSTANT", "True")
+        if self.const_norm_var.get():
+            return
+        nc = service.get_service_parameter("NORMALIZATION_CONSTANT").split(';')[0]
+        if nc:
+            self.const_norm_var.set(nc)
+
+    def _toggle_crop(self):
+        if not bool(self.do_crop_var.get()):
+            service.set_init_parameters("DO_CROP", "")
+        else:
+            service.set_init_parameters("DO_CROP", "True")
+        if self.crop_left_var.get() or self.crop_right_var.get():
+            return
+        if service.get_service_parameter("CROP"):
+            crop_vals = service.get_service_parameter("CROP").split(';')
+            self.crop_left_var.set(crop_vals[0])
+            self.crop_right_var.set(crop_vals[1])
 
     def _toggle_legend_settings(self):
         legend_sub_widgets = (
@@ -1145,38 +1172,61 @@ class CorrectionsPanel(ttk.Frame):
         if not bool(self.normalize_sweeps_var.get()):
             service.set_init_parameters("NORMALIZE_SWEEPS", "")
         else:
-            service.set_init_parameters("NORMALIZE_SWEEPS", "")
+            service.set_init_parameters("NORMALIZE_SWEEPS", "True")
+
+    def _toggle_normalize_dwell(self):
+        if not bool(self.normalize_dwell_var.get()):
+            service.set_init_parameters("NORMALIZE_DWELL", "")
+        else:
+            service.set_init_parameters("NORMALIZE_DWELL", "True")
+
+    def _toggle_subtract_bg(self):
+        if not bool(self.subtract_const_var.get()):
+            service.set_init_parameters("SUBTRACT_CONSTANT", "")
+        else:
+            service.set_init_parameters("SUBTRACT_CONSTANT", "True")
 
     def _toggle_settings(self):
         if self.plot_use_settings_var.get():
             self.photon_energy.set(service.get_service_parameter("PHOTON_ENERGY"))
             self.energy_shift.set(service.get_service_parameter("ENERGY_SHIFT"))
-            norm_const = service.get_service_parameter("NORMALIZATION_CONSTANT")
-            self.const_norm_var.set(norm_const)
-            if bool(norm_const):
+            if bool(service.get_service_parameter("NORMALIZE_BY_CONSTANT")):
                 self.do_const_norm_var.set("True")
+                norm_const = service.get_service_parameter("NORMALIZATION_CONSTANT")
+                self.const_norm_var.set(norm_const)
             else:
                 self.do_const_norm_var.set("")
             if bool(service.get_service_parameter("NORMALIZE_SWEEPS")):
                 self.normalize_sweeps_var.set("True")
             else:
                 self.normalize_sweeps_var.set("")
-            self.subtract_const_var.set("True")
+            if bool(service.get_service_parameter("NORMALIZE_DWELL")):
+                self.normalize_dwell_var.set("True")
+            else:
+                self.normalize_dwell_var.set("")
+            if bool(service.get_service_parameter("SUBTRACT_CONSTANT")):
+                self.subtract_const_var.set("True")
+            else:
+                self.subtract_const_var.set("")
             self.plot_binding_var.set("True")
             if bool(service.get_service_parameter("SUBTRACT_SHIRLEY")):
                 self.subtract_shirley_var.set("True")
             else:
                 self.subtract_shirley_var.set("")
-            try:
-                crop_vals = service.get_service_parameter("CROP").split(';')
-            except (IndexError, IOError):
-                crop_vals = ['','']
-            if bool(crop_vals[0]) and bool(crop_vals[1]):
+            if bool(service.get_service_parameter("DO_CROP")):
                 self.do_crop_var.set("True")
+                try:
+                    crop_vals = service.get_service_parameter("CROP").split(';')
+                except (IndexError, IOError):
+                    crop_vals = ['', '']
+                if bool(crop_vals[0]) and bool(crop_vals[1]):
+                    self.do_crop_var.set("True")
+                else:
+                    self.do_crop_var.set("")
+                self.crop_left_var.set(crop_vals[0])
+                self.crop_right_var.set(crop_vals[1])
             else:
                 self.do_crop_var.set("")
-            self.crop_left_var.set(crop_vals[0])
-            self.crop_right_var.set(crop_vals[1])
             for obj in (self.subtract_const_box,
                         self.subtract_shirley_box,
                         self.do_const_norm_box,
@@ -1185,6 +1235,7 @@ class CorrectionsPanel(ttk.Frame):
                         self.crop_left_entry,
                         self.crop_right_entry,
                         self.normalize_sweeps_box,
+                        self.normalize_dwell_box,
                         self.plot_binding_box,
                         self.pe_entry,
                         self.eshift_entry):
@@ -1199,6 +1250,7 @@ class CorrectionsPanel(ttk.Frame):
                         self.do_const_norm_var,
                         self.const_norm_var,
                         self.normalize_sweeps_var,
+                        self.normalize_dwell_var,
                         self.plot_binding_var,
                         self.photon_energy,
                         self.energy_shift
@@ -1213,6 +1265,7 @@ class CorrectionsPanel(ttk.Frame):
                         self.crop_left_entry,
                         self.crop_right_entry,
                         self.normalize_sweeps_box,
+                        self.normalize_dwell_box,
                         self.plot_binding_box,
                         self.pe_entry,
                         self.eshift_entry
@@ -1609,7 +1662,7 @@ class FitWindow(tk.Toplevel):
         # the widening of ideal step function.
         # FWHM_gauss = 2*sqrt(ln2)*a2
         # FWHM_gauss = 2*sqrt(2ln2)*sigma
-        gauss_fwhm = [2 * (np.log(2.0)) ** (.5) * np.absolute(fit_res[0][2]), fit_res[1][2]]
+        gauss_fwhm = [2 * (np.log(2.0) ** (.5)) * np.absolute(fit_res[0][2]), fit_res[1][2]]
         self.gauss_fwhm.set(f"Gauss contribution: {round(gauss_fwhm[0], int(service.service_vars['ROUND_PRECISION']))} +/- "
                             f"{round(gauss_fwhm[1], int(service.service_vars['ROUND_PRECISION']))}")
         self._plot_error_func_fit(f"fit: {round(shift[0], int(service.service_vars['ROUND_PRECISION']))} +/- "

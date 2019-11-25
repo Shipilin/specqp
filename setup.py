@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
       name='specqp',
-      version='1.1.3',
+      version='1.1.4',
       description='Quick plotting, correcting and fitting of spectroscopic data',
       long_description=long_description,
       long_description_content_type="text/markdown",

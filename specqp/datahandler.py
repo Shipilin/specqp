@@ -195,7 +195,8 @@ def load_scienta_txt(filename, regions_number_line=1, first_region_number=1):
                               Region.info_entries[3]: info_lines["Excitation Energy"],
                               Region.info_entries[4]: info_lines["Energy Scale"],
                               Region.info_entries[5]: info_lines["Energy Step"],
-                              Region.info_entries[6]: info_lines["Step Time"],
+                              # We want to have it in seconds instead of microseconds
+                              Region.info_entries[6]: str(float(info_lines["Step Time"]) / 1000),
                               Region.info_entries[7]: info_lines["File"],
                               Region.info_entries[8]: f"{info_lines['Date']} {info_lines['Time']}"}
 
@@ -323,7 +324,8 @@ class Region:
         "binding_energy_flag",     # 1
         "fermi_flag",              # 2
         "sweeps_normalized",       # 3
-        "add_dimension_flag"       # 4
+        "add_dimension_flag",      # 4
+        "dwell_time_normalized"    # 5
     )
 
     def __init__(self, energy, counts,
@@ -369,7 +371,8 @@ class Region:
                     Region.region_flags[1]: None,
                     Region.region_flags[2]: fermi_flag,
                     Region.region_flags[3]: False,
-                    Region.region_flags[4]: add_dimension_flag
+                    Region.region_flags[4]: add_dimension_flag,
+                    Region.region_flags[5]: False,
                     }
         # Check which energy scale is used:
         if self._info:  # Info can be None
@@ -542,7 +545,7 @@ class Region:
         if not self._flags[Region.region_flags[0]]:  # If not already corrected
             self._data['energy'] += shift
             self._flags[Region.region_flags[0]] = True
-            self._applied_corrections.append("Energy shift corrected")
+            #self._applied_corrections.append("Energy shift corrected")
         else:
             datahandler_logger.info(f"The region {self._id} has already been energy corrected.")
 
@@ -728,6 +731,9 @@ class Region:
     def is_energy_corrected(self):
         return self._flags[self.region_flags[0]]
 
+    def is_dwell_normalized(self):
+        return self._flags[self.region_flags[5]]
+
     def is_sweeps_normalized(self):
         return self._flags[self.region_flags[3]]
 
@@ -745,27 +751,45 @@ class Region:
         """
         Normalizes 'column' column by sweeps and stores the result in the new column 'sweepsNormalized'.
         For add_dimension regions normalizes all columns 'columnN' and creates new columns 'sweepsNormalizedN'
-        NOTE: The routine also takes into account the dwell time per point
         :return:
         """
         # If not yet normalized by sweeps
         if not self._flags[self.region_flags[3]]:
             if self._info and (Region.info_entries[2] in self._info):
                 if not self._flags[self.region_flags[4]]:
-                    self._data['sweepsNormalized'] = self._data[column] / (float(self._info[Region.info_entries[2]]) *
-                                                                           float(self._info[Region.info_entries[6]]))
+                    self._data['sweepsNormalized'] = self._data[column] / float(self._info[Region.info_entries[2]])
                 else:
                     # This many sweeps in each add_dimension measurement
                     sweeps_per_set = self._info[Region.info_entries[2]]
                     for i in range(self._add_dimension_scans_number):
                         if f'{column}{i}' in self._data.columns:
-                            self._data[f'sweepsNormalized{i}'] = (self._data[f'{column}{i}'] /
-                                                                  (float(sweeps_per_set) *
-                                                                   float(self._info[Region.info_entries[6]])))
+                            self._data[f'sweepsNormalized{i}'] = self._data[f'{column}{i}'] / float(sweeps_per_set)
                     self._data['sweepsNormalized'] = (self._data[column] /
-                                                      (float(int(sweeps_per_set) * self._add_dimension_scans_number) *
-                                                       float(self._info[Region.info_entries[6]])))
+                                                      (float(int(sweeps_per_set) * self._add_dimension_scans_number)))
                 self._flags[self.region_flags[3]] = True
+                return True
+        return False
+
+    def normalize_by_dwell_time(self, column='final'):
+        """
+        Normalizes 'column' column by dwell time and stores the result in the new column 'dwellNormalized'.
+        For add_dimension regions normalizes all columns 'columnN' and creates new columns 'dwellNormalizedN'
+        :return:
+        """
+        # If not yet normalized by dwell time
+        if not self._flags[self.region_flags[5]]:
+            if self._info and (Region.info_entries[6] in self._info):
+                if not self._flags[self.region_flags[4]]:
+                    self._data['dwellNormalized'] = self._data[column] / float(self._info[Region.info_entries[6]])
+                else:
+                    # This many sweeps in each add_dimension measurement
+                    sweeps_per_set = self._info[Region.info_entries[2]]
+                    for i in range(self._add_dimension_scans_number):
+                        if f'{column}{i}' in self._data.columns:
+                            self._data[f'dwellNormalized{i}'] = (self._data[f'{column}{i}'] /
+                                                                 float(self._info[Region.info_entries[6]]))
+                    self._data['dwellNormalized'] = self._data[column] / float(self._info[Region.info_entries[6]])
+                self._flags[self.region_flags[5]] = True
                 return True
         return False
 
