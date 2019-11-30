@@ -404,16 +404,16 @@ class Region:
         except AttributeError:
             datahandler_logger.info(f"A dummy region has been created", exc_info=True)
 
+    def __add__(self, other):
+        return Region.do_math(self, other, math='+', ydata='final')
+
     def __str__(self):
         """Prints the info read from the data file. Possible to add keys of the Info dictionary to be printed
         """
         return self.get_info_string()
 
-    # TODO: write region subtraction routine
-    def __sub__(self, other_region):
-        """Returns the difference of the "final" column of two instances
-        """
-        return self._data["final"] - other_region.get_data("final")
+    def __sub__(self, other):
+        return Region.do_math(self, other, math='-', ydata='final')
 
     def add_column(self, column_label, array, overwrite=False):
         """Adds one column to the data object assigning it the name 'column_label'.
@@ -428,54 +428,6 @@ class Region:
 
     def add_correction(self, correction: str):
         self._applied_corrections.append(correction)
-
-    @staticmethod
-    def addup_regions(regions, truncate=True):
-        """
-        Takes two or more non-adddimension regions and combines them in a single region adding up sweeps and results.
-        The method checks for regions' energy spans and truncates to the overlapping interval if truncate=True. Skips
-        non-matching regions if truncate=False
-        NOTE: The method doesn't check for regions compatibility, i.e. conditions, photon energy, etc.
-        NOTE: Neither does the method accounts for previously made corrections. Therefore, should be used with
-        freshly loaded regions in order to avoid mistakes.
-        :param regions: iterable through a number of regions
-        :param truncate=True: if regions of different length are combined and truncate == True, the method
-        adds them up only in the overlapping region and returns truncated regions as the result
-        :return: Region object
-        """
-
-        def _find_overlap(a, b):
-            ab_intersect = np.in1d(a, b).nonzero()[0]
-            ba_intersect = np.in1d(b, a).nonzero()[0]
-            if len(ab_intersect) == 0 or len(ba_intersect) == 0:
-                return None, None
-            return [ab_intersect[0], ab_intersect[-1]], [ba_intersect[0], ba_intersect[-1]]
-
-        if not helpers.is_iterable(regions):
-            datahandler_logger.warning(f"Regions should be in an iterable object to be concatenated")
-            return None
-        region = copy.deepcopy(regions[0])
-        for i in range(1, len(regions)):
-            energy1 = region.get_data('energy')
-            energy2 = regions[i].get_data('energy')
-            # Check that the regions can be concatenated, i.e. if they have full/partial overlap
-            indxs1, indxs2 = _find_overlap(energy1, energy2)
-            if (not indxs1) or (not indxs2):
-                continue
-            if indxs1 == indxs2 and len(energy1) == len(energy2):  # If regions fully overlap
-                region._data['counts'] += regions[i].get_data('counts')
-                region._data['final'] += regions[i].get_data('final')
-            elif indxs1 != indxs2 and truncate:
-                if not (indxs1[0] == 0 and indxs1[1] == len(energy1) + 1):
-                    region.crop_region(start=energy1[indxs1[0]], stop=energy1[indxs1[1]], changesource=True)
-                region._data['counts'] += regions[i].get_data('counts')[indxs2[0]:indxs2[1]]
-                region._data['final'] += regions[i].get_data('final')[indxs2[0]:indxs2[1]]
-            else:
-                datahandler_logger.warning(f"Regions {region.getid()} and {regions[i].get_id()} have different length")
-                continue
-            region._info[Region.info_entries[2]] = str(int(region.get_info(Region.info_entries[2])) +
-                                                       int(regions[i].get_info(Region.info_entries[2])))
-        return region
 
     @staticmethod
     def bin_add_dimension(region, nbins, drop_remainder=False):
@@ -541,6 +493,19 @@ class Region:
         binned_region.add_column('final', region.get_data('final'), overwrite=True)
         return binned_region
 
+    @staticmethod
+    def concatenate(first, second):
+        #make concatenation
+        if not Region.check_compatibility(first_ad_region, second_ad_region):
+            raise Exception("The regions are incompatible (Acquisition conditions are different)")
+        # if first_ad_region.is_add_dimension() and second_ad_region.is_add_dimension():
+        #     summed_region_add_dimension_data = something
+        # elif first_ad_region.is_add_dimension() and not second_ad_region.is_add_dimension():
+        #     bla
+        # elif not first_ad_region.is_add_dimension() and second_ad_region.is_add_dimension()
+        #     bla
+        #     bla
+
     def correct_energy_shift(self, shift):
         if not self._flags[Region.region_flags[0]]:  # If not already corrected
             self._data['energy'] += shift
@@ -548,6 +513,43 @@ class Region:
             #self._applied_corrections.append("Energy shift corrected")
         else:
             datahandler_logger.info(f"The region {self._id} has already been energy corrected.")
+
+    @staticmethod
+    def check_compatibility(regions, equalenergy=True):
+        """
+        Checks if the regions are compatible for doing mathematical operations
+        :param equalenergy: If true, makes sure that the energy axes are identical
+        :param regions: iterable sequence of region objects
+        :return: True if all regions have same parameters and can be combined mathematically, False otherwise
+        """
+        if not helpers.is_iterable(regions):
+            return False
+        if equalenergy:
+            for i in range(1, len(regions)):
+                if not np.array_equal(regions[0].get_data('energy'), regions[1].get_data('energy')):
+                    return False
+        # Info Parameters that should be equal between the regions
+        info_entries = (
+            1,  # Pass Energy
+            3,  # Excitation Energy
+            4,  # Energy Scale
+            5   # Energy Step
+        )
+        flags_entries = (
+            0,  # energy_shift_corrected
+            1,  # binding_energy_flag
+            2,  # fermi_flag
+            3,  # sweeps_normalized
+            5   # dwell_time_normalized
+        )
+        for entry in info_entries:
+            if len(set([region.get_info(parameter=Region.info_entries[entry]) for region in regions])) > 1:
+                return False
+        for entry in flags_entries:
+            if len(set([region.get_flags(flagname=Region.region_flags[entry]) for region in regions])) > 1:
+                return False
+
+        return True
 
     def crop_region(self, start=None, stop=None, changesource=False):
         """Returns a copy of the region with the data within [start, stop] interval
@@ -588,6 +590,95 @@ class Region:
         tmp_region._data.reset_index(drop=True, inplace=True)
         return tmp_region
 
+    @staticmethod
+    def do_math(first, second, math, ydata='final', truncate='True'):
+        """
+        Takes two regions and combines them in a single region adding up or subtracting sweeps and results.
+        The method checks for regions' energy spans and truncates to the overlapping interval if truncate=True. Skips
+        non-matching regions if truncate=False
+        :param truncate: if regions of different length are combined and truncate == True, the method
+        is applied only in the overlapping region and returns truncated regions as the result
+        :param ydata: Which column of the region dataframe to use for doing math
+        :param first: Region
+        :param second: Region
+        :param math: Mathematical sign '-' or '+'
+        :return: New region after math
+        """
+        def _find_overlap(a, b):
+            ab_intersect = np.in1d(a, b).nonzero()[0]
+            ba_intersect = np.in1d(b, a).nonzero()[0]
+            if len(ab_intersect) == 0 or len(ba_intersect) == 0:
+                return None, None
+            return [ab_intersect[0], ab_intersect[-1]], [ba_intersect[0], ba_intersect[-1]]
+
+        if not Region.check_compatibility((first, second), equalenergy=False):
+            raise Exception("The regions are incompatible (Acquisition conditions are different)")
+        assert math in ('-', '+')
+        new_region_flags = copy.deepcopy(first.get_flags())
+        new_region_flags[Region.region_flags[4]] = False
+        new_region_info = copy.deepcopy(first.get_info())
+        new_region_info[Region.info_entries[7]] = f"{first.get_info(Region.info_entries[7])} {math} " \
+                                                  f"{second.get_info(Region.info_entries[7])}"
+        if not first.is_add_dimension() and not second.is_add_dimension():
+            first_sweeps_number = int(first.get_info(Region.info_entries[2]))
+            second_sweeps_number = int(second.get_info(Region.info_entries[2]))
+        elif first.is_add_dimension() and second.is_add_dimension():
+            first_sweeps_number = int(first.get_info(Region.info_entries[2])) * first.get_add_dimension_counter()
+            second_sweeps_number = int(second.get_info(Region.info_entries[2])) * second.get_add_dimension_counter()
+        elif not first.is_add_dimension() and second.is_add_dimension():
+            first_sweeps_number = int(first.get_info(Region.info_entries[2]))
+            second_sweeps_number = int(second.get_info(Region.info_entries[2])) * second.get_add_dimension_counter()
+        elif first.is_add_dimension() and not second.is_add_dimension():
+            first_sweeps_number = int(first.get_info(Region.info_entries[2])) * first.get_add_dimension_counter()
+            second_sweeps_number = int(second.get_info(Region.info_entries[2]))
+
+        indxs1, indxs2 = _find_overlap(first.get_data('energy'), second.get_data('energy'))
+        if indxs1 is None or indxs2 is None:
+            raise Exception("The regions are incompatible (They don't have any overlap in energy.)")
+        if indxs1 != indxs2:
+            if truncate:
+                if not (indxs1[0] == 0 and indxs1[1] == first.get_data('energy') + 1):
+                    first.crop_region(start=first.get_data('energy')[indxs1[0]],
+                                      stop=first.get_data('energy')[indxs1[1]],
+                                      changesource=True)
+                    second.crop_region(start=second.get_data('energy')[indxs2[0]],
+                                       stop=second.get_data('energy')[indxs2[1]],
+                                       changesource=True)
+            else:
+                return None
+        # We need to save the number of sweeps for the new region
+        # Second region's sweeps number must be corrected by ratio of dwell time to normalize it to the dwell time
+        # of the first region
+        if math == '-':
+            new_sweeps_number = first_sweeps_number - (second_sweeps_number *
+                                                       float(first.get_info(Region.info_entries[6])) /
+                                                       float(second.get_info(Region.info_entries[6])))
+            if new_sweeps_number <= 0:
+                new_sweeps_number = 1
+            counts = (((first.get_data(ydata) / float(first.get_info(Region.info_entries[6]))) / first_sweeps_number) -
+                      ((second.get_data(ydata) / float(
+                          second.get_info(Region.info_entries[6]))) / second_sweeps_number)) * \
+                     new_sweeps_number * float(first.get_info(Region.info_entries[6]))
+        elif math == '+':
+            new_sweeps_number = first_sweeps_number + (second_sweeps_number *
+                                                       float(first.get_info(Region.info_entries[6])) /
+                                                       float(second.get_info(Region.info_entries[6])))
+            counts = (((first.get_data(ydata) / float(first.get_info(Region.info_entries[6]))) / first_sweeps_number) +
+                      ((second.get_data(ydata) / float(
+                          second.get_info(Region.info_entries[6]))) / second_sweeps_number)) * \
+                     new_sweeps_number * float(first.get_info(Region.info_entries[6]))
+        new_region_info[Region.info_entries[2]] = new_sweeps_number
+        new_region = Region(first.get_data('energy'), counts,
+                            add_dimension_flag=False,
+                            add_dimension_data=None,
+                            info=new_region_info, conditions=None,
+                            excitation_energy=first.get_excitation_energy(),
+                            id_=f"{first.get_id()} - {second.get_id()}",
+                            fermi_flag=first.get_flags(flagname=Region.region_flags[2]),
+                            flags=new_region_flags)
+        new_region.add_correction(f"Math: {first.get_id()} {math} {first.get_id()}")
+        return new_region
+
     def get_add_dimension_counter(self):
         """
         :return: Number of separate scans in add-dimension region
@@ -598,7 +689,7 @@ class Region:
         """Returns experimental conditions as a dictionary {"entry": value} or
         the value of the specified entry.
         """
-        if self._conditions:
+        if self._conditions is not None:
             if entry:
                 return self._conditions[entry]
             elif as_string:
@@ -611,7 +702,9 @@ class Region:
                 return cond_string
             return self._conditions
         else:
-            datahandler_logger.warning(f"The region {self._id} doesn't contain information about conditions.")
+            if as_string:
+                return ""
+            return None
 
     def get_corrections(self, as_string=False):
         """Returns either the list or the string (if as_string=True) of corrections that has been applied to the region
@@ -650,9 +743,12 @@ class Region:
     def get_excitation_energy(self):
         return self._excitation_energy
 
-    def get_flags(self):
+    def get_flags(self, flagname=None):
         """Returns the dictionary of flags
         """
+        if flagname is not None:
+            if flagname in Region.region_flags:
+                return self._flags[flagname]
         return self._flags
 
     def get_id(self):
@@ -678,7 +774,7 @@ class Region:
             if len(args) == 0:
                 for key, val in self._info.items():
                     output = "\n".join((output, f"{key}: {val}"))
-                if include_conditions:
+                if include_conditions and self._conditions is not None:
                     for key, val in self._conditions.items():
                         output = "\n".join((output, f"{key}: {val}"))
             else:
@@ -982,6 +1078,12 @@ class Region:
     def set_id(self, region_id):
         self._id = region_id
 
+    def set_info_entry(self, entry_name, value, overwrite=False):
+        if not entry_name in self.info_entries:
+            return
+        if not overwrite and entry_name in self._info and self._info[entry_name] is not None and self._info[entry_name]:
+            return
+        self._info[entry_name] = value
 
 class RegionsCollection:
     """Keeps track of the list of regions being in work simultaneously in the GUI or the batch mode
@@ -1000,6 +1102,8 @@ class RegionsCollection:
         :param new_regions: List of region objects (can be also single object in the list form, e.g. [obj,])
         :return: list of IDs for regions that were added
         """
+        if not helpers.is_iterable(new_regions):
+            new_regions = [new_regions]
         ids = []
         duplicate_ids = []  # For information purposes
         for new_region in new_regions:

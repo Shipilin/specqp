@@ -215,6 +215,8 @@ class BrowserTreeView(ttk.Frame):
         :param items: the IDs of regions loaded from the file
         :return: None
         """
+        if type(items) is str or not helpers.is_iterable(items):
+            items = [items]
         # When the first item(s) are added, add the "Check all" button on top.
         if not self.check_list_items:
             if items:
@@ -669,6 +671,8 @@ class CorrectionsPanel(ttk.Frame):
                                 break
                     if self.plot_binding_var.get():
                         region.invert_to_binding()
+                    if self.plot_kinetic_var.get():
+                        region.invert_to_kinetic()
                     if self.normalize_sweeps_var.get():
                         region.normalize_by_sweeps()
                         region.make_final_column("sweepsNormalized", overwrite=True)
@@ -726,6 +730,25 @@ class CorrectionsPanel(ttk.Frame):
                         # we want to make it the member of regions_in_work list
                         if region is not regions_in_work[i]:
                             regions_in_work[i] = region
+        #Rearange the sequence if chosen
+        if regions_in_work and self.reorder_plots_var.get():
+            try:
+                new_order = [int(po.strip()) for po in self.plots_order_var.get().split(';')]
+                if len(new_order) != len(regions_in_work):
+                    self.winfo_toplevel().display_message("Check the plotting order sequence. "
+                                                          "Must be as many numbers as regions plotted.")
+                    return regions_in_work
+                to_sort = {}
+                for i, region in enumerate(regions_in_work):
+                    to_sort[region] = new_order[i]
+                rev = False
+                if self.reverse_order_var.get():
+                    rev = True
+                sorted_regions = sorted(to_sort.items(), key=lambda kv: kv[1], reverse=rev)
+                return list(zip(*sorted_regions))[0]
+            except ValueError:
+                self.winfo_toplevel().display_message("Check the plotting order sequence. "
+                                                      "Must be numbers separated by ';'.")
         return regions_in_work
 
     def _make_plotting_settings_subframe(self):
@@ -736,6 +759,28 @@ class CorrectionsPanel(ttk.Frame):
         self.plotting_two_columns = ttk.Frame(self)
         self.plotting_left_column = ttk.Frame(self.plotting_two_columns, width=self.settings_left_column.winfo_width())
         self.plotting_right_column = ttk.Frame(self.plotting_two_columns, width=self.settings_right_column.winfo_width())
+        # Reorder plots
+        reorder_plots_label = ttk.Label(self.plotting_left_column, text="Reorder plots", anchor=tk.W)
+        reorder_plots_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        reorder_panel = ttk.Frame(self.plotting_right_column)
+        self.reorder_plots_var = tk.StringVar(value="")
+        self.reorder_plots_box = tk.Checkbutton(reorder_panel, var=self.reorder_plots_var,
+                                                onvalue="True", offvalue="", background=BG,
+                                                anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                                )
+        self.reorder_plots_box.pack(side=tk.LEFT, anchor=tk.W)
+        self.plots_order_var = tk.StringVar(self, value=None)
+        self.plots_order_entry = ttk.Entry(reorder_panel, textvariable=self.plots_order_var, width=10)
+        self.plots_order_entry.pack(side=tk.LEFT, anchor=tk.W, expand=False)
+        reverse_order = ttk.Label(reorder_panel, text="Reverse", anchor=tk.W)
+        reverse_order.pack(side=tk.LEFT, anchor=tk.W, expand=False)
+        self.reverse_order_var = tk.StringVar(value="")
+        self.reverse_box = tk.Checkbutton(reorder_panel, var=self.reverse_order_var,
+                                                onvalue="True", offvalue="", background=BG,
+                                                anchor=tk.E, relief=tk.FLAT, highlightthickness=0
+                                                )
+        self.reverse_box.pack(side=tk.LEFT, anchor=tk.W)
+        reorder_panel.pack(side=tk.TOP, anchor=tk.W, fill=tk.X, expand=True)
         # Plot in new window checkbox
         self.plot_separate_label = ttk.Label(self.plotting_left_column, text="Plot in new window", anchor=tk.W)
         self.plot_separate_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -798,17 +843,31 @@ class CorrectionsPanel(ttk.Frame):
                                                     command=self._toggle_settings)
         self.plot_use_settings_box.pack(side=tk.TOP, anchor=tk.W)
         # Binding energy axis
-        self.plot_binding_label = ttk.Label(self.plotting_left_column, text="Binding energy axis", anchor=tk.W)
-        self.plot_binding_label.pack(side=tk.TOP, fill=tk.X, expand=True)
+        self.energy_axis_label = ttk.Label(self.plotting_left_column, text="Energy axis", anchor=tk.W)
+        self.energy_axis_label.pack(side=tk.TOP, fill=tk.X, expand=True)
         if self.photon_energy.get():
             self.plot_binding_var = tk.StringVar(value="True")
         else:
             self.plot_binding_var = tk.StringVar(value="")
-        self.plot_binding_box = tk.Checkbutton(self.plotting_right_column, var=self.plot_binding_var,
+        self.plot_kinetic_var = tk.StringVar(value="")
+        energy_axis_frame = ttk.Frame(self.plotting_right_column)
+        binding_label = ttk.Label(energy_axis_frame, text="Binding", anchor=tk.W)
+        binding_label.pack(side=tk.LEFT, expand=False)
+        self.plot_binding_box = tk.Checkbutton(energy_axis_frame, var=self.plot_binding_var,
                                                onvalue="True", offvalue="", background=BG,
-                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0
+                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                               command=lambda: self._toggle_energy_axis('binding')
                                                )
-        self.plot_binding_box.pack(side=tk.TOP, anchor=tk.W)
+        self.plot_binding_box.pack(side=tk.LEFT, anchor=tk.W)
+        kinetic_label = ttk.Label(energy_axis_frame, text="Kinetic", anchor=tk.W)
+        kinetic_label.pack(side=tk.LEFT, expand=False)
+        self.plot_kinetic_box = tk.Checkbutton(energy_axis_frame, var=self.plot_kinetic_var,
+                                               onvalue="True", offvalue="", background=BG,
+                                               anchor=tk.W, relief=tk.FLAT, highlightthickness=0,
+                                               command=lambda: self._toggle_energy_axis('kinetic')
+                                               )
+        self.plot_kinetic_box.pack(side=tk.LEFT, anchor=tk.W)
+        energy_axis_frame.pack(side=tk.TOP, anchor=tk.W, fill=tk.X, expand=True)
         # Offset
         self.offset_label = ttk.Label(self.plotting_left_column, text="Offset (% of max)", anchor=tk.W)
         self.offset_label.pack(side=tk.TOP, fill=tk.X, expand=True)
@@ -1145,6 +1204,13 @@ class CorrectionsPanel(ttk.Frame):
             self.crop_left_var.set(crop_vals[0])
             self.crop_right_var.set(crop_vals[1])
 
+    def _toggle_energy_axis(self, mode):
+        assert mode in ('kinetic', 'binding')
+        if self.plot_binding_var.get() and mode == 'binding':
+            self.plot_kinetic_var.set("")
+        elif self.plot_kinetic_var.get() and mode == 'kinetic':
+            self.plot_binding_var.set("")
+
     def _toggle_legend_settings(self):
         legend_sub_widgets = (
             self.plot_legend_fn_var,
@@ -1237,6 +1303,7 @@ class CorrectionsPanel(ttk.Frame):
                         self.normalize_sweeps_box,
                         self.normalize_dwell_box,
                         self.plot_binding_box,
+                        self.plot_kinetic_box,
                         self.pe_entry,
                         self.eshift_entry):
                 obj.config(state=tk.NORMAL)
@@ -1252,6 +1319,7 @@ class CorrectionsPanel(ttk.Frame):
                         self.normalize_sweeps_var,
                         self.normalize_dwell_var,
                         self.plot_binding_var,
+                        self.plot_kinetic_var,
                         self.photon_energy,
                         self.energy_shift
                         ):
@@ -1267,6 +1335,7 @@ class CorrectionsPanel(ttk.Frame):
                         self.normalize_sweeps_box,
                         self.normalize_dwell_box,
                         self.plot_binding_box,
+                        self.plot_kinetic_box,
                         self.pe_entry,
                         self.eshift_entry
                         ):
@@ -2469,6 +2538,14 @@ class AdvancedFitWindow(tk.Toplevel):
         self.areas_plot_window.wm_title("Peak areas")
         areas_plot_panel = PlotPanel(self.areas_plot_window, label=None, borderwidth=1, relief="groove")
         areas_plot_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        buttons_area = ttk.Frame(self.areas_plot_window)
+        buttons_area.pack(side=tk.TOP, fill=tk.X, expand=False)
+        save_data_button = ttk.Button(
+            buttons_area,
+            text='Save Data',
+            command=lambda: self._save_peak_areas([fitter.get_peaks() for fitter in self.fitter_objs])
+        )
+        save_data_button.pack(side=tk.TOP, fill=tk.X, padx=4, pady=4)
         areas = {}
         labels = []
         x_ax = list(range(len(self.fitter_objs)))
@@ -2611,6 +2688,36 @@ class AdvancedFitWindow(tk.Toplevel):
         self.peak_lines = peak_line_copy
         self._redraw_add_remove_buttons()
 
+    def _save_peak_areas(self, peaks):
+        """
+        :param self:
+        :param peaks: list of lists
+        :return:
+        """
+        dat_file_path = filedialog.asksaveasfilename(initialdir=service.get_service_parameter("DEFAULT_OUTPUT_FOLDER"),
+                                                     initialfile="areas.dat",
+                                                     title="Save peak areas trends...",
+                                                     filetypes=(("dat files", "*.dat"), ("all files", "*.*")))
+        if dat_file_path:
+            headers = []
+            peak_data = []
+            for i in range(len(peaks[0])):
+                headers.append(f"Peak{i}_Pos")
+                headers.append(f"Peak{i}_Area")
+            for peaks_set in peaks:
+                pdat = []
+                for peak in peaks_set:
+                    pdat.append(peak.get_parameters(parameter='center'))
+                    pdat.append(peak.get_peak_area())
+                peak_data.append(pdat)
+            df = pd.DataFrame(peak_data, columns=headers)
+            try:
+                with open(dat_file_path, 'w') as f:
+                    df.to_csv(f, header=True, index=True, sep='\t')
+            except (IOError, OSError):
+                gui_logger.error(f"Couldn't save file {dat_file_path}", exc_info=True)
+                self.winfo_toplevel().display_message(f"Couldn't save file {dat_file_path}")
+
     def _save_fit(self):
         if self.fitter_objs is None:
             self._display_message("Do fitting first.")
@@ -2752,6 +2859,7 @@ class Root(tk.Tk):
 
         self.main_menu_bar = tk.Menu(self)
         self.file_menu = tk.Menu(self.main_menu_bar, tearoff=0)
+        self.math_menu = tk.Menu(self.main_menu_bar, tearoff=0)
         self.plot_menu = tk.Menu(self.main_menu_bar, tearoff=0)
         self.help_menu = tk.Menu(self.main_menu_bar, tearoff=0)
         self.generate_main_menu()
@@ -2774,6 +2882,9 @@ class Root(tk.Tk):
         # self.general_outlay_manager.add(self.log_window)
         # self.general_outlay_manager.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
+    def _concatenate_regions(self):
+        pass
+
     def _configure_style(self):
         # Setting GUI color style
         self.style = ttk.Style()
@@ -2781,6 +2892,55 @@ class Root(tk.Tk):
         # self.style.configure('.TEntry', bg=BG, fg=BG, disabledforeground=BG, disabledbackground=BG)
         # self.style.configure('default.TCheckbutton', background=BG)
         # self.style.configure('default.TFrame', background=BG)
+
+    def _do_regions_math(self, math):
+        math_options = (
+            'Add',
+            'Subtract',
+            'Reversed subtract'
+        )
+        assert math in math_options
+
+        checked_ids = self.gui_widgets["BrowserPanel"].spectra_tree_panel.get_checked_items()
+        if len(checked_ids) < 2:
+            self.winfo_toplevel().display_message("Choose at least two regions for doing math.")
+            return
+        if math == math_options[1] and len(checked_ids) > 2:
+            self.winfo_toplevel().display_message("Subtraction of more than two regions is ambiguous. "
+                                                  "Choose exactly two for doing math.")
+            return
+        txt_regions_list = ""
+        for reg_id in checked_ids:
+            txt_regions_list += reg_id + "\n"
+        new_region_id = simpledialog.askstring("Choose new region name (unique)",
+                                               f"The following regions will be combined\n{txt_regions_list}",
+                                               parent=self)
+        if new_region_id is None:
+            self.winfo_toplevel().display_message("Can't save region without a name.")
+            return
+        if new_region_id in self.loaded_regions.get_ids():
+            self.winfo_toplevel().display_message("The name of the new region must be unique. "
+                                                  "Please try again with a new unique name.")
+            return
+        try:
+            # Addition
+            if math == math_options[0]:
+                new_region = self.loaded_regions.get_by_id(checked_ids[0])
+                for i in range(1, len(checked_ids)):
+                    new_region += self.loaded_regions.get_by_id(checked_ids[i])
+            # Subtraction
+            if math == math_options[1]:
+                new_region = self.loaded_regions.get_by_id(checked_ids[0]) - self.loaded_regions.get_by_id(checked_ids[1])
+            # Reversed subtraction
+            if math == math_options[2]:
+                new_region = self.loaded_regions.get_by_id(checked_ids[1]) - self.loaded_regions.get_by_id(checked_ids[0])
+            new_region.set_id(new_region_id)
+            new_region.set_info_entry(datahandler.Region.info_entries[7], new_region_id, overwrite=True)
+            self.loaded_regions.add_regions(new_region)
+            self.gui_widgets["BrowserPanel"].spectra_tree_panel.add_items_to_check_list(f"New region after {math}",
+                                                                                        new_region_id)
+        except Exception:
+            self.winfo_toplevel().display_message("The regions you chose are incompatible and can't be combined.")
 
     def display_message(self, msg, timestamp=True):
         if self.results_msg is not None:
@@ -2809,6 +2969,15 @@ class Root(tk.Tk):
         self.plot_menu.add_command(label="Set font size", command=self._set_plot_font_size)
         self.plot_menu.add_command(label="Set plot aspect ratio", command=self._set_plot_aspect_ratio)
         self.main_menu_bar.add_cascade(label="Plot", menu=self.plot_menu)
+
+        # Math menu
+        self.math_menu.add_command(label="Add", command=lambda: self._do_regions_math(math='Add'))
+        self.math_menu.add_command(label="Subtract", command=lambda: self._do_regions_math(math='Subtract'))
+        self.math_menu.add_command(label="Reversed subtract",
+                                   command=lambda: self._do_regions_math(math='Reversed subtract'))
+        # self.file_menu.add_separator()
+        # self.math_menu.add_command(label="Concatenate", command=lambda: self._concatenate_regions)
+        self.main_menu_bar.add_cascade(label="Math", menu=self.math_menu)
 
         # Help menu
         self.help_menu.add_command(label="Export log", command=self.export_log)
@@ -2926,15 +3095,21 @@ class Root(tk.Tk):
         else:
             for file_name in file_list:
                 loaded_ids[file_name] = self.loaded_regions.add_regions_from_file(file_name, file_type[0])
+        last_region_id = ""
         if loaded_ids:
             for key, val in loaded_ids.items():
                 # The 'loaded_ids' dictionary can contain several None values, which will be evaluated as True
                 # in the previous 'if' clause. Therefore, we need to check every member as well.
                 if val:
                     self.gui_widgets["BrowserPanel"].spectra_tree_panel.add_items_to_check_list(os.path.basename(key), val)
+                    last_region_id = val[0]
                 else:
                     if key in self.loaded_regions.get_ids():
                         gui_logger.warning(f"No regions loaded from {key}")
+        # Fill the photon energy value if available in the file
+        pe_from_file = float(self.loaded_regions.get_by_id(last_region_id).get_info(datahandler.Region.info_entries[3]))
+        if pe_from_file > 1:
+            self.gui_widgets["CorrectionsPanel"].photon_energy.set(str(round(pe_from_file, 2)))
 
     def export_log(self):
         output_dir = service.get_service_parameter("DEFAULT_OUTPUT_FOLDER")
